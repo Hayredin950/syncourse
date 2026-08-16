@@ -1,15 +1,18 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import type {
   ActivityItem,
+  AppVersion,
   Category,
   CourseCollection,
   CourseDetail,
   CourseSummary,
+  DiscussionThread,
   HomeFeed,
   LearningPath,
   LecturerDetail,
   LessonDetail,
   MyLearning,
+  NotificationItem,
   OrganizationDetail,
   Plan,
   Review,
@@ -199,3 +202,28 @@ export const rateCourse = (slug: string, stars: number) =>
   post<{ ratingAvg: number }>(`/courses/${slug}/rate`, { stars });
 export const postReview = (slug: string, body: string, containsSpoilers: boolean) =>
   post<Review>(`/courses/${slug}/reviews`, { body, containsSpoilers });
+
+// --- discussion threads ---
+export const discussion = (slug: string) =>
+  get<{ courseId: string; total: number; threads: DiscussionThread[] }>(
+    `/courses/${slug}/discussion`
+  );
+export const postDiscussion = (slug: string, body: string, parentId?: string) =>
+  post<DiscussionThread>(`/courses/${slug}/discussion`, {
+    body,
+    ...(parentId ? { parentId } : {}),
+  });
+export const toggleUpvote = (reviewId: string) =>
+  post<{ upvoted: boolean; upvotes: number }>(`/discussion/${reviewId}/upvote`);
+
+// --- notifications & changelog ---
+export const notifications = () =>
+  get<{ unread: number; notifications: NotificationItem[] }>("/notifications");
+export const markNotificationsRead = () => post("/notifications/read");
+export const sendReminder = (title: string, body: string) =>
+  post("/notifications/send", {
+    type: "telegram_reminder",
+    title,
+    body,
+  });
+export const appVersions = () => get<AppVersion[]>("/app-versions");

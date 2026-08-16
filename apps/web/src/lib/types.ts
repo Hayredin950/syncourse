@@ -85,6 +85,21 @@ export interface HomeData {
   organizations: { id: string; name: string; slug: string; logoUrl: string | null; subscribers: number; courseCount: number }[];
 }
 
+export interface DiscussionThread {
+  id: string;
+  userName: string;
+  userAvatar: string | null;
+  isStaff: boolean;
+  body: string;
+  containsSpoilers: boolean;
+  upvotes: number;
+  upvoted: boolean;
+  replyCount: number;
+  createdAt: string;
+  depth: number;
+  replies?: DiscussionThread[];
+}
+
 export interface LessonDetail {
   id: string;
   title: string;

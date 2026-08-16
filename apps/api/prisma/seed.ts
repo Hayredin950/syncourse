@@ -24,6 +24,8 @@ async function main() {
     prisma.lessonProgress.deleteMany(),
     prisma.enrollment.deleteMany(),
     prisma.rating.deleteMany(),
+    prisma.reviewUpvote.deleteMany(),
+    prisma.notification.deleteMany(),
     prisma.review.deleteMany(),
     prisma.downloadEvent.deleteMany(),
     prisma.savedCourse.deleteMany(),
@@ -400,6 +402,26 @@ async function main() {
   await prisma.review.create({
     data: { userId: second.id, courseId: courseIds[0], body: 'Great intro to AI automation, though some sections could use more depth.', parentId: review.id },
   });
+  // thread upvotes + a second thread for the discussion module
+  await prisma.reviewUpvote.create({ data: { userId: second.id, reviewId: review.id } });
+  await prisma.review.update({ where: { id: review.id }, data: { upvotes: { increment: 1 } } });
+  await prisma.review.create({
+    data: {
+      userId: second.id,
+      courseId: courseIds[0],
+      body: 'Does this course cover OpenAI integrations too, or only open-source models?',
+      containsSpoilers: false,
+    },
+  });
+
+  // in-app notifications (demo inbox for the notifications screen)
+  await prisma.notification.createMany({
+    data: [
+      { userId: demo.id, type: 'new_lesson', title: 'New lesson available', body: '“Deploying your automation” was just added to the AI automation course.', deepLink: `/courses/${slugify(courseDefs[0].title)}` },
+      { userId: demo.id, type: 'progress', title: '60% there!', body: "You're 60% through the AI automation course. Keep going!", deepLink: `/courses/${slugify(courseDefs[0].title)}` },
+      { userId: demo.id, type: 'system', title: 'Welcome to SynCourse', body: 'Thanks for joining — your learning journey starts here.', deepLink: '/' },
+    ],
+  });
 
   // download events spread over 30 days for the analytics widget
   const day = 24 * 60 * 60 * 1000;
@@ -430,8 +452,11 @@ async function main() {
     ],
   });
 
-  await prisma.appVersion.create({
-    data: { version: '0.1.0', changelogMd: '- Initial release\n- Home rails, browse, search, course detail, notes\n- My Learning, lists, reviews\n- Premium plans (ETB + USD)' },
+  await prisma.appVersion.createMany({
+    data: [
+      { version: '0.1.1', releasedAt: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000), changelogMd: '- Discussion threads with upvotes\n- In-app notifications + Telegram reminders\n- Browse filter sheet (category / level / rating)\n- Lecturer & organization profile pages\n- Settings: link Telegram, manage sessions' },
+      { version: '0.1.0', releasedAt: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000), changelogMd: '- Initial release\n- Home rails, browse, search, course detail, notes\n- My Learning, lists, reviews\n- Premium plans (ETB + USD)' },
+    ],
   });
   await prisma.legalDocument.createMany({
     data: [

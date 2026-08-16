@@ -377,6 +377,20 @@ export class CatalogService {
     });
   }
 
+  /** Latest app versions for the in-app update/changelog card. */
+  async appVersions(limit = 5) {
+    const rows = await this.prisma.appVersion.findMany({
+      orderBy: { releasedAt: 'desc' },
+      take: Math.min(limit, 20),
+    });
+    return rows.map((v) => ({
+      id: v.id,
+      version: v.version,
+      changelogMd: v.changelogMd,
+      releasedAt: v.releasedAt,
+    }));
+  }
+
   // ---------------------------------------------------------------
   // Helpers
   // ---------------------------------------------------------------

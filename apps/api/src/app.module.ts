@@ -13,6 +13,8 @@ import { ReviewsModule } from './reviews/reviews.module';
 import { CollectionsModule } from './collections/collections.module';
 import { PaymentsModule } from './payments/payments.module';
 import { SearchModule } from './search/search.module';
+import { DiscussionsModule } from './discussions/discussions.module';
+import { NotificationsModule } from './notifications/notifications.module';
 
 @Module({
   imports: [
@@ -28,6 +30,8 @@ import { SearchModule } from './search/search.module';
     CollectionsModule,
     PaymentsModule,
     SearchModule,
+    DiscussionsModule,
+    NotificationsModule,
   ],
   providers: [
     {

@@ -260,6 +260,8 @@ model User {
   taste           TasteProfile[]
   downloads       DownloadEvent[]
   subscriptions   Subscription[]
+  reviewUpvotes   ReviewUpvote[]
+  notifications   Notification[]
 }
 
 model Follow {
@@ -363,14 +365,40 @@ model Review {
   body             String
   containsSpoilers Boolean   @default(false)
   parentId         String? // threaded replies
+  upvotes          Int       @default(0)
   editedAt         DateTime?
   createdAt        DateTime  @default(now())
   user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   course           Course    @relation(fields: [courseId], references: [id], onDelete: Cascade)
   parent           Review?   @relation("reviewThread", fields: [parentId], references: [id], onDelete: Cascade)
   replies          Review[]  @relation("reviewThread")
+  upvotedBy        ReviewUpvote[]
 
   @@index([courseId])
+}
+
+model ReviewUpvote {
+  userId    String
+  reviewId  String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  review    Review   @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+
+  @@id([userId, reviewId])
+}
+
+model Notification {
+  id        String    @id @default(cuid())
+  userId    String
+  type      String // telegram_reminder | new_lesson | new_course | system
+  title     String
+  body      String
+  deepLink  String?
+  read      Boolean   @default(false)
+  createdAt DateTime  @default(now())
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId, read])
 }
 
 // ---------------------------------------------------------------
@@ -463,7 +491,7 @@ model TrendingQuery {
 
 model AppVersion {
   id           String   @id @default(cuid())
-  version      String
+  version      String   @unique
   changelogMd  String
   releasedAt   DateTime @default(now())
 }

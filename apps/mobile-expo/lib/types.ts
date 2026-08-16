@@ -204,6 +204,38 @@ export interface ActivityItem {
   createdAt: string;
 }
 
+export interface DiscussionThread {
+  id: string;
+  userName: string;
+  userAvatar: string | null;
+  isStaff: boolean;
+  body: string;
+  containsSpoilers: boolean;
+  upvotes: number;
+  upvoted: boolean;
+  replyCount: number;
+  createdAt: string;
+  depth: number;
+  replies?: DiscussionThread[];
+}
+
+export interface NotificationItem {
+  id: string;
+  type: string;
+  title: string;
+  body: string;
+  deepLink: string | null;
+  read: boolean;
+  createdAt: string;
+}
+
+export interface AppVersion {
+  id: string;
+  version: string;
+  changelogMd: string;
+  releasedAt: string;
+}
+
 export interface LecturerDetail extends Lecturer {
   socialLinks?: Record<string, string>;
   courseCount?: number;

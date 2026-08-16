@@ -88,4 +88,9 @@ export class CatalogController {
   legal(@Query('type') type?: string) {
     return this.catalog.legalDocuments(type);
   }
+
+  @Get('app-versions')
+  appVersions(@Query('limit') limit?: string) {
+    return this.catalog.appVersions(limit ? Number(limit) : undefined);
+  }
 }

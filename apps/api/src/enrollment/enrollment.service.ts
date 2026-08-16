@@ -64,6 +64,24 @@ export class EnrollmentService {
       where: { id: enrollment.id },
       data: { progressPct, status, lastLessonId: lessonId },
     });
+
+    // In-app notification on progress milestones (Telegram reminder sent
+    // separately when the bot is configured).
+    if (completed && (progressPct === 25 || progressPct === 50 || progressPct === 100)) {
+      await this.prisma.notification.create({
+        data: {
+          userId,
+          type: 'progress',
+          title: progressPct === 100 ? 'Course completed 🎉' : `${progressPct}% there!`,
+          body:
+            progressPct === 100
+              ? `You finished "${lesson.course.title}". Great work!`
+              : `You're ${progressPct}% through "${lesson.course.title}". Keep going!`,
+          deepLink: `/courses/${lesson.course.slug}`,
+        },
+      });
+    }
+
     return { lessonId, completed, progressPct, status };
   }
 

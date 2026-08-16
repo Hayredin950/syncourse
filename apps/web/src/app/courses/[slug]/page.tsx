@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { get, post } from "@/lib/api";
-import type { CourseDetail, CourseSummary, ReviewRow } from "@/lib/types";
+import type { CourseDetail, CourseSummary, DiscussionThread, ReviewRow } from "@/lib/types";
 import { useAuth } from "@/lib/auth";
 import { Stars, StarPicker } from "@/components/StarRating";
 import { formatDuration, formatSec, compact, ratingColor, formatDate } from "@/lib/format";
@@ -25,6 +25,8 @@ export default function CoursePage() {
   const [myRating, setMyRating] = useState(0);
   const [reviewText, setReviewText] = useState("");
   const [containsSpoilers, setContainsSpoilers] = useState(false);
+  const [threads, setThreads] = useState<DiscussionThread[]>([]);
+  const [threadText, setThreadText] = useState("");
   const [toast, setToast] = useState("");
 
   useEffect(() => {
@@ -40,6 +42,9 @@ export default function CoursePage() {
         }
       })
       .catch(() => setError(true));
+    get<{ threads: DiscussionThread[] }>(`/courses/${slug}/discussion`)
+      .then((d) => setThreads(d.threads))
+      .catch(() => {});
   }, [slug]);
 
   const flash = (msg: string) => {
@@ -110,6 +115,32 @@ export default function CoursePage() {
       setReviewText("");
       setContainsSpoilers(false);
       flash("Review posted");
+    } catch (e: any) {
+      flash(e.message);
+    }
+  };
+
+  const onPostThread = async () => {
+    if (!requireAuth() || !threadText.trim()) return;
+    try {
+      const t = await post<DiscussionThread>(`/courses/${slug}/discussion`, { body: threadText });
+      setThreads((prev) => [t, ...prev]);
+      setThreadText("");
+      flash("Posted to the thread");
+    } catch (e: any) {
+      flash(e.message);
+    }
+  };
+
+  const onUpvote = async (id: string) => {
+    if (!requireAuth()) return;
+    try {
+      const r = await post<{ upvoted: boolean; upvotes: number }>(`/discussion/${id}/upvote`);
+      setThreads((prev) =>
+        prev.map((t) =>
+          t.id === id ? { ...t, upvoted: r.upvoted, upvotes: r.upvotes } : t
+        )
+      );
     } catch (e: any) {
       flash(e.message);
     }
@@ -370,6 +401,43 @@ export default function CoursePage() {
         </div>
       </div>
 
+      {/* discussion thread */}
+      <div className="mx-4 mt-5">
+        <h2 className="mb-2 text-base font-semibold text-text">Discussion · {threads.length}</h2>
+        <div className="rounded-lg border border-border bg-surface p-4">
+          {token ? (
+            <div className="flex gap-2">
+              <textarea
+                value={threadText}
+                onChange={(e) => setThreadText(e.target.value)}
+                placeholder="Join the thread — ask a question or share a tip…"
+                className="min-h-[52px] flex-1 resize-none rounded-lg border border-border bg-bg p-2.5 text-sm text-text placeholder:text-dim focus:border-accent focus:outline-none"
+                rows={2}
+              />
+              <button
+                onClick={onPostThread}
+                disabled={!threadText.trim()}
+                className="h-fit self-end rounded-full bg-accent px-4 py-1.5 text-xs font-bold text-black disabled:opacity-40"
+              >
+                Post
+              </button>
+            </div>
+          ) : (
+            <p className="text-xs text-muted">
+              <Link href="/auth" className="font-medium text-accent">Sign in</Link> to join the thread.
+            </p>
+          )}
+          <div className="mt-3 space-y-3">
+            {threads.length === 0 && (
+              <div className="py-4 text-center text-xs text-dim">No replies yet — start the thread.</div>
+            )}
+            {threads.map((t) => (
+              <DiscussionCard key={t.id} thread={t} onUpvote={onUpvote} />
+            ))}
+          </div>
+        </div>
+      </div>
+
       {/* similar */}
       {similar.length > 0 && (
         <div className="mt-5 px-4">
@@ -395,6 +463,39 @@ export default function CoursePage() {
           {toast}
         </div>
       )}
+    </div>
+  );
+}
+
+function DiscussionCard({ thread, onUpvote }: { thread: DiscussionThread; onUpvote: (id: string) => void }) {
+  const [show, setShow] = useState(!thread.containsSpoilers);
+  return (
+    <div className={`rounded-lg bg-bg p-3 ${thread.depth > 0 ? "ml-4" : ""}`}>
+      <div className="flex items-center gap-2">
+        <span className="flex h-6 w-6 items-center justify-center rounded-full bg-surface-raised text-[10px] font-bold text-accent">
+          {thread.userName.charAt(0).toUpperCase()}
+        </span>
+        <span className="text-xs font-medium text-text">{thread.userName}</span>
+        {thread.isStaff && <span className="rounded bg-accent-soft px-1 text-[9px] font-bold text-accent">STAFF</span>}
+        <span className="ml-auto text-[10px] text-dim">{formatDate(thread.createdAt)}</span>
+      </div>
+      {thread.containsSpoilers && !show ? (
+        <button onClick={() => setShow(true)} className="mt-2 w-full rounded border border-border px-3 py-2 text-xs text-muted hover:text-text">
+          This may contain spoilers — Show
+        </button>
+      ) : (
+        <p className="mt-2 text-[13px] leading-relaxed text-muted">{thread.body}</p>
+      )}
+      <button
+        onClick={() => onUpvote(thread.id)}
+        className={`mt-2 flex items-center gap-1 text-[11px] font-medium ${thread.upvoted ? "text-accent" : "text-dim hover:text-text"}`}
+      >
+        <span>▲</span>
+        <span>{thread.upvotes}</span>
+      </button>
+      {thread.replies?.map((rep) => (
+        <DiscussionCard key={rep.id} thread={rep} onUpvote={onUpvote} />
+      ))}
     </div>
   );
 }

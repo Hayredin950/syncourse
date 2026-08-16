@@ -70,8 +70,10 @@ export default function MeScreen() {
       <MenuRow icon="list" label="My lists" href="/lists" />
       <MenuRow icon="path" label="Learning paths" href="/paths" />
       <MenuRow icon="download" label="Downloads" href="/downloads" />
+      <MenuRow icon="bell" label="Notifications" href="/notifications" />
       <MenuRow icon="ribbon" label="Subscription" href="/premium" />
       <MenuRow icon="people" label="Circles" href="/circles" />
+      <MenuRow icon="sparkles" label="What's new" href="/changelog" />
       <MenuRow icon="settings" label="Settings" href="/settings" />
 
       <Text

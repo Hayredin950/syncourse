@@ -16,6 +16,7 @@ import * as api from "../../../lib/api";
 import { colors, radius } from "../../../lib/tokens";
 import { formatDurationSec, type CourseDetail } from "../../../lib/types";
 import { Stars, StarPicker, StarRow } from "../../../components/StarRating";
+import { Discussion } from "../../../components/Discussion";
 
 export default function CourseDetailScreen() {
   const { slug } = useLocalSearchParams<{ slug: string }>();
@@ -277,6 +278,9 @@ export default function CourseDetailScreen() {
             <Text style={styles.muted}>{r.replyCount} replies</Text>
           </View>
         ))}
+
+        <Text style={styles.heading}>Discussion</Text>
+        <Discussion slug={slug!} />
       </View>
     </ScrollView>
   );
