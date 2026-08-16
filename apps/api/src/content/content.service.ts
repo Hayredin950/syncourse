@@ -1,0 +1,141 @@
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { PrismaService } from '../prisma/prisma.service';
+import { signMediaUrl } from '../common/signed-url.util';
+
+@Injectable()
+export class ContentService {
+  constructor(private readonly prisma: PrismaService) {}
+
+  /** Lesson detail — mirrors the file metadata card from the reference. */
+  async lessonDetail(lessonId: string, userId?: string) {
+    const lesson = await this.prisma.lesson.findUnique({
+      where: { id: lessonId },
+      include: {
+        section: true,
+        course: true,
+        notes: true,
+        files: true,
+        attachments: true,
+      },
+    });
+    if (!lesson) throw new NotFoundException('Lesson not found');
+
+    let watched = false;
+    let courseProgress = 0;
+    if (userId) {
+      const enrollment = await this.prisma.enrollment.findFirst({
+        where: { userId, courseId: lesson.courseId },
+        include: { lessonProgress: { where: { lessonId } } },
+      });
+      if (enrollment) {
+        courseProgress = enrollment.progressPct;
+        watched = enrollment.lessonProgress.length > 0 && enrollment.lessonProgress[0].completed;
+      }
+    }
+
+    return {
+      id: lesson.id,
+      title: lesson.title,
+      orderIndex: lesson.orderIndex,
+      type: lesson.type,
+      durationSec: lesson.durationSec,
+      isPreview: lesson.isPreview,
+      sectionTitle: lesson.section?.title ?? null,
+      course: { id: lesson.course.id, title: lesson.course.title, slug: lesson.course.slug },
+      notes: lesson.notes.map((n) => ({
+        id: n.id,
+        title: n.title,
+        richText: n.richText,
+        imageUrls: JSON.parse(n.imageUrls || '[]'),
+        pdfUrl: n.pdfUrl,
+        isCheatsheet: n.isCheatsheet,
+      })),
+      files: lesson.files.map((f) => ({
+        id: f.id,
+        label: f.label,
+        format: f.format,
+        sizeMb: f.sizeMb,
+        durationSec: f.durationSec,
+        codec: f.codec,
+        hasSubtitles: f.hasSubtitles,
+        audio: f.audio,
+        isBest: f.isBest,
+      })),
+      attachments: lesson.attachments.map((a) => ({
+        id: a.id,
+        fileUrl: a.fileUrl,
+        fileType: a.fileType,
+        sizeMb: a.sizeMb,
+      })),
+      watched,
+      courseProgress,
+    };
+  }
+
+  /**
+   * Signed video URL issuance.
+   * Client → /lessons/:id/video-url → entitlement check (preview or
+   * enrollment or premium) → short-lived signed URL → stream from storage.
+   */
+  async getVideoUrl(lessonId: string, userId?: string) {
+    const lesson = await this.prisma.lesson.findUnique({
+      where: { id: lessonId },
+      include: { course: true },
+    });
+    if (!lesson) throw new NotFoundException('Lesson not found');
+
+    if (!lesson.isPreview) {
+      if (!userId) throw new ForbiddenException('Sign in to watch this lesson');
+      const enrollment = await this.prisma.enrollment.findFirst({
+        where: { userId, courseId: lesson.courseId },
+      });
+      if (!enrollment) {
+        throw new ForbiddenException('Enroll in this course to watch the lesson');
+      }
+      if (lesson.course.isPremium) {
+        const user = await this.prisma.user.findUnique({ where: { id: userId } });
+        const premiumActive =
+          user?.planType === 'premium' && (!user.planExpiresAt || user.planExpiresAt > new Date());
+        if (!premiumActive) throw new ForbiddenException('This course requires Premium');
+      }
+    }
+
+    if (!lesson.videoUrl) {
+      throw new NotFoundException('Video not available for this lesson yet');
+    }
+    return signMediaUrl(lesson.videoUrl, process.env.JWT_SECRET || 'dev-only-secret-change-me');
+  }
+
+  /** Record a download event + bump the course's download counter (web analytics widget). */
+  async recordDownload(lessonId: string, userId: string | undefined, quality?: string, method = 'app') {
+    const lesson = await this.prisma.lesson.findUnique({ where: { id: lessonId }, include: { course: true } });
+    if (!lesson) throw new NotFoundException('Lesson not found');
+    const event = await this.prisma.downloadEvent.create({
+      data: {
+        lessonId,
+        courseId: lesson.courseId,
+        userId: userId ?? null,
+        quality: quality ?? null,
+        method,
+      },
+    });
+    await this.prisma.course.update({
+      where: { id: lesson.courseId },
+      data: { downloadCount: { increment: 1 } },
+    });
+    return { id: event.id, recorded: true };
+  }
+
+  /** Downloads analytics for a course (TOTAL / LAST 30 DAYS / LAST 7 DAYS / TODAY). */
+  async courseDownloadStats(courseId: string) {
+    const now = new Date();
+    const day = 24 * 60 * 60 * 1000;
+    const [total, last30, last7, today] = await Promise.all([
+      this.prisma.downloadEvent.count({ where: { courseId } }),
+      this.prisma.downloadEvent.count({ where: { courseId, createdAt: { gte: new Date(now.getTime() - 30 * day) } } }),
+      this.prisma.downloadEvent.count({ where: { courseId, createdAt: { gte: new Date(now.getTime() - 7 * day) } } }),
+      this.prisma.downloadEvent.count({ where: { courseId, createdAt: { gte: new Date(now.getTime() - day) } } }),
+    ]);
+    return { total, last30, last7, today };
+  }
+}

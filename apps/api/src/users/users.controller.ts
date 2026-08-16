@@ -1,0 +1,44 @@
+import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
+import { UsersService } from './users.service';
+import { CurrentUser } from '../common/current-user.decorator';
+import { AuthUser } from '../common/jwt-auth.guard';
+import { IsOptional, IsString } from 'class-validator';
+
+class UpdateProfileDto {
+  @IsOptional()
+  @IsString()
+  name?: string;
+
+  @IsOptional()
+  @IsString()
+  gender?: string;
+
+  @IsOptional()
+  @IsString()
+  avatarUrl?: string;
+}
+
+@Controller('users')
+export class UsersController {
+  constructor(private readonly users: UsersService) {}
+
+  @Get('me')
+  me(@CurrentUser() user: AuthUser) {
+    return this.users.profile(user.id);
+  }
+
+  @Patch('me')
+  update(@CurrentUser() user: AuthUser, @Body() dto: UpdateProfileDto) {
+    return this.users.updateProfile(user.id, dto);
+  }
+
+  @Post('sessions/:id/terminate')
+  terminate(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    return this.users.terminateSession(user.id, id);
+  }
+
+  @Post('sessions/terminate-all')
+  terminateAll(@CurrentUser() user: AuthUser) {
+    return this.users.terminateAllSessions(user.id);
+  }
+}
