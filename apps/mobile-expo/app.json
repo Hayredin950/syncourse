@@ -1,0 +1,32 @@
+{
+  "expo": {
+    "name": "SynCourse",
+    "slug": "syncourse",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "scheme": "syncourse",
+    "userInterfaceStyle": "dark",
+    "backgroundColor": "#0E0E10",
+    "newArchEnabled": true,
+    "plugins": ["expo-router"],
+    "splash": {
+      "backgroundColor": "#0E0E10"
+    },
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "app.syncourse.mobile"
+    },
+    "android": {
+      "package": "app.syncourse.mobile",
+      "adaptiveIcon": {
+        "backgroundColor": "#0E0E10"
+      },
+      "predictiveBackGestureEnabled": false
+    },
+    "web": {
+      "favicon": "./assets/favicon.png",
+      "bundler": "metro"
+    }
+  }
+}
