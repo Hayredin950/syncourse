@@ -7,12 +7,15 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
+  Pressable,
+  Switch,
 } from "react-native";
 import * as api from "../../../lib/api";
 import { colors, radius } from "../../../lib/tokens";
 import { formatDurationSec, type CourseDetail } from "../../../lib/types";
-import { Stars } from "../../../components/StarRating";
+import { Stars, StarPicker, StarRow } from "../../../components/StarRating";
 
 export default function CourseDetailScreen() {
   const { slug } = useLocalSearchParams<{ slug: string }>();
@@ -30,6 +33,17 @@ export default function CourseDetailScreen() {
   });
   const saveMut = useMutation({ mutationFn: () => api.toggleSave(slug!) });
   const likeMut = useMutation({ mutationFn: () => api.toggleLike(slug!) });
+  const rateMut = useMutation({
+    mutationFn: (stars: number) => api.rateCourse(slug!, stars),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["course", slug] }),
+  });
+  const reviewMut = useMutation({
+    mutationFn: (body: { text: string; spoilers: boolean }) => api.postReview(slug!, body.text, body.spoilers),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["course", slug] }),
+  });
+  const [myRating, setMyRating] = useState(0);
+  const [reviewText, setReviewText] = useState("");
+  const [spoilers, setSpoilers] = useState(false);
 
   if (isLoading || !data) {
     return (
@@ -130,19 +144,40 @@ export default function CourseDetailScreen() {
         {c.lecturer && (
           <>
             <Text style={styles.heading}>Lecturer</Text>
-            <View style={styles.lecturerRow}>
-              <View style={styles.avatar}>
-                <Text style={styles.avatarText}>{c.lecturer.name.charAt(0)}</Text>
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.lecturerName}>{c.lecturer.name}</Text>
-                {(c.lecturer.credentials || c.lecturer.bio) && (
-                  <Text style={styles.muted} numberOfLines={2}>
-                    {[c.lecturer.credentials, c.lecturer.bio].filter(Boolean).join(" · ")}
-                  </Text>
-                )}
-              </View>
-            </View>
+            <Link href={`/lecturers/${c.lecturer.slug}`} asChild>
+              <Pressable style={styles.lecturerRow}>
+                <View style={styles.avatar}>
+                  <Text style={styles.avatarText}>{c.lecturer.name.charAt(0)}</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.lecturerName}>{c.lecturer.name}</Text>
+                  {(c.lecturer.credentials || c.lecturer.bio) && (
+                    <Text style={styles.muted} numberOfLines={2}>
+                      {[c.lecturer.credentials, c.lecturer.bio].filter(Boolean).join(" · ")}
+                    </Text>
+                  )}
+                </View>
+                <Text style={{ color: colors.dim }}>›</Text>
+              </Pressable>
+            </Link>
+          </>
+        )}
+
+        {c.organization && (
+          <>
+            <Text style={styles.heading}>Organization</Text>
+            <Link href={`/organizations/${c.organization.slug}`} asChild>
+              <Pressable style={styles.lecturerRow}>
+                <View style={styles.avatar}>
+                  <Text style={styles.avatarText}>{c.organization.name.charAt(0)}</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.lecturerName}>{c.organization.name}</Text>
+                  <Text style={styles.muted}>See all courses</Text>
+                </View>
+                <Text style={{ color: colors.dim }}>›</Text>
+              </Pressable>
+            </Link>
           </>
         )}
 
@@ -171,12 +206,55 @@ export default function CourseDetailScreen() {
           </View>
         ))}
 
-        <Text style={styles.heading}>Reviews</Text>
-        <View style={styles.reviewHeader}>
-          <Text style={styles.reviewAvg}>{c.ratings.avg.toFixed(1)}</Text>
-          <View>
-            <Stars value={c.ratings.avg} size={16} />
-            <Text style={styles.muted}>{c.ratings.count} reviews</Text>
+        <Text style={styles.heading}>How it&apos;s rated</Text>
+        <View style={styles.ratingCard}>
+          <View style={styles.reviewHeader}>
+            <Text style={styles.reviewAvg}>{c.ratings.avg.toFixed(1)}</Text>
+            <View style={{ flex: 1 }}>
+              <StarRow value={c.ratings.avg} size={14} />
+              <Text style={styles.muted}>{c.ratings.count} community ratings</Text>
+            </View>
+          </View>
+          {[5, 4, 3, 2, 1].map((n) => {
+            const count = c.ratings.distribution[n] ?? 0;
+            const max = Math.max(1, ...Object.values(c.ratings.distribution));
+            return (
+              <View key={n} style={styles.distRow}>
+                <Text style={styles.distLabel}>{n}★</Text>
+                <View style={styles.distTrack}>
+                  <View style={[styles.distFill, { width: `${(count / max) * 100}%` }]} />
+                </View>
+              </View>
+            );
+          })}
+          <View style={styles.rateRow}>
+            <Text style={styles.muted}>Rate this course</Text>
+            <StarPicker value={myRating} onChange={(s) => rateMut.mutate(s)} />
+          </View>
+        </View>
+
+        <Text style={styles.heading}>Reviews · {c.reviews.length}</Text>
+        <View style={styles.reviewForm}>
+          <TextInput
+            value={reviewText}
+            onChangeText={setReviewText}
+            placeholder="Share a thought…"
+            placeholderTextColor={colors.dim}
+            multiline
+            style={styles.reviewInput}
+          />
+          <View style={styles.reviewFormRow}>
+            <View style={styles.spoilerRow}>
+              <Text style={styles.muted}>Contains spoilers</Text>
+              <Switch value={spoilers} onValueChange={setSpoilers} trackColor={{ true: colors.accent }} />
+            </View>
+            <Pressable
+              style={[styles.postBtn, !reviewText.trim() && { opacity: 0.4 }]}
+              disabled={!reviewText.trim() || reviewMut.isPending}
+              onPress={() => reviewMut.mutate({ text: reviewText, spoilers })}
+            >
+              <Text style={styles.postLabel}>{reviewMut.isPending ? "…" : "Post review"}</Text>
+            </Pressable>
           </View>
         </View>
         {c.reviews.length === 0 && (
@@ -280,8 +358,53 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.border,
   },
   lessonTitle: { color: colors.text, fontSize: 13, flex: 1 },
-  reviewHeader: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 14 },
+  ratingCard: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    padding: 14,
+    marginBottom: 8,
+  },
+  reviewHeader: { flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 10 },
   reviewAvg: { color: colors.text, fontSize: 32, fontWeight: "800" },
+  distRow: { flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 4 },
+  distLabel: { color: colors.dim, fontSize: 10, width: 18 },
+  distTrack: { flex: 1, height: 6, borderRadius: 3, backgroundColor: colors.bg, overflow: "hidden" },
+  distFill: { height: 6, borderRadius: 3, backgroundColor: colors.accent },
+  rateRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    borderTopWidth: StyleSheet.hairlineWidth,
+    borderTopColor: colors.border,
+    paddingTop: 10,
+    marginTop: 6,
+  },
+  reviewForm: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    padding: 12,
+    marginBottom: 14,
+  },
+  reviewInput: {
+    color: colors.text,
+    backgroundColor: colors.bg,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 10,
+    fontSize: 13,
+    minHeight: 64,
+    textAlignVertical: "top",
+  },
+  reviewFormRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginTop: 10 },
+  spoilerRow: { flexDirection: "row", alignItems: "center", gap: 6 },
+  postBtn: {
+    backgroundColor: colors.accent,
+    borderRadius: radius.pill,
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+  },
+  postLabel: { color: "#000", fontWeight: "800", fontSize: 12 },
   review: { marginBottom: 14 },
   reviewTop: { flexDirection: "row", alignItems: "center", gap: 8 },
   reviewer: { color: colors.text, fontSize: 13, fontWeight: "600", flex: 1 },

@@ -204,6 +204,51 @@ export interface ActivityItem {
   createdAt: string;
 }
 
+export interface LecturerDetail extends Lecturer {
+  socialLinks?: Record<string, string>;
+  courseCount?: number;
+  courses: CourseSummary[];
+}
+
+export interface OrganizationDetail extends Organization {
+  description: string | null;
+  subscribers: number;
+  courseCount?: number;
+  courses: CourseSummary[];
+}
+
+export interface LearningPath {
+  id: string;
+  title: string;
+  description: string | null;
+  coverUrl: string | null;
+  courseCount: number;
+  ratingAvg: number;
+  totalVotes: number;
+  courses: { id: string; title: string; slug: string; order: number }[];
+}
+
+export interface Category {
+  id: string;
+  name: string;
+  slug: string;
+  icon: string | null;
+  coverImage: string | null;
+  courseCount: number;
+}
+
+export interface Session {
+  id: string;
+  device: string | null;
+  ip: string | null;
+  active: boolean;
+  createdAt: string;
+}
+
+export interface UserProfileFull extends UserProfile {
+  sessions: Session[];
+}
+
 export function formatDuration(minutes: number): string {
   if (!minutes || minutes <= 0) return "";
   const h = Math.floor(minutes / 60);

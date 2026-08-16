@@ -68,8 +68,11 @@ export default function MeScreen() {
       </View>
 
       <MenuRow icon="list" label="My lists" href="/lists" />
+      <MenuRow icon="path" label="Learning paths" href="/paths" />
+      <MenuRow icon="download" label="Downloads" href="/downloads" />
       <MenuRow icon="ribbon" label="Subscription" href="/premium" />
       <MenuRow icon="people" label="Circles" href="/circles" />
+      <MenuRow icon="settings" label="Settings" href="/settings" />
 
       <Text
         style={styles.signOut}

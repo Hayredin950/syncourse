@@ -1,13 +1,18 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import type {
   ActivityItem,
+  Category,
   CourseCollection,
   CourseDetail,
   CourseSummary,
   HomeFeed,
+  LearningPath,
+  LecturerDetail,
   LessonDetail,
   MyLearning,
+  OrganizationDetail,
   Plan,
+  Review,
   UserProfile,
 } from "./types";
 
@@ -106,6 +111,7 @@ export const browse = (params: {
   sort?: string;
   category?: string;
   level?: string;
+  minRating?: number;
   q?: string;
   limit?: number;
 }) => {
@@ -113,6 +119,7 @@ export const browse = (params: {
   if (params.sort) qs.set("sort", params.sort);
   if (params.category) qs.set("category", params.category);
   if (params.level) qs.set("level", params.level);
+  if (params.minRating) qs.set("minRating", String(params.minRating));
   if (params.q) qs.set("q", params.q);
   qs.set("limit", String(params.limit ?? 60));
   return get<{ total: number; results: CourseSummary[] }>(
@@ -167,3 +174,28 @@ export const circlesActivity = () =>
 
 // --- users ---
 export const me = () => get<UserProfile>("/users/me");
+export const updateProfile = (data: { name?: string; gender?: string; avatarUrl?: string }) =>
+  request<UserProfile>("/users/me", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(data),
+  });
+export const linkTelegram = (telegramUsername: string) =>
+  post("/auth/link-telegram", { telegramUsername });
+export const terminateSession = (sessionId: string) =>
+  post(`/users/sessions/${sessionId}/terminate`);
+
+export const recordDownload = (lessonId: string, quality?: string) =>
+  post<{ id: string; recorded: boolean }>(`/lessons/${lessonId}/download`, quality ? { quality } : undefined);
+
+// --- catalog extras ---
+export const categories = () => get<Category[]>("/categories");
+export const lecturerDetail = (slug: string) => get<LecturerDetail>(`/lecturers/${slug}`);
+export const organizationDetail = (slug: string) => get<OrganizationDetail>(`/organizations/${slug}`);
+export const learningPaths = () => get<LearningPath[]>("/learning-paths");
+
+// --- ratings & reviews ---
+export const rateCourse = (slug: string, stars: number) =>
+  post<{ ratingAvg: number }>(`/courses/${slug}/rate`, { stars });
+export const postReview = (slug: string, body: string, containsSpoilers: boolean) =>
+  post<Review>(`/courses/${slug}/reviews`, { body, containsSpoilers });
