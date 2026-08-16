@@ -1,0 +1,45 @@
+# Syncourse — Render Blueprint (infrastructure as code)
+# Deploys the NestJS API as a free web service. Secrets are injected via
+# Render's dashboard/API (marked sync: false below) — never committed.
+
+services:
+  - type: web
+    name: syncourse-api
+    runtime: node
+    plan: free
+    region: oregon
+    buildCommand: npm ci && npm run build -w packages/design-tokens && npm run build -w packages/shared-types && npm run db:generate -w apps/api && npm run build -w apps/api
+    startCommand: node apps/api/dist/main.js
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: API_PORT
+        value: "10000"
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: JWT_EXPIRES_IN
+        value: 30d
+      - key: PUBLIC_APP_URL
+        sync: false
+      - key: STRIPE_SECRET_KEY
+        sync: false
+      - key: STRIPE_PUBLISHABLE_KEY
+        sync: false
+      - key: STRIPE_WEBHOOK_SECRET
+        sync: false
+      - key: TELEBIRR_ACCOUNT_NAME
+        sync: false
+      - key: TELEBIRR_ACCOUNT_NUMBER
+        sync: false
+      - key: TELEGRAM_BOT_TOKEN
+        sync: false
+      - key: BREVO_API_KEY
+        sync: false
+      - key: BREVO_SENDER_EMAIL
+        sync: false
+      - key: BREVO_SENDER_NAME
+        sync: false

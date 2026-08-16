@@ -15,6 +15,7 @@ import { PaymentsModule } from './payments/payments.module';
 import { SearchModule } from './search/search.module';
 import { DiscussionsModule } from './discussions/discussions.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { EmailModule } from './email/email.module';
 
 @Module({
   imports: [
@@ -32,6 +33,7 @@ import { NotificationsModule } from './notifications/notifications.module';
     SearchModule,
     DiscussionsModule,
     NotificationsModule,
+    EmailModule,
   ],
   providers: [
     {

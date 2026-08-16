@@ -1,14 +1,13 @@
 // Syncourse — Prisma schema
-// SQLite by default (runs locally with zero setup). For production, switch
-// `provider` to "postgresql" and point DATABASE_URL at your Supabase/Neon
-// Postgres — the models below are portable as-is.
+// Postgres (Neon) — production database. Local dev can point DATABASE_URL
+// at a local Postgres or the same Neon project.
 
 generator client {
   provider = "prisma-client-js"
 }
 
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 

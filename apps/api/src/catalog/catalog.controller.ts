@@ -7,6 +7,11 @@ import { Public } from '../common/public.decorator';
 export class CatalogController {
   constructor(private readonly catalog: CatalogService) {}
 
+  @Get('health')
+  health() {
+    return { status: 'ok', service: 'syncourse-api', time: new Date().toISOString() };
+  }
+
   @Get('home')
   home() {
     return this.catalog.home();

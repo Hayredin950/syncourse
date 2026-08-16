@@ -2,6 +2,7 @@ import { BadRequestException, ConflictException, Injectable, UnauthorizedExcepti
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../prisma/prisma.service';
+import { EmailService } from '../email/email.service';
 import { RegisterDto } from './dto';
 
 @Injectable()
@@ -9,6 +10,7 @@ export class AuthService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
+    private readonly email: EmailService,
   ) {}
 
   async register(dto: RegisterDto) {
@@ -31,6 +33,8 @@ export class AuthService {
     await this.prisma.session.create({
       data: { userId: user.id, device: 'registration', ip: 'n/a', active: true },
     });
+    // Best-effort welcome email — skipped until BREVO_API_KEY is configured
+    void this.email.sendWelcome(user.email, user.name);
     return this.buildAuthResponse(user);
   }
 

@@ -17,6 +17,16 @@ const SAMPLE_VIDEOS = [
 const img = (seed: number) => `https://picsum.photos/seed/syncourse${seed}/600/900`;
 
 async function main() {
+  // Safety guard: never wipe a production database by accident.
+  // Run the full (wiping) seed with NODE_ENV !== 'production', or explicitly
+  // opt in with FORCE_SEED=1. Use prisma/seed-tail.ts for safe additive
+  // seeding against an already-populated database.
+  if (process.env.NODE_ENV === 'production' && process.env.FORCE_SEED !== '1') {
+    console.error('Refusing to run the wiping seed against NODE_ENV=production.');
+    console.error('Use FORCE_SEED=1 to override, or run prisma/seed-tail.ts instead.');
+    process.exit(1);
+  }
+
   console.log('Seeding Syncourse demo data…');
 
   // wipe (dev convenience)

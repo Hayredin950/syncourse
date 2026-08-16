@@ -10,6 +10,11 @@
     "backgroundColor": "#0E0E10",
     "newArchEnabled": true,
     "plugins": ["expo-router"],
+    "extra": {
+      "eas": {
+        "projectId": "d47a1209-7356-4518-bb9c-1fa06648345e"
+      }
+    },
     "splash": {
       "backgroundColor": "#0E0E10"
     },

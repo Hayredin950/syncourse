@@ -1,5 +1,6 @@
 import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { EmailService } from '../email/email.service';
 
 /**
  * Fixed-duration premium plans (mirrors the reference's ETB/USD pricing):
@@ -13,7 +14,10 @@ export const PLANS = [
 
 @Injectable()
 export class PaymentsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly email: EmailService,
+  ) {}
 
   plans() {
     return PLANS;
@@ -161,5 +165,14 @@ export class PaymentsService {
       where: { id: userId },
       data: { planType: 'premium', planExpiresAt: stacked },
     });
+    // Best-effort receipt — skipped until BREVO_API_KEY is configured
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (user) {
+      void this.email.sendReceipt(user.email, user.name, {
+        plan: plan?.name ?? sub.planName,
+        amount: `${(plan?.priceEtb ?? 0).toLocaleString()} ETB`,
+        method: 'Syncourse premium',
+      });
+    }
   }
 }
