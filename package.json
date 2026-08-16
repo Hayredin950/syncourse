@@ -1,0 +1,22 @@
+{
+  "name": "syncourse",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Syncourse — course delivery & learning platform (mobile + mobile-first web, shared NestJS backend)",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:api": "npm run start:dev -w apps/api",
+    "dev:web": "npm run dev -w apps/web",
+    "build": "npm run build -w packages/design-tokens && npm run build -w packages/shared-types && npm run build -w apps/api && npm run build -w apps/web",
+    "typecheck": "npm run typecheck -w apps/api && npm run typecheck -w apps/web",
+    "db:generate": "npm run db:generate -w apps/api",
+    "db:migrate": "npm run db:migrate -w apps/api",
+    "db:seed": "npm run db:seed -w apps/api"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
