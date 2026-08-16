@@ -369,6 +369,14 @@ export class CatalogService {
     }));
   }
 
+  async legalDocuments(type?: string) {
+    const where = type ? { type } : undefined;
+    return this.prisma.legalDocument.findMany({
+      where,
+      select: { type: true, version: true, bodyMd: true, effectiveAt: true },
+    });
+  }
+
   // ---------------------------------------------------------------
   // Helpers
   // ---------------------------------------------------------------

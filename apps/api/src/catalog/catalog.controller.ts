@@ -83,4 +83,9 @@ export class CatalogController {
   learningPaths() {
     return this.catalog.learningPaths();
   }
+
+  @Get('legal')
+  legal(@Query('type') type?: string) {
+    return this.catalog.legalDocuments(type);
+  }
 }

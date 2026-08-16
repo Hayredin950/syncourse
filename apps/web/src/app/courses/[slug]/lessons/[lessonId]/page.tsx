@@ -1,0 +1,271 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { useParams, useRouter } from "next/navigation";
+import { get, post } from "@/lib/api";
+import type { LessonDetail } from "@/lib/types";
+import { useAuth } from "@/lib/auth";
+import { formatSec } from "@/lib/format";
+
+export default function LessonPage() {
+  const { slug, lessonId } = useParams<{ slug: string; lessonId: string }>();
+  const router = useRouter();
+  const { token } = useAuth();
+
+  const [lesson, setLesson] = useState<LessonDetail | null>(null);
+  const [videoUrl, setVideoUrl] = useState<string | null>(null);
+  const [tab, setTab] = useState<"watch" | "notes">("watch");
+  const [watched, setWatched] = useState(false);
+  const [toast, setToast] = useState("");
+  const [videoError, setVideoError] = useState(false);
+
+  useEffect(() => {
+    get<LessonDetail>(`/lessons/${lessonId}`)
+      .then((d) => {
+        setLesson(d);
+        setWatched(d.watched);
+      })
+      .catch(() => setToast("Lesson not found"));
+  }, [lessonId]);
+
+  const loadVideo = async () => {
+    if (!token) {
+      router.push("/auth?next=" + encodeURIComponent(`/courses/${slug}/lessons/${lessonId}`));
+      return;
+    }
+    try {
+      const r = await get<{ url: string }>(`/lessons/${lessonId}/video-url`);
+      setVideoUrl(r.url);
+      setVideoError(false);
+    } catch (e: any) {
+      setVideoError(true);
+      setToast(e.message || "Enroll to watch this lesson");
+    }
+  };
+
+  const markComplete = async () => {
+    if (!token) return;
+    try {
+      const r = await post<{ progressPct: number }>(`/lessons/${lessonId}/progress`, { completed: !watched });
+      setWatched(!watched);
+      setLesson((l) => (l ? { ...l, courseProgress: r.progressPct } : l));
+      setToast(!watched ? `Lesson completed — course ${r.progressPct}%` : "Marked incomplete");
+    } catch (e: any) {
+      setToast(e.message);
+    }
+  };
+
+  const recordDownload = async (quality: string) => {
+    if (!token) return;
+    try {
+      await post(`/lessons/${lessonId}/download`, { quality });
+    } catch {
+      /* non-fatal */
+    }
+  };
+
+  const copyLink = async (label: string) => {
+    if (navigator.clipboard) {
+      await navigator.clipboard.writeText(window.location.href);
+      setToast(`Link copied (${label}) — paste in IDM / 1DM`);
+    }
+  };
+
+  if (!lesson) {
+    return <div className="p-4 text-center text-sm text-muted">Loading lesson…</div>;
+  }
+
+  return (
+    <div className="pb-6">
+      <div className="sticky top-[53px] z-10 border-b border-border bg-bg/95 px-4 py-2">
+        <div className="flex items-center gap-2 text-xs">
+          <Link href={`/courses/${slug}`} className="font-medium text-accent">
+            ← {lesson.course.title}
+          </Link>
+        </div>
+        <div className="mt-0.5 line-clamp-1 text-sm font-semibold text-text">
+          {lesson.sectionTitle ? `${lesson.sectionTitle} — ` : ""}
+          {lesson.title}
+        </div>
+        <div className="mt-0.5 text-[11px] text-dim">
+          {formatSec(lesson.durationSec)} · {lesson.isPreview ? "Preview" : "Full lesson"} · course {lesson.courseProgress}%
+        </div>
+      </div>
+
+      <div className="flex border-b border-border">
+        {(["watch", "notes"] as const).map((t) => (
+          <button
+            key={t}
+            onClick={() => setTab(t)}
+            className={`flex-1 py-2 text-sm font-medium ${tab === t ? "border-b-2 border-accent text-text" : "text-dim"}`}
+          >
+            {t === "watch" ? "Watch" : `Notes (${lesson.notes.length})`}
+          </button>
+        ))}
+      </div>
+
+      {tab === "watch" ? (
+        <div className="p-4">
+          {videoUrl ? (
+            <video controls autoPlay className="w-full rounded-lg bg-black" src={videoUrl} onError={() => setVideoError(true)} />
+          ) : (
+            <div className="flex aspect-video flex-col items-center justify-center gap-3 rounded-lg border border-border bg-surface p-6 text-center">
+              {videoError ? (
+                <>
+                  <div className="text-2xl">🔒</div>
+                  <div className="text-sm font-medium text-text">This lesson is locked</div>
+                  <div className="text-xs text-muted">Enroll in the course or upgrade to Premium to watch.</div>
+                </>
+              ) : (
+                <>
+                  <div className="text-2xl">▶</div>
+                  <div className="text-sm text-muted">Tap play to stream this lesson</div>
+                </>
+              )}
+              <button
+                onClick={loadVideo}
+                className="rounded-full bg-accent px-5 py-2 text-sm font-bold text-black hover:bg-accent-hover"
+              >
+                {videoError ? "Go to course" : "Play lesson"}
+              </button>
+              {videoError && (
+                <Link href={`/courses/${slug}`} className="text-xs font-medium text-accent">
+                  Go to course →
+                </Link>
+              )}
+            </div>
+          )}
+
+          <div className="mt-3 flex items-center gap-2">
+            <button
+              onClick={markComplete}
+              className={`flex-1 rounded-full border py-2 text-sm font-medium ${
+                watched ? "border-success text-success" : "border-border text-muted hover:text-text"
+              }`}
+            >
+              {watched ? "✓ Completed" : "Mark as watched"}
+            </button>
+          </div>
+
+          {/* files / download variants */}
+          {lesson.files.length > 0 && (
+            <div className="mt-4">
+              <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-dim">Available downloads</div>
+              <div className="space-y-2">
+                {lesson.files.map((f) => (
+                  <div key={f.id} className="rounded-lg border border-border bg-surface p-3">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-semibold text-text">{f.label}</span>
+                      {f.isBest && <span className="rounded bg-accent px-1 text-[9px] font-bold text-black">BEST</span>}
+                      {f.hasSubtitles && <span className="rounded bg-surface-raised px-1 text-[9px] text-muted">SUB</span>}
+                      {f.audio && <span className="rounded bg-surface-raised px-1 text-[9px] text-muted">{f.audio}</span>}
+                      <span className="ml-auto text-[11px] text-dim">
+                        {f.sizeMb.toFixed(1)} MB · {f.codec ?? f.format}
+                      </span>
+                    </div>
+                    <div className="mt-2 flex gap-2 text-[11px]">
+                      <button
+                        onClick={() => recordDownload(f.label)}
+                        className="rounded-full bg-accent px-3 py-1 font-bold text-black"
+                      >
+                        ⚡ Fast download
+                      </button>
+                      <button onClick={() => copyLink(f.label)} className="rounded-full border border-border px-3 py-1 text-muted hover:text-text">
+                        Copy link · IDM/1DM
+                      </button>
+                      <a
+                        href={`https://t.me/share/url?url=${encodeURIComponent(window.location.href)}`}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="rounded-full border border-border px-3 py-1 text-muted hover:text-text"
+                      >
+                        Free on Telegram
+                      </a>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      ) : (
+        <div className="space-y-4 p-4">
+          {lesson.notes.length === 0 && <div className="text-center text-sm text-dim">No notes for this lesson yet.</div>}
+          {lesson.notes.map((n) => (
+            <div key={n.id} className="overflow-hidden rounded-lg border border-border bg-surface">
+              <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
+                <div className="text-sm font-semibold text-text">{n.title}</div>
+                {n.isCheatsheet && (
+                  <span className="rounded bg-accent-soft px-1.5 py-0.5 text-[9px] font-bold text-accent">CHEAT-SHEET</span>
+                )}
+              </div>
+              <div className="px-4 py-3">
+                <div
+                  className="prose-sm prose-invert max-w-none text-sm leading-relaxed text-muted [&_h3]:mt-3 [&_h3]:text-[13px] [&_h3]:font-semibold [&_h3]:text-text [&_li]:my-1 [&_strong]:text-text"
+                  dangerouslySetInnerHTML={{ __html: renderMarkdown(n.richText) }}
+                />
+                {n.imageUrls.length > 0 && (
+                  <div className="mt-3 space-y-2">
+                    {n.imageUrls.map((u, i) => (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img key={i} src={u} alt={`Note image ${i + 1}`} className="w-full rounded-md" loading="lazy" />
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {toast && (
+        <div className="fixed inset-x-0 bottom-16 z-40 mx-auto w-fit max-w-[90%] rounded-full bg-surface-raised px-4 py-2 text-xs text-text shadow-lg">
+          {toast}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Tiny markdown renderer for the seeded notes (headings, bold, lists). */
+function renderMarkdown(md: string): string {
+  const escape = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  const lines = escape(md).split("\n");
+  const out: string[] = [];
+  let inList = false;
+  const closeList = () => {
+    if (inList) {
+      out.push("</ul>");
+      inList = false;
+    }
+  };
+  for (const raw of lines) {
+    const line = raw.trim();
+    if (line.startsWith("### ")) {
+      closeList();
+      out.push(`<h3>${line.slice(4)}</h3>`);
+    } else if (line.startsWith("## ")) {
+      closeList();
+      out.push(`<h3>${line.slice(3)}</h3>`);
+    } else if (line.startsWith("- ")) {
+      if (!inList) {
+        out.push("<ul>");
+        inList = true;
+      }
+      const item = line.slice(2);
+      const [term, ...rest] = item.split(":");
+      const body = rest.join(":");
+      out.push(
+        `<li><strong>${term.trim()}</strong>${body ? `: ${body.trim()}` : ""}</li>`,
+      );
+    } else if (line === "") {
+      closeList();
+    } else {
+      closeList();
+      out.push(`<p>${line}</p>`);
+    }
+  }
+  closeList();
+  return out.join("");
+}
