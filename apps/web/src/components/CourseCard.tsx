@@ -3,8 +3,7 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import type { CSSProperties } from "react";
-import { Bookmark, Check, Star, Play } from "lucide-react";
+import { Bookmark, Check, Download, Eye, Star, Play } from "lucide-react";
 import type { CourseSummary } from "@/lib/types";
 import { compact, formatDuration } from "@/lib/format";
 import { cloudinaryUrl } from "@/lib/cloudinary";
@@ -16,76 +15,47 @@ export function hueFromString(s: string): number {
   return h;
 }
 
-const TYPE_ICONS: Record<string, string> = {
-  course: "🎓",
-  "mini-course": "⚡",
-  "cheat-sheet": "📄",
-  roadmap: "🗺️",
-};
-
-/** Course cover: branded gradient derived from slug + title mark, exactly like the replica. */
+/**
+ * Course cover — real image when available (badges overlay cleanly at the
+ * corners), branded gradient + icon fallback when a cover hasn't been
+ * uploaded yet. No internal type/level codes ever reach the UI.
+ */
 export function CoverArt({
   course,
-  mark = true,
   large = false,
   badges = true,
 }: {
   course: CourseSummary;
-  mark?: boolean;
   large?: boolean;
   badges?: boolean;
 }) {
   const hue = hueFromString(course.slug || course.id);
-  const a = `hsl(${hue} 42% 18%)`;
-  const b = `hsl(${(hue + 55) % 360} 50% 9%)`;
-  const words = (course.title || "Course")
-    .replace(/[—–\-:]/g, " ")
-    .split(/\s+/)
-    .filter(Boolean)
-    .slice(0, 2)
-    .map((w) => w.toUpperCase());
-  const code = course.contentType
-    ? course.contentType === "mini-course"
-      ? "MINI"
-      : course.contentType === "cheat-sheet"
-        ? "SHEET"
-        : course.contentType === "roadmap"
-          ? "MAP"
-          : "CRS"
-    : "CRS";
+  const icon =
+    course.contentType === "mini-course" ? "⚡" : course.contentType === "cheat-sheet" ? "📄" : course.contentType === "roadmap" ? "🗺️" : "🎓";
 
   return (
     <div
-      className="cover"
+      className={`cover ${large ? "cover-wide" : ""}`}
       style={
         {
-          "--cover-a": a,
-          "--cover-b": b,
+          "--cover-a": `hsl(${hue} 42% 18%)`,
+          "--cover-b": `hsl(${(hue + 55) % 360} 50% 9%)`,
           ...(large ? { aspectRatio: "1.2" } : {}),
-        } as CSSProperties
+        } as React.CSSProperties
       }
     >
       {course.thumbnailUrl ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
-          src={cloudinaryUrl(course.thumbnailUrl, { width: 280, height: 420 }) ?? undefined}
+          src={cloudinaryUrl(course.thumbnailUrl, { width: large ? 420 : 280, height: large ? 350 : 420 }) ?? undefined}
           alt={course.title}
           loading="lazy"
           className="absolute inset-0 h-full w-full object-cover"
           style={{ zIndex: 0 }}
         />
       ) : (
-        <span className="cover-code">
-          SC / {code} · {course.level.slice(0, 3).toUpperCase()}
-        </span>
-      )}
-      {mark && !course.thumbnailUrl && (
-        <span className="cover-mark">
-          {words.map((line) => (
-            <span key={line} style={{ display: "block" }}>
-              {line}
-            </span>
-          ))}
+        <span className="cover-mark" style={{ fontSize: 30, fontWeight: 800 }}>
+          {icon}
         </span>
       )}
       {badges && (
@@ -106,9 +76,7 @@ export function CourseCard({
 }: {
   course: CourseSummary;
   rank?: number;
-  /** Fill its grid cell (browse grid) instead of a fixed rail width. */
   fill?: boolean;
-  /** Wide 16:9 hero variant. */
   wide?: boolean;
 }) {
   const router = useRouter();
@@ -124,10 +92,7 @@ export function CourseCard({
     }
     void fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/courses/${course.slug}/save`, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
     })
       .then((r) => r.json())
       .then((d: { saved?: boolean }) => setSaved(Boolean(d.saved)))
@@ -135,40 +100,52 @@ export function CourseCard({
   };
 
   return (
-    <Link href={`/courses/${course.slug}`} className="course-card" data-testid={`card-course-${course.slug}`}>
+    <Link href={`/courses/${course.slug}`} className={`course-card ${fill ? "course-card-fill" : ""}`} data-testid={`card-course-${course.slug}`}>
       <div className="cover-wrap" style={{ position: "relative" }}>
         <CoverArt course={course} large={wide} />
         {rank !== undefined && (
           <span
-            className="cover-badge"
-            style={{
-              position: "absolute",
-              left: 8,
-              top: 6,
-              background: "rgba(0,0,0,.55)",
-              color: "#fff",
-              fontSize: 13,
-              fontWeight: 800,
-              zIndex: 2,
-            }}
+            className="cover-badge rank"
+            style={{ position: "absolute", left: 8, top: 6, zIndex: 2 }}
           >
             {rank}
           </span>
         )}
-        <button
-          onClick={toggleSave}
-          title={saved ? "Remove from watchlist" : "Add to watchlist"}
-          className="save-icon"
-          style={{ position: "absolute", right: 8, top: 8, zIndex: 2 }}
-          aria-label="Save"
-        >
-          {saved ? <Check size={14} /> : <Bookmark size={14} />}
-        </button>
-        {/* quick open — desktop hover only */}
-        <span
-          className="quick-open"
-          style={{ position: "absolute", inset: 0, zIndex: 1, display: "none" }}
-        />
+        {/* hover quick actions — desktop only */}
+        <div className="quick-actions">
+          <button
+            onClick={toggleSave}
+            title={saved ? "Remove from watchlist" : "Add to watchlist"}
+            className="quick-action"
+            aria-label="Save"
+          >
+            {saved ? <Check size={14} /> : <Bookmark size={14} />}
+          </button>
+          <button
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              router.push(`/courses/${course.slug}`);
+            }}
+            title="Preview"
+            className="quick-action"
+            aria-label="Preview"
+          >
+            <Eye size={14} />
+          </button>
+          <button
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              router.push(`/courses/${course.slug}?download=1`);
+            }}
+            title="Download materials"
+            className="quick-action"
+            aria-label="Download"
+          >
+            <Download size={14} />
+          </button>
+        </div>
       </div>
       <div className="card-title">{course.title}</div>
       <div className="card-meta">
@@ -184,8 +161,6 @@ export function CourseCard({
           <div style={{ width: `${course.progress}%`, height: "100%", background: "hsl(var(--primary))", borderRadius: 5 }} />
         </div>
       )}
-      {/* desktop hover quick actions */}
-      <span className="hidden md:block" />
     </Link>
   );
 }
@@ -197,7 +172,7 @@ export function CourseRow({ course }: { course: CourseSummary }) {
       className="flex w-full items-center gap-3 rounded-lg p-2 transition-colors hover:bg-surface-hover"
     >
       <div className="h-[72px] w-[48px] shrink-0 overflow-hidden rounded-md" style={{ position: "relative" }}>
-        <CoverArt course={course} mark={false} badges={false} />
+        <CoverArt course={course} badges={false} />
       </div>
       <div className="min-w-0 flex-1">
         <div className="line-clamp-1 text-sm font-medium text-text">{course.title}</div>

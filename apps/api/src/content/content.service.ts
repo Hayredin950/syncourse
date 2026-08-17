@@ -1,10 +1,14 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { signMediaUrl, fileNameFromUrl } from '../common/signed-url.util';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class ContentService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsService,
+  ) {}
 
   /** Lesson detail — mirrors the file metadata card from the reference. */
   async lessonDetail(lessonId: string, userId?: string) {
@@ -164,6 +168,41 @@ export class ContentService {
       data: { downloadCount: { increment: 1 } },
     });
     return { id: event.id, recorded: true };
+  }
+
+  /**
+   * "Download to Telegram" — sends the lesson file link to the user's linked
+   * Telegram via the bot. Requires the user to have started the bot (telegramId).
+   */
+  async downloadToTelegram(lessonId: string, userId: string) {
+    const lesson = await this.prisma.lesson.findUnique({
+      where: { id: lessonId },
+      include: { course: true, files: { orderBy: { isBest: 'desc' } } },
+    });
+    if (!lesson) throw new NotFoundException('Lesson not found');
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new NotFoundException('User not found');
+
+    await this.recordDownload(lessonId, userId, 'telegram', 'bot');
+
+    const best = lesson.files[0];
+    const appUrl = process.env.PUBLIC_APP_URL || 'https://syncourse.pages.dev';
+    const link = `${appUrl}/courses/${lesson.course.slug}/lessons/${lesson.id}`;
+    const sizeText = best ? ` · ${best.sizeMb.toFixed(1)} MB ${best.label}` : '';
+    const text = `📚 Syncourse download\n\n${lesson.course.title}\n${lesson.title}${sizeText}\n\n${link}`;
+
+    if (user.telegramId) {
+      const sent = await this.notifications.sendViaTelegram(user.id, text);
+      return { sent, telegramUsername: user.telegramUsername, message: sent ? 'Sent to your Telegram' : 'Could not reach your Telegram chat — open the bot first' };
+    }
+    // No chat id yet — give the user a deep link to start the bot.
+    const bot = process.env.TELEGRAM_BOT_USERNAME || 'syncourse_bot';
+    return {
+      sent: false,
+      telegramUsername: user.telegramUsername,
+      botUrl: `https://t.me/${bot}?start=download_${lesson.id}`,
+      message: 'Open the bot and press Start, then try again — or tap to open the bot now.',
+    };
   }
 
   /** Downloads analytics for a course (TOTAL / LAST 30 DAYS / LAST 7 DAYS / TODAY). */

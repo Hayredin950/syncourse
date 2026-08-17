@@ -40,6 +40,11 @@ export class ContentController {
     return this.content.recordDownload(id, user.id, dto.quality, dto.method || 'app');
   }
 
+  @Post('lessons/:id/download-to-telegram')
+  downloadToTelegram(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    return this.content.downloadToTelegram(id, user.id);
+  }
+
   @Public()
   @Get('courses/:courseId/downloads/stats')
   downloadStats(@Param('courseId') courseId: string, @Query('slug') slug?: string) {

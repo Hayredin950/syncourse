@@ -126,7 +126,16 @@ export interface HomeData {
   latest: CourseSummary[];
   topRated: CourseSummary[];
   bestOf: { id: string; name: string; slug: string; logoUrl: string | null; courseCount: number; courses: CourseSummary[] }[];
-  featuredPaths: { id: string; title: string; description: string; coverUrl: string | null; courseCount: number; ratingAvg: number; totalVotes: number }[];
+  featuredPaths: {
+    id: string;
+    title: string;
+    description: string;
+    coverUrl: string | null;
+    courseCount: number;
+    ratingAvg: number;
+    totalVotes: number;
+    courses: { id: string; title: string; slug: string; thumbnailUrl: string | null }[];
+  }[];
   categories: { id: string; name: string; slug: string; icon: string; coverImage: string | null; courseCount: number }[];
   lecturers: { id: string; name: string; slug: string; photoUrl: string | null; credentials: string | null; courseCount: number }[];
   organizations: { id: string; name: string; slug: string; logoUrl: string | null; subscribers: number; courseCount: number }[];

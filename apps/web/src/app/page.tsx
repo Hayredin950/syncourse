@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowRight, ChevronRight, Play, Star } from "lucide-react";
 import { get } from "@/lib/api";
-import type { HomeData, LearningData } from "@/lib/types";
+import type { CourseSummary, HomeData, LearningData } from "@/lib/types";
 import { CourseCard } from "@/components/CourseCard";
 import { MobileHeader } from "@/components/Nav";
 import { useAuth } from "@/lib/auth";
@@ -26,6 +26,22 @@ export default function HomePage() {
     setBestOfOrgId(home.bestOf[0].id);
   }, [home, bestOfOrgId]);
   const activeOrg = home?.bestOf.find((o) => o.id === bestOfOrgId) ?? home?.bestOf[0];
+
+  // Curated rows with dropdowns (PhonoFilm: Movie Genre → / Directors →)
+  const [catRowSlug, setCatRowSlug] = useState("");
+  const [instructorRowSlug, setInstructorRowSlug] = useState("");
+  const [catRowCourses, setCatRowCourses] = useState<CourseSummary[]>([]);
+  const [instructorRowCourses, setInstructorRowCourses] = useState<CourseSummary[]>([]);
+  const catRow = home?.categories.find((c) => c.slug === catRowSlug) ?? home?.categories[0];
+  const instructorRow = home?.lecturers.find((l) => l.slug === instructorRowSlug) ?? home?.lecturers[0];
+  useEffect(() => {
+    if (!catRow) return;
+    get<{ results: CourseSummary[] }>(`/courses?category=${catRow.slug}&limit=10`).then((r) => setCatRowCourses(r.results)).catch(() => undefined);
+  }, [catRow]);
+  useEffect(() => {
+    if (!instructorRow) return;
+    get<{ results: CourseSummary[] }>(`/courses?lecturer=${instructorRow.slug}&limit=10`).then((r) => setInstructorRowCourses(r.results)).catch(() => undefined);
+  }, [instructorRow]);
 
   useEffect(() => {
     get<HomeData>("/home")
@@ -176,6 +192,56 @@ export default function HomePage() {
         </div>
       </section>
 
+      {/* Explore by Category — dropdown row */}
+      {catRow && catRowCourses.length > 0 && (
+        <section className="rail">
+          <div className="section-head">
+            <h2>Explore by Category</h2>
+            <select
+              value={catRow.slug}
+              onChange={(e) => setCatRowSlug(e.target.value)}
+              className="badge"
+              style={{ cursor: "pointer", outline: "none" }}
+            >
+              {home.categories.map((c) => (
+                <option key={c.slug} value={c.slug}>{c.name}</option>
+              ))}
+            </select>
+            <Link href={`/browse?category=${catRow.slug}`}>See all <ChevronRight size={14} style={{ verticalAlign: "middle" }} /></Link>
+          </div>
+          <div className="rail-row">
+            {catRowCourses.map((c) => (
+              <CourseCard key={c.id} course={c} />
+            ))}
+          </div>
+        </section>
+      )}
+
+      {/* By Instructor — dropdown row */}
+      {instructorRow && instructorRowCourses.length > 0 && (
+        <section className="rail">
+          <div className="section-head">
+            <h2>By Instructor</h2>
+            <select
+              value={instructorRow.slug}
+              onChange={(e) => setInstructorRowSlug(e.target.value)}
+              className="badge"
+              style={{ cursor: "pointer", outline: "none" }}
+            >
+              {home.lecturers.map((l) => (
+                <option key={l.slug} value={l.slug}>{l.name}</option>
+              ))}
+            </select>
+            <Link href={`/lecturers/${instructorRow.slug}`}>See all <ChevronRight size={14} style={{ verticalAlign: "middle" }} /></Link>
+          </div>
+          <div className="rail-row">
+            {instructorRowCourses.map((c) => (
+              <CourseCard key={c.id} course={c} />
+            ))}
+          </div>
+        </section>
+      )}
+
       {/* Best of — one row, dropdown to switch organization */}
       {activeOrg && activeOrg.courses.length > 0 && (
         <section className="rail">
@@ -205,14 +271,14 @@ export default function HomePage() {
         </section>
       )}
 
-      {/* Featured learning paths */}
+      {/* Featured learning paths — franchise-style cards with a thumbnail strip */}
       {home.featuredPaths.length > 0 && (
         <section className="rail">
           <div className="section-head">
             <h2>Featured learning paths</h2>
             <Link href="/browse">See all <ChevronRight size={14} style={{ verticalAlign: "middle" }} /></Link>
           </div>
-          <div className="rail-row" style={{ gridAutoColumns: "minmax(240px, 1fr)" }}>
+          <div className="rail-row" style={{ gridAutoColumns: "minmax(260px, 1fr)" }}>
             {home.featuredPaths.map((p) => (
               <Link
                 key={p.id}
@@ -223,10 +289,25 @@ export default function HomePage() {
                 <span className="eyebrow">Learning path</span>
                 <h3 style={{ margin: "14px 0 8px", fontSize: 17 }}>{p.title}</h3>
                 {p.description && <p className="muted" style={{ margin: 0, fontSize: 11 }}>{p.description}</p>}
-                <p className="muted" style={{ margin: "8px 0 0", fontSize: 11 }}>
+                {/* thumbnail strip — like PhonoFilm's franchise cards */}
+                {p.courses.length > 0 && (
+                  <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6, marginTop: 14 }}>
+                    {p.courses.slice(0, 4).map((c) => (
+                      <div key={c.id} className="cover" style={{ aspectRatio: "0.8", borderRadius: 8, margin: 0 }}>
+                        {c.thumbnailUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img src={c.thumbnailUrl} alt={c.title} loading="lazy" className="absolute inset-0 h-full w-full object-cover" style={{ zIndex: 0 }} />
+                        ) : (
+                          <span className="cover-mark" style={{ fontSize: 16 }}>🎓</span>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <p className="muted" style={{ margin: "12px 0 0", fontSize: 11 }}>
                   {p.courseCount} courses · ★ {p.ratingAvg.toFixed(1)} avg · {p.totalVotes.toLocaleString()} votes
                 </p>
-                <div style={{ marginTop: 22, height: 3, background: "rgba(255,255,255,.16)" }}>
+                <div style={{ marginTop: 14, height: 3, background: "rgba(255,255,255,.16)" }}>
                   <div style={{ width: "38%", height: "100%", background: "hsl(var(--primary))" }} />
                 </div>
               </Link>

@@ -63,7 +63,8 @@ export class NotificationsService {
     return { id: stored.id, telegramSent };
   }
 
-  private async sendViaTelegram(userId: string, text: string): Promise<boolean> {
+  /** Send an arbitrary message to a user's linked Telegram chat (if linked). */
+  async sendViaTelegram(userId: string, text: string): Promise<boolean> {
     const token = process.env.TELEGRAM_BOT_TOKEN;
     if (!token) return false;
     try {

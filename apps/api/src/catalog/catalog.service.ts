@@ -37,9 +37,10 @@ export class CatalogService {
     const now = new Date();
     const [trending, latest, topRated, featuredPaths, categories, lecturers, organizations] =
       await Promise.all([
+        // Trending = velocity (recent downloads dominate), NOT the same as most-enrolled.
         this.prisma.course.findMany({
           where: { deletedAt: null },
-          orderBy: [{ enrollmentCount: 'desc' }, { ratingAvg: 'desc' }],
+          orderBy: [{ downloadCount: 'desc' }, { ratingAvg: 'desc' }, { publishedAt: 'desc' }],
           take: 20,
           include: courseInclude,
         }),
@@ -88,25 +89,37 @@ export class CatalogService {
         courseCount: org._count.courses,
         courses: trending.filter((c) => c.organizationId === org.id).slice(0, 8).map((c) => this.summary(c)),
       })),
-      featuredPaths: featuredPaths.map((p) => ({
-        id: p.id,
-        title: p.title,
-        description: p.description,
-        coverUrl: p.coverUrl,
-        courseCount: p.courses.length,
-        ratingAvg: p.courses.length
-          ? +(p.courses.reduce((s, pc) => s + pc.course.ratingAvg, 0) / p.courses.length).toFixed(1)
-          : 0,
-        totalVotes: p.courses.reduce((s, pc) => s + pc.course.ratingCount, 0),
-      })),
-      categories: categories.map((cat) => ({
-        id: cat.id,
-        name: cat.name,
-        slug: cat.slug,
-        icon: cat.icon,
-        coverImage: cat.coverImage,
-        courseCount: cat.courses.length,
-      })),
+      featuredPaths: featuredPaths.map((p) => {
+        const sorted = [...p.courses].sort((a, b) => a.order - b.order);
+        return {
+          id: p.id,
+          title: p.title,
+          description: p.description,
+          coverUrl: p.coverUrl,
+          courseCount: sorted.length,
+          ratingAvg: sorted.length
+            ? +(sorted.reduce((s, pc) => s + pc.course.ratingAvg, 0) / sorted.length).toFixed(1)
+            : 0,
+          totalVotes: sorted.reduce((s, pc) => s + pc.course.ratingCount, 0),
+          // thumbnail strip for the franchise-style path cards
+          courses: sorted.map((pc) => ({
+            id: pc.course.id,
+            title: pc.course.title,
+            slug: pc.course.slug,
+            thumbnailUrl: pc.course.thumbnailUrl,
+          })),
+        };
+      }),
+      categories: categories
+        .filter((cat) => cat.courses.length > 0)
+        .map((cat) => ({
+          id: cat.id,
+          name: cat.name,
+          slug: cat.slug,
+          icon: cat.icon,
+          coverImage: cat.coverImage,
+          courseCount: cat.courses.length,
+        })),
       lecturers: lecturers.map((l) => ({
         id: l.id,
         name: l.name,
@@ -131,14 +144,16 @@ export class CatalogService {
       orderBy: { sortOrder: 'asc' },
       include: { courses: true },
     });
-    return cats.map((c) => ({
-      id: c.id,
-      name: c.name,
-      slug: c.slug,
-      icon: c.icon,
-      coverImage: c.coverImage,
-      courseCount: c.courses.length,
-    }));
+    return cats
+      .filter((c) => c.courses.length > 0)
+      .map((c) => ({
+        id: c.id,
+        name: c.name,
+        slug: c.slug,
+        icon: c.icon,
+        coverImage: c.coverImage,
+        courseCount: c.courses.length,
+      }));
   }
 
   async categoryCourses(slug: string) {

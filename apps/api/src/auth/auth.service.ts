@@ -232,6 +232,44 @@ export class AuthService {
     };
   }
 
+  /** Forgot-password: email a short-lived reset link (JWT) to the account owner. */
+  async forgotPassword(email: string) {
+    const user = await this.prisma.user.findUnique({ where: { email: email.toLowerCase() } });
+    // Always return the same message whether or not the account exists (no user enumeration).
+    if (!user || !user.passwordHash) {
+      return { sent: false, message: 'If that account exists, a reset link has been sent.' };
+    }
+    const token = this.jwt.sign({ sub: user.id, purpose: 'reset' }, { expiresIn: '30m' });
+    const appUrl = process.env.PUBLIC_APP_URL || 'https://syncourse.pages.dev';
+    const link = `${appUrl}/auth?reset=${encodeURIComponent(token)}`;
+    await this.email.send({
+      to: user.email,
+      subject: 'Reset your Syncourse password',
+      text: `Hi ${user.name},\n\nClick the link below to set a new password (valid for 30 minutes):\n${link}\n\nIf you didn't request this, you can safely ignore this email.`,
+      html: `<p>Hi ${user.name},</p><p>Click the link below to set a new password (valid for 30 minutes):</p><p><a href="${link}" style="background:#f39027;color:#211308;padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:700">Reset password</a></p><p>If you didn't request this, you can safely ignore this email.</p>`,
+    });
+    return { sent: true, message: 'If that account exists, a reset link has been sent.' };
+  }
+
+  /** Reset-password: verify the reset JWT and set a new password. */
+  async resetPassword(token: string, password: string) {
+    let payload: { sub?: string; purpose?: string };
+    try {
+      payload = this.jwt.verify(token);
+    } catch {
+      throw new BadRequestException('That reset link is invalid or has expired.');
+    }
+    if (payload.purpose !== 'reset' || !payload.sub) {
+      throw new BadRequestException('That reset link is invalid or has expired.');
+    }
+    const user = await this.prisma.user.findUnique({ where: { id: payload.sub } });
+    if (!user) throw new BadRequestException('That account no longer exists.');
+    const passwordHash = await bcrypt.hash(password, 10);
+    await this.prisma.user.update({ where: { id: user.id }, data: { passwordHash } });
+    await this.prisma.session.updateMany({ where: { userId: user.id }, data: { active: false } });
+    return { reset: true };
+  }
+
   /** Link a Telegram username so bot downloads can be tracked to the account. */
   async linkTelegram(userId: string, telegramUsername: string) {
     const username = telegramUsername.trim().replace(/^@/, '');

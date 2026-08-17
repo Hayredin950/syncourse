@@ -32,6 +32,20 @@ export class AuthController {
     return this.auth.login(dto.email, dto.password);
   }
 
+  @Public()
+  @Post('forgot-password')
+  @HttpCode(HttpStatus.OK)
+  forgotPassword(@Body() dto: { email: string }) {
+    return this.auth.forgotPassword(dto.email);
+  }
+
+  @Public()
+  @Post('reset-password')
+  @HttpCode(HttpStatus.OK)
+  resetPassword(@Body() dto: { token: string; password: string }) {
+    return this.auth.resetPassword(dto.token, dto.password);
+  }
+
   /** Step 1 (web): bounce the browser to Google's consent screen. */
   @Public()
   @Get('google')

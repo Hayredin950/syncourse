@@ -20,6 +20,9 @@ export function TopNav() {
   const { user, isPremium } = useAuth();
   const [value, setValue] = useState("");
 
+  // phonofilm: auth screens have no site navbar
+  if (pathname.startsWith("/auth")) return null;
+
   const submit = (event: FormEvent) => {
     event.preventDefault();
     router.push(`/search${value.trim() ? `?q=${encodeURIComponent(value.trim())}` : ""}`);
@@ -101,6 +104,7 @@ export function MobileHeader({ title = "Syncourse" }: { title?: string }) {
 /* ---------- BottomNav — fixed mobile tab bar ---------- */
 export function BottomNav() {
   const pathname = usePathname();
+  if (pathname.startsWith("/auth")) return null;
   const active = (href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href));
   const tabs = [
     { href: "/", label: "Home", icon: Home },
@@ -122,6 +126,8 @@ export function BottomNav() {
 
 /* ---------- Footer — desktop only ---------- */
 export function Footer() {
+  const pathname = usePathname();
+  if (pathname.startsWith("/auth")) return null;
   return (
     <footer className="footer desktop-only">
       <div>
