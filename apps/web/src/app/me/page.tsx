@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -122,8 +122,11 @@ export default function MePage() {
   // edit-profile modal state
   const [editing, setEditing] = useState(false);
   const [editName, setEditName] = useState("");
+  const [editUsername, setEditUsername] = useState("");
   const [editGender, setEditGender] = useState("");
   const [editAvatar, setEditAvatar] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const avatarInputRef = useRef<HTMLInputElement>(null);
 
   // change-password modal
   const [pwOpen, setPwOpen] = useState(false);
@@ -160,9 +163,31 @@ export default function MePage() {
 
   const openEdit = () => {
     setEditName(user.name);
+    setEditUsername(user.username ?? "");
     setEditGender(user.gender ?? "");
     setEditAvatar(user.avatarUrl ?? "");
     setEditing(true);
+  };
+
+  const uploadAvatar = async (file: File) => {
+    setUploading(true);
+    try {
+      const reader = new FileReader();
+      reader.readAsDataURL(file);
+      reader.onload = async () => {
+        try {
+          const r = await post<{ url: string }>("/images/upload", { dataUrl: reader.result });
+          setEditAvatar(r.url);
+          setToast("Image uploaded");
+        } catch (e: any) {
+          setToast(e.message ?? "Upload failed");
+        } finally {
+          setUploading(false);
+        }
+      };
+    } catch {
+      setUploading(false);
+    }
   };
 
   const saveProfile = async () => {
@@ -170,6 +195,7 @@ export default function MePage() {
     try {
       await patch("/users/me", {
         name: editName.trim() || undefined,
+        username: editUsername.trim().replace(/^@/, "") || undefined,
         gender: editGender.trim() || undefined,
         avatarUrl: editAvatar.trim() || undefined,
       });
@@ -315,8 +341,8 @@ export default function MePage() {
         ))}
       </div>
 
-      {/* phonofilm-style tabs */}
-      <div className="tabs" role="tablist">
+      {/* phonofilm-style tabs (pill container) */}
+      <div className="profile-tabs" role="tablist">
         {tabs.map((t) => (
           <button
             key={t.id}
@@ -791,25 +817,77 @@ export default function MePage() {
         <div className="sheet" onClick={() => setEditing(false)}>
           <div className="sheet-panel" onClick={(e) => e.stopPropagation()}>
             <div className="section-head">
-              <h2>Edit profile</h2>
+              <h2>Edit Profile</h2>
               <button className="icon-btn" onClick={() => setEditing(false)} aria-label="Close">
                 <X size={15} />
               </button>
             </div>
-            <label className="muted" style={{ fontSize: 11, display: "block", margin: "14px 0 6px" }}>NAME</label>
+            <label className="muted" style={{ fontSize: 11, display: "block", margin: "14px 0 6px" }}>DISPLAY NAME</label>
             <input className="form-input" value={editName} onChange={(e) => setEditName(e.target.value)} placeholder="Your name" />
+
+            <label className="muted" style={{ fontSize: 11, display: "block", margin: "14px 0 6px" }}>USERNAME</label>
+            <div className="input-prefix">
+              <span className="input-prefix__at">@</span>
+              <input
+                className="form-input"
+                value={editUsername}
+                onChange={(e) => setEditUsername(e.target.value.replace(/[^a-zA-Z0-9_@]/g, ""))}
+                placeholder="your-handle"
+              />
+            </div>
+            <p className="muted" style={{ fontSize: 11, margin: "4px 0 0" }}>
+              Your profile URL will be /@{editUsername.replace(/^@/, "") || "your-handle"}
+            </p>
+
+            <label className="muted" style={{ fontSize: 11, display: "block", margin: "14px 0 6px" }}>PROFILE IMAGE</label>
+            <div className="avatar-upload-row">
+              <div className="nav-me__avatar" style={{ width: 48, height: 48 }}>
+                {editAvatar ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={editAvatar} alt="" className="h-full w-full object-cover" />
+                ) : (
+                  <span className="text-lg font-bold text-accent">{(editName || "?").charAt(0).toUpperCase()}</span>
+                )}
+              </div>
+              <div>
+                <input
+                  ref={avatarInputRef}
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/gif"
+                  style={{ display: "none" }}
+                  onChange={(e) => {
+                    const f = e.target.files?.[0];
+                    if (f) void uploadAvatar(f);
+                  }}
+                />
+                <button className="btn" onClick={() => avatarInputRef.current?.click()} disabled={uploading}>
+                  {uploading ? "Uploading…" : "Upload image"}
+                </button>
+                <p className="muted" style={{ fontSize: 10, margin: "5px 0 0" }}>JPEG, PNG, WebP or GIF, up to 5MB.</p>
+              </div>
+            </div>
+
             <label className="muted" style={{ fontSize: 11, display: "block", margin: "14px 0 6px" }}>GENDER</label>
-            <select className="form-input" value={editGender} onChange={(e) => setEditGender(e.target.value)}>
-              <option value="">Prefer not to say</option>
-              <option value="Male">Male</option>
-              <option value="Female">Female</option>
-              <option value="Non-binary">Non-binary</option>
-            </select>
-            <label className="muted" style={{ fontSize: 11, display: "block", margin: "14px 0 6px" }}>AVATAR URL</label>
-            <input className="form-input" value={editAvatar} onChange={(e) => setEditAvatar(e.target.value)} placeholder="https://… (image URL)" />
-            <button className="btn primary" style={{ width: "100%", marginTop: 18 }} onClick={saveProfile} disabled={saving}>
-              <Save size={14} style={{ display: "inline", verticalAlign: "middle" }} /> {saving ? "Saving…" : "Save changes"}
-            </button>
+            <div className="segmented">
+              {["", "Male", "Female", "Non-binary"].map((g) => (
+                <button
+                  key={g || "na"}
+                  className={`segmented__opt ${editGender === g ? "active" : ""}`}
+                  onClick={() => setEditGender(g)}
+                >
+                  {g || "Prefer not to say"}
+                </button>
+              ))}
+            </div>
+
+            <div className="actions" style={{ marginTop: 20 }}>
+              <button className="btn" style={{ flex: 1 }} onClick={() => setEditing(false)}>
+                Cancel
+              </button>
+              <button className="btn primary" style={{ flex: 1.4 }} onClick={saveProfile} disabled={saving || uploading}>
+                <Save size={14} style={{ display: "inline", verticalAlign: "middle" }} /> {saving ? "Saving…" : "Save"}
+              </button>
+            </div>
           </div>
         </div>
       )}

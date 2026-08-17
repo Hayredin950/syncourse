@@ -77,16 +77,28 @@ export class UsersService {
     userId: string,
     data: {
       name?: string;
+      username?: string;
       gender?: string;
       avatarUrl?: string;
       settings?: Record<string, unknown>;
       privacy?: Record<string, string>;
     },
   ) {
+    let username = data.username?.trim().replace(/^@/, '');
+    if (username && !/^[a-zA-Z0-9_]{3,24}$/.test(username)) {
+      throw new BadRequestException('Username must be 3–24 characters (letters, numbers, underscore)');
+    }
+    if (username) {
+      const taken = await this.prisma.user.findUnique({ where: { username } });
+      if (taken && taken.id !== userId) {
+        throw new BadRequestException('That username is already taken');
+      }
+    }
     const user = await this.prisma.user.update({
       where: { id: userId },
       data: {
         ...(data.name ? { name: data.name } : {}),
+        ...(username ? { username } : {}),
         ...(data.gender ? { gender: data.gender } : {}),
         ...(data.avatarUrl ? { avatarUrl: data.avatarUrl } : {}),
         ...(data.settings !== undefined ? { settings: data.settings as Prisma.InputJsonValue } : {}),
@@ -96,6 +108,7 @@ export class UsersService {
     return {
       id: user.id,
       name: user.name,
+      username: user.username,
       gender: user.gender,
       avatarUrl: user.avatarUrl,
       settings: user.settings as Record<string, unknown> | null,

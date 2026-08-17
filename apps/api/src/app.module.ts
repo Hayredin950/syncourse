@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
+import { AppController } from './app.controller';
 import { APP_GUARD } from '@nestjs/core';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { JwtAuthGuard } from './common/jwt-auth.guard';
@@ -41,6 +42,7 @@ import { AdminModule } from './admin/admin.module';
     CloudinaryModule,
     AdminModule,
   ],
+  controllers: [AppController],
   providers: [
     {
       provide: APP_GUARD,

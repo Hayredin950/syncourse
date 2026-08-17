@@ -11,6 +11,10 @@ class UpdateProfileDto {
 
   @IsOptional()
   @IsString()
+  username?: string;
+
+  @IsOptional()
+  @IsString()
   gender?: string;
 
   @IsOptional()

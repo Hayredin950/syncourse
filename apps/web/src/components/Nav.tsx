@@ -33,6 +33,8 @@ export function TopNav() {
   return (
     <header className="topbar desktop-only">
       <Link href="/" className="brand">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src="/logo.png" alt="" className="brand-logo" />
         sync<i />ourse
       </Link>
       <Link href="/browse" className={active("/browse") ? "active" : ""}>
@@ -54,9 +56,6 @@ export function TopNav() {
         <Link href="/lists" className={active("/lists") ? "active" : ""}>
           Collections
         </Link>
-        <Link href="/me" className={active("/me") ? "active" : ""}>
-          Me
-        </Link>
         {isPremium ? (
           <span className="badge primary">Premium</span>
         ) : (
@@ -65,17 +64,16 @@ export function TopNav() {
           </Link>
         )}
         {user ? (
-          <Link
-            href="/me"
-            title={user.name}
-            className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full bg-surface-raised"
-          >
-            {user.avatarUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={user.avatarUrl} alt="" className="h-full w-full object-cover" />
-            ) : (
-              <span className="text-xs font-bold text-accent">{user.name.charAt(0).toUpperCase()}</span>
-            )}
+          <Link href="/me" className={`nav-me ${active("/me") ? "active" : ""}`} title={user.name}>
+            <span className="nav-me__avatar">
+              {user.avatarUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={user.avatarUrl} alt="" className="h-full w-full object-cover" />
+              ) : (
+                <span className="text-xs font-bold text-accent">{user.name.charAt(0).toUpperCase()}</span>
+              )}
+            </span>
+            Me
           </Link>
         ) : (
           <Link href="/auth" className={active("/auth") ? "active" : ""}>
@@ -132,6 +130,8 @@ export function Footer() {
     <footer className="footer desktop-only">
       <div>
         <div className="brand">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo.png" alt="" className="brand-logo" />
           sync<i />ourse
         </div>
         <p className="muted">Practical skills for people who build.</p>

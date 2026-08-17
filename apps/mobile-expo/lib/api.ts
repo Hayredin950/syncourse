@@ -184,7 +184,7 @@ export const circlesActivity = () =>
 
 // --- users ---
 export const me = () => get<UserProfile>("/users/me");
-export const updateProfile = (data: { name?: string; gender?: string; avatarUrl?: string }) =>
+export const updateProfile = (data: { name?: string; username?: string; gender?: string; avatarUrl?: string }) =>
   request<UserProfile>("/users/me", {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },

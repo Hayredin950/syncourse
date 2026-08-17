@@ -18,7 +18,7 @@ import {
   X,
 } from "lucide-react";
 import { get, post } from "@/lib/api";
-import type { CourseDetail, CourseSummary, DiscussionThread, ReviewRow } from "@/lib/types";
+import type { CourseDetail, CourseSummary, ReviewRow } from "@/lib/types";
 import { useAuth } from "@/lib/auth";
 import { StarPicker } from "@/components/StarRating";
 import { formatDuration, formatSec, compact, formatDate } from "@/lib/format";
@@ -41,8 +41,6 @@ export default function CoursePage() {
   const [myRating, setMyRating] = useState(0);
   const [reviewText, setReviewText] = useState("");
   const [containsSpoilers, setContainsSpoilers] = useState(false);
-  const [threads, setThreads] = useState<DiscussionThread[]>([]);
-  const [threadText, setThreadText] = useState("");
   const [toast, setToast] = useState("");
   const [coverBusy, setCoverBusy] = useState(false);
   const coverInputRef = useRef<HTMLInputElement>(null);
@@ -77,9 +75,6 @@ export default function CoursePage() {
         }
       })
       .catch(() => setError(true));
-    get<{ threads: DiscussionThread[] }>(`/courses/${slug}/discussion`)
-      .then((d) => setThreads(d.threads))
-      .catch(() => {});
   }, [slug]);
 
   const flash = (msg: string) => {
@@ -155,23 +150,10 @@ export default function CoursePage() {
     }
   };
 
-  const onPostThread = async () => {
-    if (!requireAuth() || !threadText.trim()) return;
-    try {
-      const t = await post<DiscussionThread>(`/courses/${slug}/discussion`, { body: threadText });
-      setThreads((prev) => [t, ...prev]);
-      setThreadText("");
-      flash("Posted to the thread");
-    } catch (e: any) {
-      flash(e.message);
-    }
-  };
-
   const onUpvote = async (id: string) => {
     if (!requireAuth()) return;
     try {
       const r = await post<{ upvoted: boolean; upvotes: number }>(`/discussion/${id}/upvote`);
-      setThreads((prev) => prev.map((t) => (t.id === id ? { ...t, upvoted: r.upvoted, upvotes: r.upvotes } : t)));
       setCourse((c) =>
         c
           ? {
@@ -510,10 +492,14 @@ export default function CoursePage() {
             </div>
           </div>
 
-          {/* reviews */}
+          {/* reviews — unified: stars + upvote + reply on the same card (phonofilm) */}
           <div style={{ marginTop: 25 }}>
             <div className="section-head">
-              <h2>Reviews</h2>
+              <h2>Reviews · {course.reviews.length}</h2>
+              <span className="muted" style={{ fontSize: 12 }}>
+                <span className="rating"><Star size={12} fill="currentColor" style={{ display: "inline" }} /> {course.ratings.avg.toFixed(1)}</span>
+                <span style={{ marginLeft: 6 }}>{compact(course.ratings.count)} ratings</span>
+              </span>
               <button className="btn" onClick={() => document.getElementById("review-box")?.scrollIntoView({ behavior: "smooth" })}>
                 <MessageCircle size={13} style={{ display: "inline", verticalAlign: "middle" }} /> Write
               </button>
@@ -523,7 +509,7 @@ export default function CoursePage() {
                 <p className="muted" style={{ margin: 0, fontSize: 12 }}>No reviews yet — start the thread.</p>
               </div>
             )}
-            {course.reviews.slice(0, 4).map((r) => (
+            {course.reviews.slice(0, 8).map((r) => (
               <ReviewCard key={r.id} review={r} onUpvote={onUpvote} onReply={onReplyToReview} />
             ))}
           </div>
@@ -554,33 +540,6 @@ export default function CoursePage() {
             )}
           </div>
 
-          {/* discussion */}
-          <div style={{ marginTop: 25 }}>
-            <div className="section-head">
-              <h2>Discussion · {threads.length}</h2>
-            </div>
-            <div className="dark-panel" style={{ padding: 16 }}>
-              {token ? (
-                <textarea
-                  rows={2}
-                  className="form-input"
-                  placeholder="Join the thread — ask a question or share a tip…"
-                  value={threadText}
-                  onChange={(e) => setThreadText(e.target.value)}
-                />
-              ) : (
-                <p className="muted" style={{ fontSize: 12 }}>
-                  <Link href="/auth" style={{ color: "hsl(var(--primary))", fontWeight: 700 }}>Sign in</Link> to join the thread.
-                </p>
-              )}
-              {threads.length === 0 && (
-                <p className="muted" style={{ fontSize: 12, marginTop: 10 }}>No replies yet — start the thread.</p>
-              )}
-              {threads.slice(0, 5).map((t) => (
-                <DiscussionCard key={t.id} thread={t} onUpvote={onUpvote} />
-              ))}
-            </div>
-          </div>
         </aside>
       </div>
 
@@ -709,39 +668,6 @@ function Sparkline({ data }: { data: number[] }) {
   );
 }
 
-function DiscussionCard({ thread, onUpvote }: { thread: DiscussionThread; onUpvote: (id: string) => void }) {
-  const [show, setShow] = useState(!thread.containsSpoilers);
-  return (
-    <div className="review" style={{ borderTop: "1px solid hsl(var(--border))", padding: "14px 0" }}>
-      <div className="review-top">
-        <span>
-          <strong>{thread.userName}</strong> <span className="muted mono">· {formatDate(thread.createdAt)}</span>
-          {thread.isStaff && <span className="badge" style={{ marginLeft: 6 }}>Staff</span>}
-        </span>
-        <button
-          onClick={() => onUpvote(thread.id)}
-          className="rating"
-          style={{ background: "none", border: 0, fontSize: 11, display: "flex", alignItems: "center", gap: 4 }}
-        >
-          ▲ {thread.upvotes}
-        </button>
-      </div>
-      {thread.containsSpoilers && !show ? (
-        <button className="btn ghost" style={{ marginTop: 8 }} onClick={() => setShow(true)}>
-          This may contain spoilers — Show
-        </button>
-      ) : (
-        <p style={{ fontSize: 12, color: "#c9c0b5", lineHeight: 1.6 }}>{thread.body}</p>
-      )}
-      {thread.replies?.map((rep) => (
-        <div key={rep.id} style={{ marginLeft: 16, borderLeft: "2px solid hsl(var(--border))", paddingLeft: 12 }}>
-          <DiscussionCard thread={rep} onUpvote={onUpvote} />
-        </div>
-      ))}
-    </div>
-  );
-}
-
 function ReviewCard({
   review,
   onUpvote,
@@ -762,11 +688,27 @@ function ReviewCard({
           <strong>{review.userName}</strong> <span className="muted mono">· {formatDate(review.createdAt)}</span>
           {review.isStaff && <span className="badge" style={{ marginLeft: 6 }}>Staff</span>}
         </span>
-        <span className="rating"><Star size={11} fill="currentColor" /> {review.editedAt ? "edited" : "5"}</span>
+        <span className="rating">
+          {review.rating > 0 ? (
+            <>
+              {[1, 2, 3, 4, 5].map((n) => (
+                <Star
+                  key={n}
+                  size={11}
+                  fill={n <= review.rating ? "currentColor" : "none"}
+                  style={{ display: "inline", opacity: n <= review.rating ? 1 : 0.35 }}
+                />
+              ))}
+              <span style={{ marginLeft: 3 }}>{review.rating}.0</span>
+            </>
+          ) : (
+            <span className="muted mono" style={{ fontSize: 10 }}>thread</span>
+          )}
+        </span>
       </div>
       {review.containsSpoilers && !show ? (
         <button className="btn ghost" style={{ marginTop: 8 }} onClick={() => setShow(true)}>
-          This may contain spoilers — Show
+          This review may contain spoilers — Show review
         </button>
       ) : (
         <p>{review.body}</p>

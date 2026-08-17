@@ -244,20 +244,26 @@ export class CatalogService {
 
     if (!course || course.deletedAt) throw new NotFoundException('Course not found');
 
-    const [ratings, reviewRows, downloadStats, myUpvotes] = await Promise.all([
+    const [ratings, reviewRows, downloadStats, myUpvotes, reviewRatings] = await Promise.all([
       this.prisma.rating.aggregate({ where: { courseId: course.id }, _avg: { stars: true }, _count: true }),
       this.prisma.review.findMany({
         where: { courseId: course.id, parentId: null },
-        orderBy: { createdAt: 'desc' },
-        take: 10,
+        orderBy: [{ upvotes: 'desc' }, { createdAt: 'desc' }],
+        take: 12,
         include: { user: { select: { name: true, avatarUrl: true, isStaff: true } }, _count: { select: { replies: true } } },
       }),
       this.downloadStats(course.id),
       userId
         ? this.prisma.reviewUpvote.findMany({ where: { userId, review: { courseId: course.id } } })
         : Promise.resolve([]),
+      // one rating per (user, course) — lets each review card show its author's stars
+      this.prisma.rating.findMany({
+        where: { courseId: course.id },
+        select: { userId: true, stars: true },
+      }),
     ]);
     const upvotedIds = new Set(myUpvotes.map((u) => u.reviewId));
+    const ratingByUser = new Map(reviewRatings.map((r) => [r.userId, r.stars]));
 
     const ratingDistribution = await this.ratingDistribution(course.id);
 
@@ -297,7 +303,7 @@ export class CatalogService {
         id: r.id,
         userName: r.user.name,
         userAvatar: r.user.avatarUrl,
-        rating: 0, // rating stored on Rating row; keep reviews text-only here
+        rating: ratingByUser.get(r.userId) ?? 0,
         body: r.body,
         containsSpoilers: r.containsSpoilers,
         editedAt: r.editedAt,

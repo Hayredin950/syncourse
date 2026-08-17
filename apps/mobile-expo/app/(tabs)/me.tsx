@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useRouter } from "expo-router";
 import React from "react";
-import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Image, ScrollView, StyleSheet, Text, View } from "react-native";
 import * as api from "../../lib/api";
 import { useAuth } from "../../lib/auth";
 import { colors } from "../../lib/tokens";
@@ -43,7 +43,11 @@ export default function MeScreen() {
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
       <View style={styles.header}>
         <View style={styles.avatar}>
-          <Text style={styles.avatarText}>{user.name.charAt(0)}</Text>
+          {user.avatarUrl ? (
+            <Image source={{ uri: user.avatarUrl }} style={{ width: 62, height: 62, borderRadius: 31 }} />
+          ) : (
+            <Text style={styles.avatarText}>{user.name.charAt(0)}</Text>
+          )}
         </View>
         <View style={{ flex: 1 }}>
           <Text style={styles.name}>{user.name}</Text>

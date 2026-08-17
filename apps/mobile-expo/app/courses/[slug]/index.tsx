@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link, useLocalSearchParams } from "expo-router";
+import { Link, useLocalSearchParams, useRouter } from "expo-router";
 import React, { useState } from "react";
 import { cloudinaryUrl } from "../../../lib/cloudinary";
 import {
@@ -20,10 +20,11 @@ import * as api from "../../../lib/api";
 import { colors, radius } from "../../../lib/tokens";
 import { formatDurationSec, type CourseDetail } from "../../../lib/types";
 import { Stars, StarPicker, StarRow } from "../../../components/StarRating";
-import { Discussion } from "../../../components/Discussion";
+
 
 export default function CourseDetailScreen() {
   const { slug } = useLocalSearchParams<{ slug: string }>();
+  const router = useRouter();
   const queryClient = useQueryClient();
   const [expanded, setExpanded] = useState(false);
 
@@ -44,6 +45,10 @@ export default function CourseDetailScreen() {
   });
   const reviewMut = useMutation({
     mutationFn: (body: { text: string; spoilers: boolean }) => api.postReview(slug!, body.text, body.spoilers),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["course", slug] }),
+  });
+  const upvoteMut = useMutation({
+    mutationFn: (id: string) => api.toggleUpvote(id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["course", slug] }),
   });
   const [myRating, setMyRating] = useState(0);
@@ -362,6 +367,7 @@ export default function CourseDetailScreen() {
                 <Text style={styles.avatarText}>{r.userName.charAt(0)}</Text>
               </View>
               <Text style={styles.reviewer}>{r.userName}</Text>
+              {r.rating > 0 && <StarRow value={r.rating} size={10} />}
               {r.isStaff && (
                 <View style={styles.editorial}>
                   <Text style={styles.editorialText}>EDITORIAL</Text>
@@ -369,12 +375,24 @@ export default function CourseDetailScreen() {
               )}
             </View>
             {r.body && <Text style={styles.reviewBody}>{r.body}</Text>}
-            <Text style={styles.muted}>{r.replyCount} replies</Text>
+            <View style={styles.reviewFooter}>
+              <Pressable
+                style={styles.actionBtn}
+                onPress={() => {
+                  if (!me) {
+                    router.push("/auth");
+                    return;
+                  }
+                  upvoteMut.mutate(r.id);
+                }}
+              >
+                <Text style={[styles.actionIcon, r.upvoted && styles.upvoted]}>▲</Text>
+                <Text style={[styles.actionLabel, r.upvoted && styles.upvoted]}>{r.upvotes ?? 0}</Text>
+              </Pressable>
+              <Text style={styles.muted}>{r.replyCount} repl{r.replyCount === 1 ? "y" : "ies"}</Text>
+            </View>
           </View>
         ))}
-
-        <Text style={styles.heading}>Discussion</Text>
-        <Discussion slug={slug!} />
       </View>
     </ScrollView>
   );
@@ -559,4 +577,9 @@ const styles = StyleSheet.create({
   },
   editorialText: { color: colors.accent, fontSize: 9, fontWeight: "800" },
   reviewBody: { color: "rgba(244,244,245,0.7)", fontSize: 13, marginTop: 4, marginBottom: 2 },
+  reviewFooter: { flexDirection: "row", alignItems: "center", gap: 14, marginTop: 8 },
+  actionBtn: { flexDirection: "row", alignItems: "center", gap: 4 },
+  actionIcon: { color: colors.muted, fontSize: 11 },
+  actionLabel: { color: colors.muted, fontSize: 12 },
+  upvoted: { color: colors.accent },
 });

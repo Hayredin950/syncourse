@@ -64,6 +64,8 @@ export interface Review {
   createdAt: string;
   replyCount: number;
   isStaff: boolean;
+  upvotes?: number;
+  upvoted?: boolean;
 }
 
 export interface CourseDetail extends CourseSummary {

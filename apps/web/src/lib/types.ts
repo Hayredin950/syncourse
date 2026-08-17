@@ -51,6 +51,7 @@ export interface ReviewRow {
   userName: string;
   userAvatar: string | null;
   isStaff: boolean;
+  rating: number;
   body: string;
   containsSpoilers: boolean;
   editedAt: string | null;
