@@ -6,6 +6,7 @@ interface TelegramUpdate {
   message?: {
     message_id: number;
     chat: { id: number; type: string; username?: string };
+    message_thread_id?: number;
     from?: { id: number; username?: string; first_name?: string };
     text?: string;
     date: number;
@@ -149,6 +150,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     const msg = update.message;
     if (!msg?.text) return;
     const chatId = msg.chat.id;
+    const threadId = msg.message_thread_id ?? null;
     const fromId = msg.from?.id ?? chatId;
     const text = msg.text.trim();
     const [command, ...rest] = text.split(/\s+/);
@@ -158,39 +160,39 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       case '/start': {
         const payload = arg.replace(/^@\w+\s*/, '');
         if (payload.startsWith('dl_')) {
-          await this.sendCourseFile(chatId, payload.slice(3));
+          await this.sendCourseFile(chatId, payload.slice(3), threadId);
         } else if (payload.startsWith('download_')) {
           await this.sendLessonLink(chatId, payload.slice(9));
         } else {
-          await this.sendText(chatId, welcomeMessage());
+          await this.sendText(chatId, welcomeMessage(), threadId);
         }
         break;
       }
       case '/help':
-        await this.sendText(chatId, helpMessage());
+        await this.sendText(chatId, helpMessage(), threadId);
         break;
       case '/courses':
-        await this.sendCourseList(chatId);
+        await this.sendCourseList(chatId, threadId);
         break;
       case '/link':
-        if (await this.isAdmin(fromId)) await this.linkCourse(chatId, arg, msg);
-        else await this.sendText(chatId, '⛔ This command is for admins only.');
+        if (await this.isAdmin(fromId)) await this.linkCourse(chatId, arg, msg, threadId);
+        else await this.sendText(chatId, '⛔ This command is for admins only.', threadId);
         break;
       case '/unlink':
-        if (await this.isAdmin(fromId)) await this.unlinkCourse(chatId, arg);
-        else await this.sendText(chatId, '⛔ This command is for admins only.');
+        if (await this.isAdmin(fromId)) await this.unlinkCourse(chatId, arg, threadId);
+        else await this.sendText(chatId, '⛔ This command is for admins only.', threadId);
         break;
       case '/newcourse':
-        if (await this.isAdmin(fromId)) await this.newCourse(chatId, arg);
-        else await this.sendText(chatId, '⛔ This command is for admins only.');
+        if (await this.isAdmin(fromId)) await this.newCourse(chatId, arg, threadId);
+        else await this.sendText(chatId, '⛔ This command is for admins only.', threadId);
         break;
       case '/broadcast':
-        if (await this.isAdmin(fromId)) await this.broadcast(chatId, arg);
-        else await this.sendText(chatId, '⛔ This command is for admins only.');
+        if (await this.isAdmin(fromId)) await this.broadcast(chatId, arg, threadId);
+        else await this.sendText(chatId, '⛔ This command is for admins only.', threadId);
         break;
       default:
         if (text.startsWith('/')) {
-          await this.sendText(chatId, `Unknown command. Send /help for the list of commands.`);
+          await this.sendText(chatId, `Unknown command. Send /help for the list of commands.`, threadId);
         }
     }
   }
@@ -236,6 +238,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     chatId: number,
     arg: string,
     msg?: NonNullable<TelegramUpdate['message']>,
+    threadId?: number | null,
   ) {
     const slug = arg.split(/\s+/)[0] ?? '';
     if (!slug || slug.includes('<') || slug.includes('>')) {
@@ -243,6 +246,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
         chatId,
         'Usage (easiest): in the group, REPLY to the ZIP message with:\n/link <course-slug>\n\nor in the DM:\n/link <course-slug> <t.me/group/TOPIC/MESSAGE link>\n\nReplace <course-slug> with a REAL slug from this list:\n\n' +
           (await this.courseSlugList()),
+        threadId,
       );
     }
     const course = await this.prisma.course.findUnique({
@@ -253,6 +257,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       return this.sendText(
         chatId,
         `Course “${slug}” not found. Choose a real slug from this list:\n\n${await this.courseSlugList()}`,
+        threadId,
       );
     }
 
@@ -275,9 +280,10 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
         return this.sendText(
           chatId,
           `✅ Linked “${course.title}” to the file you replied to (${doc.file_name ?? 'file'}${doc.file_size ? ` · ${(doc.file_size / 1024 / 1024).toFixed(1)} MB` : ''}).\n\nUsers can now get it with /download ${slug} or from the app.`,
+          threadId,
         );
       }
-      return this.sendText(chatId, 'The message you replied to does not contain a file (ZIP/video/audio). Reply to the file message itself.');
+      return this.sendText(chatId, 'The message you replied to does not contain a file (ZIP/video/audio). Reply to the file message itself.', threadId);
     }
 
     // Mode 2: t.me link in the DM.
@@ -289,10 +295,11 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
           '1️⃣ In the GROUP: tap the ZIP message → Reply → /link <slug>\n' +
           '2️⃣ In this chat: /link <slug> https://t.me/syncourse/<topic-id>/<message-id>\n\n' +
           'I need the actual file message — not a plain new message.',
+        threadId,
       );
     }
     const parsed = parseTelegramLink(url);
-    if (!parsed) return this.sendText(chatId, 'Could not parse that t.me link. It should look like https://t.me/group/2/41');
+    if (!parsed) return this.sendText(chatId, 'Could not parse that t.me link. It should look like https://t.me/group/2/41', threadId);
 
     try {
       // Resolve the chat (username or numeric id) to a chat id
@@ -300,7 +307,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
         ? await this.api('getChat', { chat_id: `@${parsed.chatUsername}` })
         : await this.api('getChat', { chat_id: parsed.chatId });
       const chatJson = (await chatResolve.json()) as { ok: boolean; result?: { id: number; username?: string }; description?: string };
-      if (!chatJson.ok) return this.sendText(chatId, `Could not resolve the group: ${chatJson.description}`);
+      if (!chatJson.ok) return this.sendText(chatId, `Could not resolve the group: ${chatJson.description}`, threadId);
       const groupChatId = chatJson.result!.id;
 
       const msgRes = await this.api('getMessage', {
@@ -312,12 +319,13 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
         return this.sendText(
           chatId,
           `Could not read message ${parsed.messageId} in that group (${msgJson.description ?? 'not found'}).\n\nThe link must point at the actual file message — open the ZIP in the group topic → tap it → Copy link. That link looks like t.me/syncourse/<topic-id>/<message-id> with the real numbers, not the example 2/41.`,
+          threadId,
         );
       }
       const m = msgJson.result;
       const doc = m.document ?? m.video ?? m.audio;
       if (!doc) {
-        return this.sendText(chatId, 'That message does not contain a file (document/video/audio). Attach a ZIP or video and try again.');
+        return this.sendText(chatId, 'That message does not contain a file (document/video/audio). Attach a ZIP or video and try again.', threadId);
       }
 
       await this.saveLink({
@@ -334,32 +342,34 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       return this.sendText(
         chatId,
         `✅ Linked “${course.title}”\n📦 ${doc.file_name ?? 'file'}${doc.file_size ? ` · ${(doc.file_size / 1024 / 1024).toFixed(1)} MB` : ''}\n\nUsers can now get it with /download ${slug} or from the app.`,
+        threadId,
       );
     } catch (err) {
       this.logger.error(`link failed: ${(err as Error).message}`);
-      return this.sendText(chatId, 'Something went wrong while linking. Check the bot has access to the group.');
+      return this.sendText(chatId, 'Something went wrong while linking. Check the bot has access to the group.', threadId);
     }
   }
 
-  private async unlinkCourse(chatId: number, slug: string) {
-    if (!slug) return this.sendText(chatId, 'Usage: /unlink <course-slug>');
+  private async unlinkCourse(chatId: number, slug: string, threadId?: number | null) {
+    if (!slug) return this.sendText(chatId, 'Usage: /unlink <course-slug>', threadId);
     const course = await this.prisma.course.findUnique({ where: { slug }, select: { id: true, title: true } });
-    if (!course) return this.sendText(chatId, `Course “${slug}” not found.`);
+    if (!course) return this.sendText(chatId, `Course “${slug}” not found.`, threadId);
     await this.prisma.telegramCourseLink.deleteMany({ where: { courseId: course.id } });
-    return this.sendText(chatId, `Unlinked “${course.title}” — the Telegram file is no longer served.`);
+    return this.sendText(chatId, `Unlinked “${course.title}” — the Telegram file is no longer served.`, threadId);
   }
 
   /**
    * /newcourse Title | Instructor | Category | contentType | price | imageUrl
    * Creates a course that immediately appears on the site.
    */
-  private async newCourse(chatId: number, arg: string) {
+  private async newCourse(chatId: number, arg: string, threadId?: number | null) {
     const parts = arg.split('|').map((p) => p.trim());
     const [title, instructor, category, contentType, price, imageUrl] = parts;
     if (!title || !instructor) {
       return this.sendText(
         chatId,
         'Usage:\n/newcourse Course Title | Instructor Name | Category | course|mini-course|cheat-sheet|roadmap | price | image-url\n\nOnly Title and Instructor are required.',
+        threadId,
       );
     }
     try {
@@ -396,15 +406,16 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       return this.sendText(
         chatId,
         `✅ Course created: “${course.title}”\n🔗 ${process.env.PUBLIC_APP_URL || 'https://syncourse.pages.dev'}/courses/${course.slug}\n\nNow attach the file with:\n/link ${course.slug} <t.me group link>`,
+        threadId,
       );
     } catch (err) {
       this.logger.error(`newCourse failed: ${(err as Error).message}`);
-      return this.sendText(chatId, 'Could not create the course — check the format and try again.');
+      return this.sendText(chatId, 'Could not create the course — check the format and try again.', threadId);
     }
   }
 
-  private async broadcast(chatId: number, text: string) {
-    if (!text) return this.sendText(chatId, 'Usage: /broadcast <message text>');
+  private async broadcast(chatId: number, text: string, threadId?: number | null) {
+    if (!text) return this.sendText(chatId, 'Usage: /broadcast <message text>', threadId);
     const users = await this.prisma.user.findMany({
       where: { telegramId: { not: null } },
       select: { telegramId: true },
@@ -422,7 +433,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
         /* skip */
       }
     }
-    return this.sendText(chatId, `Broadcast sent to ${sent}/${users.length} linked users.`);
+    return this.sendText(chatId, `Broadcast sent to ${sent}/${users.length} linked users.`, threadId);
   }
 
   // ---------------------------------------------------------------
@@ -430,7 +441,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
   // ---------------------------------------------------------------
 
   /** Send the course file (or forward it) to a chat. */
-  private async sendCourseFile(chatId: number, slug: string) {
+  private async sendCourseFile(chatId: number, slug: string, threadId?: number | null) {
     const course = await this.prisma.course.findUnique({
       where: { slug },
       select: { id: true, title: true, slug: true, ratingAvg: true, lecturer: { select: { name: true } } },
@@ -445,11 +456,13 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     const caption = courseCaption(course, link.fileName);
     try {
       if (link.fileId) {
-        const res = await this.api('sendDocument', {
+        const body: Record<string, unknown> = {
           chat_id: chatId,
           document: link.fileId,
           caption,
-        });
+        };
+        if (threadId) body.message_thread_id = threadId;
+        const res = await this.api('sendDocument', body);
         if (!(await res.json()).ok) throw new Error('sendDocument failed');
       } else {
         const res = await this.api('forwardMessage', {
@@ -458,7 +471,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
           message_id: Number(link.fileMessageId),
         });
         if (!(await res.json()).ok) throw new Error('forwardMessage failed');
-        await this.sendText(chatId, caption);
+        await this.sendText(chatId, caption, threadId);
       }
       await this.prisma.course.update({
         where: { id: course.id },
@@ -483,15 +496,15 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** start=download_<lessonId> — legacy flow: send the lesson link text. */
-  private async sendLessonLink(chatId: number, lessonId: string) {
+  private async sendLessonLink(chatId: number, lessonId: string, threadId?: number | null) {
     const lesson = await this.prisma.lesson.findUnique({
       where: { id: lessonId },
       include: { course: true },
     });
-    if (!lesson) return this.sendText(chatId, 'Lesson not found.');
+    if (!lesson) return this.sendText(chatId, 'Lesson not found.', threadId);
     const appUrl = process.env.PUBLIC_APP_URL || 'https://syncourse.pages.dev';
     const text = `📚 Syncourse\n\n${lesson.course.title}\n${lesson.title}\n\n${appUrl}/courses/${lesson.course.slug}/lessons/${lesson.id}`;
-    await this.sendText(chatId, text);
+    await this.sendText(chatId, text, threadId);
   }
 
   /** Numbered list of every course slug — shown when /link can't find one. */
@@ -534,13 +547,13 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
-  private async sendCourseList(chatId: number) {
+  private async sendCourseList(chatId: number, threadId?: number | null) {
     const links = await this.prisma.telegramCourseLink.findMany({
       include: { course: { select: { title: true, slug: true, ratingAvg: true } } },
       take: 50,
     });
     if (links.length === 0) {
-      return this.sendText(chatId, 'No courses linked yet. Ask an admin to link files with /link.');
+      return this.sendText(chatId, 'No courses linked yet. Ask an admin to link files with /link.', threadId);
     }
     const rows = links
       .map(
@@ -548,22 +561,27 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
           `${i + 1}. ${l.course.title} — /download ${l.course.slug}${l.fileName ? ` (${l.fileName})` : ''}`,
       )
       .join('\n');
-    await this.sendText(chatId, `📚 Courses with Telegram files:\n\n${rows}`);
+    await this.sendText(chatId, `📚 Courses with Telegram files:\n\n${rows}`, threadId);
   }
 
   // ---------------------------------------------------------------
   // Helpers
   // ---------------------------------------------------------------
 
-  private async sendText(chatId: number, text: string) {
+  private async sendText(chatId: number, text: string, threadId?: number | null) {
     if (!this.enabled) return;
     try {
-      await this.api('sendMessage', {
+      const body: Record<string, unknown> = {
         chat_id: chatId,
         text,
         parse_mode: 'HTML',
         disable_web_page_preview: true,
-      });
+      };
+      if (threadId) body.message_thread_id = threadId;
+      const res = await this.api('sendMessage', body);
+      if (!(await res.json()).ok) {
+        this.logger.warn(`sendMessage rejected (${chatId}): ${((await res.json()) as { description?: string }).description}`);
+      }
     } catch (err) {
       this.logger.warn(`sendMessage failed: ${(err as Error).message}`);
     }
