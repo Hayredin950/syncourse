@@ -4,6 +4,7 @@ import { AuthProvider } from "@/lib/auth";
 import { TopNav, Footer, BottomNav } from "@/components/Nav";
 
 export const metadata: Metadata = {
+  metadataBase: new URL("https://syncourse.pages.dev"),
   title: "Syncourse — Discover Courses & Learn",
   description:
     "Discover, track, and enjoy courses, mini-courses, cheat-sheets and roadmaps. Browse trending content, manage your learning, and explore by category on Syncourse.",
