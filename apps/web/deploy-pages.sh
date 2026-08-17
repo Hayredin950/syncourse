@@ -8,7 +8,8 @@ set -euo pipefail
 
 cd "$(dirname "$0")"
 
-echo "→ Building static export..."
+echo "→ Building static export (clean — env vars like NEXT_PUBLIC_* are inlined at build time)..."
+rm -rf .next out
 npx next build
 
 echo "→ Setting SPA fallback (serve the app shell for unmatched routes)…"
