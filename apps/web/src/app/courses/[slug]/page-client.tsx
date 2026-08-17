@@ -31,8 +31,12 @@ export default function CoursePage() {
   const [toast, setToast] = useState("");
   const [coverBusy, setCoverBusy] = useState(false);
   const coverInputRef = useRef<HTMLInputElement>(null);
+  const [catSlugs, setCatSlugs] = useState<Record<string, string>>({});
 
   useEffect(() => {
+    get<{ name: string; slug: string }[]>("/categories")
+      .then((cats) => setCatSlugs(Object.fromEntries(cats.map((c) => [c.name, c.slug]))))
+      .catch(() => {});
     get<CourseDetail>(`/courses/${slug}`)
       .then((d) => {
         setCourse(d);
@@ -213,7 +217,21 @@ export default function CoursePage() {
         )}
         <input ref={coverInputRef} type="file" accept="image/*" className="hidden" onChange={onCoverFile} />
         <div className="absolute bottom-0 left-0 right-0 p-4">
-          <div className="text-[11px] uppercase tracking-wide text-muted">{course.categoryNames.join(" · ")}</div>
+          <div className="flex flex-wrap gap-x-2 gap-y-0.5 text-[11px] uppercase tracking-wide">
+            {course.categoryNames.map((cat) =>
+              catSlugs[cat] ? (
+                <Link
+                  key={cat}
+                  href={`/browse?category=${catSlugs[cat]}`}
+                  className="font-medium text-accent hover:text-accent-hover"
+                >
+                  {cat}
+                </Link>
+              ) : (
+                <span key={cat} className="text-muted">{cat}</span>
+              ),
+            )}
+          </div>
           <h1 className="mt-0.5 text-xl font-bold leading-tight text-text">{course.title}</h1>
           <div className="mt-1 flex flex-wrap items-center gap-1.5 text-xs">
             <span className={ratingColor(course.ratingAvg)}>★ {course.ratingAvg.toFixed(1)}</span>
@@ -269,6 +287,34 @@ export default function CoursePage() {
           </button>
         )}
       </div>
+
+      {/* tags + audience — clickable chips linking into search/browse */}
+      {(course.tags.length > 0 || course.audience.length > 0) && (
+        <div className="px-4 pt-3">
+          {course.tags.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {course.tags.map((t) => (
+                <Link
+                  key={t}
+                  href={`/search?q=${encodeURIComponent(t)}`}
+                  className="rounded-full bg-surface px-2.5 py-1 text-[11px] text-muted transition-colors hover:bg-surface-hover hover:text-text"
+                >
+                  {t}
+                </Link>
+              ))}
+            </div>
+          )}
+          {course.audience.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {course.audience.map((a) => (
+                <span key={a} className="rounded-full border border-border px-2.5 py-1 text-[11px] text-dim">
+                  {a}
+                </span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
 
       {/* downloads analytics — the web-only widget */}
       <div className="mx-4 mt-4 rounded-lg border border-border bg-surface p-3">
@@ -336,11 +382,11 @@ export default function CoursePage() {
             <span className="flex h-11 w-11 items-center justify-center rounded-full bg-surface-raised text-lg font-bold text-accent">
               {course.lecturer.name.charAt(0)}
             </span>
-            <div className="min-w-0">
+            <Link href={`/lecturers/${course.lecturer.slug}`} className="min-w-0">
               <div className="text-[11px] uppercase tracking-wide text-dim">Taught By</div>
-              <div className="text-sm font-semibold text-text">{course.lecturer.name}</div>
+              <div className="text-sm font-semibold text-text hover:text-accent">{course.lecturer.name}</div>
               {course.lecturer.credentials && <div className="text-xs text-muted">{course.lecturer.credentials}</div>}
-            </div>
+            </Link>
             <Link href={`/lecturers/${course.lecturer.slug}`} className="ml-auto text-xs font-medium text-accent">
               View profile
             </Link>
@@ -353,11 +399,11 @@ export default function CoursePage() {
             <span className="flex h-10 w-10 items-center justify-center rounded-full bg-surface-raised text-sm font-bold text-accent">
               {course.organization.name.charAt(0)}
             </span>
-            <div className="min-w-0">
+            <Link href={`/organizations/${course.organization.slug}`} className="min-w-0">
               <div className="text-[11px] uppercase tracking-wide text-dim">Channel</div>
-              <div className="text-sm font-semibold text-text">{course.organization.name}</div>
+              <div className="text-sm font-semibold text-text hover:text-accent">{course.organization.name}</div>
               <div className="text-xs text-muted">{compact(course.organization.subscribers)} subscribers</div>
-            </div>
+            </Link>
             <Link href={`/organizations/${course.organization.slug}`} className="ml-auto text-xs font-medium text-accent">
               View channel
             </Link>

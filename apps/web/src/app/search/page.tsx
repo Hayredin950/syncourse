@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useRef, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { get } from "@/lib/api";
 import type { CourseSummary } from "@/lib/types";
 import { CourseRow } from "@/components/CourseCard";
@@ -33,9 +33,10 @@ function getSpeechRecognition(): SpeechRecognitionLike | null {
   return Ctor ? new Ctor() : null;
 }
 
-export default function SearchPage() {
+function SearchInner() {
   const router = useRouter();
-  const [q, setQ] = useState("");
+  const params = useSearchParams();
+  const [q, setQ] = useState(params.get("q") ?? "");
   const [data, setData] = useState<SearchData | null>(null);
   const [trending, setTrending] = useState<string[]>([]);
   const [listening, setListening] = useState(false);
@@ -179,5 +180,13 @@ export default function SearchPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function SearchPage() {
+  return (
+    <Suspense fallback={<div className="p-4 text-sm text-muted">Loading…</div>}>
+      <SearchInner />
+    </Suspense>
   );
 }
