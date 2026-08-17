@@ -265,6 +265,15 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
 
     // Mode 2: t.me link in the DM.
     const url = arg.split(/\s+/)[1] ?? '';
+    if (!url) {
+      return this.sendText(
+        chatId,
+        'You sent the slug but no file. Two ways to link it:\n\n' +
+          '1️⃣ In the GROUP: tap the ZIP message → Reply → /link <slug>\n' +
+          '2️⃣ In this chat: /link <slug> https://t.me/syncourse/<topic-id>/<message-id>\n\n' +
+          'I need the actual file message — not a plain new message.',
+      );
+    }
     const parsed = parseTelegramLink(url);
     if (!parsed) return this.sendText(chatId, 'Could not parse that t.me link. It should look like https://t.me/group/2/41');
 
