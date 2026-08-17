@@ -33,3 +33,11 @@ export class LinkTelegramDto {
   @MinLength(3)
   telegramUsername: string;
 }
+
+export class GoogleExchangeDto {
+  @IsString()
+  code: string;
+
+  @IsString()
+  redirectUri?: string;
+}

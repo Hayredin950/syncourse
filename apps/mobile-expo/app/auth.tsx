@@ -1,9 +1,17 @@
 import { useRouter } from "expo-router";
-import React, { useState } from "react";
+import * as AuthSession from "expo-auth-session";
+import * as Google from "expo-auth-session/providers/google";
+import * as WebBrowser from "expo-web-browser";
+import React, { useEffect, useState } from "react";
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import * as api from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { colors } from "../lib/tokens";
+
+WebBrowser.maybeCompleteAuthSession();
+
+const GOOGLE_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID;
+const GOOGLE_REDIRECT_URI = AuthSession.makeRedirectUri({ scheme: "syncourse", path: "auth" });
 
 export default function AuthScreen() {
   const router = useRouter();
@@ -15,6 +23,42 @@ export default function AuthScreen() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
+  // eslint-disable-next-line react-hooks/rules-of-hooks
+  const [googleRequest, googleResponse, googlePrompt] = Google.useAuthRequest({
+    clientId: GOOGLE_CLIENT_ID,
+    redirectUri: GOOGLE_REDIRECT_URI,
+    scopes: ["openid", "email", "profile"],
+  });
+
+  useEffect(() => {
+    if (!googleResponse) return;
+    if (googleResponse.type !== "success") {
+      if (googleResponse.type === "error") setError("Google sign-in was cancelled or failed");
+      return;
+    }
+    const code = googleResponse.params.code;
+    setBusy(true);
+    setError(null);
+    api
+      .googleExchange(code, GOOGLE_REDIRECT_URI)
+      .then(async () => {
+        await refresh();
+        router.replace("/");
+      })
+      .catch((e) => setError(e instanceof Error ? e.message : "Google sign-in failed"))
+      .finally(() => setBusy(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [googleResponse]);
+
+  const startGoogle = async () => {
+    setError(null);
+    if (!GOOGLE_CLIENT_ID) {
+      setError("Google sign-in needs EXPO_PUBLIC_GOOGLE_CLIENT_ID — use email for now.");
+      return;
+    }
+    const result = await googlePrompt();
+    if (result?.type === "error") setError("Google sign-in was cancelled or failed");
+  };
   const submit = async () => {
     setError(null);
     setBusy(true);
@@ -81,8 +125,8 @@ export default function AuthScreen() {
         >
           {mode === "login" ? "New here? Create an account" : "Already have an account? Sign in"}
         </Text>
-        <Text style={styles.google} onPress={() => setError("Google sign-in: set GOOGLE_CLIENT_ID and it appears here")}>
-          Continue with Google
+        <Text style={styles.google} onPress={busy ? undefined : startGoogle}>
+          {busy ? "Signing in…" : "Continue with Google"}
         </Text>
       </ScrollView>
     </KeyboardAvoidingView>

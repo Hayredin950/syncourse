@@ -9,7 +9,10 @@
     "userInterfaceStyle": "dark",
     "backgroundColor": "#0E0E10",
     "newArchEnabled": true,
-    "plugins": ["expo-router"],
+    "plugins": [
+      "expo-router",
+      "expo-web-browser"
+    ],
     "extra": {
       "eas": {
         "projectId": "d47a1209-7356-4518-bb9c-1fa06648345e"

@@ -1,14 +1,15 @@
 "use client";
 
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/auth";
+import { apiUrl, setToken } from "@/lib/api";
 
 function AuthInner() {
   const router = useRouter();
   const params = useSearchParams();
   const next = params.get("next") || "/";
-  const { login, register } = useAuth();
+  const { login, register, refresh } = useAuth();
 
   const [mode, setMode] = useState<"login" | "register">("login");
   const [name, setName] = useState("");
@@ -17,6 +18,26 @@ function AuthInner() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [googleBusy, setGoogleBusy] = useState(false);
+
+  // Google OAuth bounce-back: the API redirects here with ?token=...
+  useEffect(() => {
+    const token = params.get("token");
+    if (!token) return;
+    setToken(token);
+    setGoogleBusy(true);
+    void refresh()
+      .catch(() => undefined)
+      .finally(() => router.replace(next));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params]);
+
+  const startGoogle = () => {
+    setGoogleBusy(true);
+    const current = window.location.origin + window.location.pathname;
+    const redirect = `${current}${window.location.search || `?next=${encodeURIComponent(next)}`}`;
+    window.location.href = `${apiUrl()}/auth/google?redirect=${encodeURIComponent(redirect)}`;
+  };
 
   const submit = async () => {
     setBusy(true);
@@ -86,10 +107,17 @@ function AuthInner() {
         </button>
 
         <button
-          onClick={() => setError("Google sign-in needs GOOGLE_CLIENT_ID — use email for now.")}
-          className="w-full rounded-full border border-border py-2.5 text-sm font-medium text-text hover:bg-surface-hover"
+          onClick={startGoogle}
+          disabled={googleBusy}
+          className="flex w-full items-center justify-center gap-2 rounded-full border border-border py-2.5 text-sm font-medium text-text hover:bg-surface-hover disabled:opacity-40"
         >
-          Continue with Google
+          <svg width="16" height="16" viewBox="0 0 48 48" aria-hidden>
+            <path fill="#FFC107" d="M43.6 20.1H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3l5.7-5.7C34.5 6.1 29.5 4 24 4 13 4 4 13 4 24s9 20 20 20 20-9 20-20c0-1.3-.1-2.6-.4-3.9z"/>
+            <path fill="#FF3D00" d="M6.3 14.7l6.6 4.8C14.7 15.1 19 12 24 12c3.1 0 5.9 1.2 8 3l5.7-5.7C34.5 6.1 29.5 4 24 4 16.3 4 9.7 8.3 6.3 14.7z"/>
+            <path fill="#4CAF50" d="M24 44c5.2 0 9.9-2 13.4-5.2l-6.2-5.2C29.2 35.1 26.7 36 24 36c-5.2 0-9.6-3.3-11.3-8l-6.5 5C9.5 39.6 16.2 44 24 44z"/>
+            <path fill="#1976D2" d="M43.6 20.1H42V20H24v8h11.3c-.8 2.2-2.2 4.2-4.1 5.6l6.2 5.2C36.9 39.2 44 34 44 24c0-1.3-.1-2.6-.4-3.9z"/>
+          </svg>
+          {googleBusy ? "Redirecting to Google…" : "Continue with Google"}
         </button>
 
         <button onClick={() => setMode(mode === "login" ? "register" : "login")} className="w-full text-center text-xs text-muted hover:text-text">

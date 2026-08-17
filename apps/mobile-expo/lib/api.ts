@@ -105,6 +105,9 @@ export async function register(name: string, email: string, password: string) {
   await setToken(data.accessToken);
 }
 
+export const googleExchange = (code: string, redirectUri: string) =>
+  post<{ accessToken: string }>("/auth/google/exchange", { code, redirectUri });
+
 export const logout = () => setToken(null);
 
 // --- catalog ---

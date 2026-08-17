@@ -1,6 +1,16 @@
-import { Body, Controller, Get, Post, HttpCode, HttpStatus } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Post,
+  HttpCode,
+  HttpStatus,
+  Query,
+  Redirect,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { AuthService } from './auth.service';
-import { LinkTelegramDto, LoginDto, RegisterDto } from './dto';
+import { GoogleExchangeDto, LinkTelegramDto, LoginDto, RegisterDto } from './dto';
 import { Public } from '../common/public.decorator';
 import { CurrentUser } from '../common/current-user.decorator';
 import { AuthUser } from '../common/jwt-auth.guard';
@@ -20,6 +30,37 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   login(@Body() dto: LoginDto) {
     return this.auth.login(dto.email, dto.password);
+  }
+
+  /** Step 1 (web): bounce the browser to Google's consent screen. */
+  @Public()
+  @Get('google')
+  @Redirect()
+  googleAuth(@Query('redirect') redirect?: string) {
+    const safeRedirect =
+      typeof redirect === 'string' && /^https?:\/\//.test(redirect)
+        ? redirect
+        : (process.env.PUBLIC_APP_URL ?? '');
+    return { url: this.auth.googleAuthUrl(safeRedirect) };
+  }
+
+  /** Step 2 (web): Google redirects here with a code; bounce back to the app with a token. */
+  @Public()
+  @Get('google/callback')
+  @Redirect()
+  async googleCallback(@Query('code') code?: string, @Query('state') state?: string) {
+    if (!code) throw new UnauthorizedException('Missing Google authorization code');
+    const { redirect, token } = await this.auth.googleCallback(code, state ?? '');
+    const separator = redirect.includes('?') ? '&' : '?';
+    return { url: `${redirect}${separator}token=${encodeURIComponent(token)}` };
+  }
+
+  /** Mobile flow: exchange the Google code for a session token directly. */
+  @Public()
+  @Post('google/exchange')
+  @HttpCode(HttpStatus.OK)
+  googleExchange(@Body() dto: GoogleExchangeDto) {
+    return this.auth.googleExchange(dto.code, dto.redirectUri ?? '');
   }
 
   @Get('me')
