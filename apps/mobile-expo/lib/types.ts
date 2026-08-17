@@ -326,20 +326,26 @@ export interface CircleLite {
   joined: boolean;
 }
 
+export interface ActivityItem {
+  type: "review" | "enrollment";
+  id: string;
+  userName: string;
+  userAvatar: string | null;
+  username: string;
+  course: { id: string; title: string; slug: string; thumbnailUrl: string | null };
+  body?: string;
+  createdAt: string;
+}
+
+export interface ActivityFeed {
+  followingCount: number;
+  items: ActivityItem[];
+}
+
 export interface CircleDetail extends CircleLite {
   ownerName: string;
   members: CircleMember[];
   activity: ActivityItem[];
-}
-
-export interface ActivityItem {
-  id: string;
-  userName: string;
-  userAvatar: string | null;
-  verb: string;
-  targetTitle: string;
-  targetSlug?: string;
-  createdAt: string;
 }
 
 export interface CheckoutResult {

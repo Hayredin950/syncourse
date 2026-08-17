@@ -88,7 +88,7 @@ export default function CirclesScreen() {
       </View>
 
       {view === "activity" ? (
-        <ActivityList data={activityQ.data?.activity ?? []} loading={activityQ.isLoading} />
+        <ActivityList data={activityQ.data?.items ?? []} loading={activityQ.isLoading} />
       ) : (
         <FlatList
           data={circles}
@@ -247,6 +247,16 @@ function CircleRow({
   );
 }
 
+function formatWhen(iso: string): string {
+  const d = new Date(iso);
+  const now = Date.now();
+  const diff = now - d.getTime();
+  if (diff < 60_000) return "just now";
+  if (diff < 3_600_000) return `${Math.floor(diff / 60_000)}m ago`;
+  if (diff < 86_400_000) return `${Math.floor(diff / 3_600_000)}h ago`;
+  return d.toLocaleDateString();
+}
+
 function ActivityList({
   data,
   loading,
@@ -283,16 +293,14 @@ function ActivityList({
           </View>
           <View style={{ flex: 1 }}>
             <Text style={styles.body}>
-              <Text style={styles.name}>{item.userName}</Text> {item.verb}{" "}
-              {item.targetSlug ? (
-                <Link href={`/courses/${item.targetSlug}`} style={styles.target}>
-                  {item.targetTitle}
-                </Link>
-              ) : (
-                <Text style={styles.target}>{item.targetTitle}</Text>
-              )}
+              <Text style={styles.name}>{item.userName}</Text>{" "}
+              {item.type === "review" ? "reviewed" : "enrolled in"}{" "}
+              <Link href={`/courses/${item.course.slug}`} style={styles.target}>
+                {item.course.title}
+              </Link>
             </Text>
-            <Text style={styles.muted}>{item.createdAt}</Text>
+            {item.body ? <Text style={[styles.muted, { marginTop: 2 }]} numberOfLines={2}>“{item.body}”</Text> : null}
+            <Text style={styles.muted}>{formatWhen(item.createdAt)}</Text>
           </View>
         </View>
       )}

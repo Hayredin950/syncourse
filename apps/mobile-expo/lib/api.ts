@@ -1,5 +1,6 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import type {
+  ActivityFeed,
   ActivityItem,
   AppVersion,
   Category,
@@ -196,14 +197,14 @@ export const submitReference = (subscriptionId: string, reference: string) =>
 
 // --- circles ---
 export const circlesActivity = () =>
-  get<{ activity: ActivityItem[] }>("/circles/activity");
+  get<ActivityFeed>("/circles/activity");
 export const circles = () => get<CircleLite[]>("/circles");
 export const createCircle = (input: { name: string; description?: string }) =>
   post<CircleDetail>("/circles", input);
 export const circleDetail = (id: string) => get<CircleDetail>(`/circles/${id}`);
 export const joinCircle = (id: string) => post<{ joined: boolean }>(`/circles/${id}/join`);
 export const leaveCircle = (id: string) => post<{ left: boolean }>(`/circles/${id}/leave`);
-export const activityFeed = () => get<{ activity: ActivityItem[] }>("/activity");
+export const activityFeed = () => get<ActivityFeed>("/activity");
 
 // --- users ---
 export const me = () => get<UserProfile>("/users/me");
