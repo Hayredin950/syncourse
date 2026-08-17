@@ -3,11 +3,18 @@
 import Link from "next/link";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import type { CSSProperties } from "react";
+import { Bookmark, Check, Star, Play } from "lucide-react";
 import type { CourseSummary } from "@/lib/types";
-import { compact, formatDuration, ratingColor } from "@/lib/format";
+import { compact, formatDuration } from "@/lib/format";
 import { cloudinaryUrl } from "@/lib/cloudinary";
-import { Stars } from "./StarRating";
 import { useAuth } from "@/lib/auth";
+
+export function hueFromString(s: string): number {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360;
+  return h;
+}
 
 const TYPE_ICONS: Record<string, string> = {
   course: "🎓",
@@ -16,48 +23,76 @@ const TYPE_ICONS: Record<string, string> = {
   roadmap: "🗺️",
 };
 
-export function hueFromString(s: string): number {
-  let h = 0;
-  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360;
-  return h;
-}
-
-export function CoverArt({ course, ratio = "2/3" }: { course: CourseSummary; ratio?: string }) {
+/** Course cover: branded gradient derived from slug + title mark, exactly like the replica. */
+export function CoverArt({
+  course,
+  mark = true,
+  large = false,
+  badges = true,
+}: {
+  course: CourseSummary;
+  mark?: boolean;
+  large?: boolean;
+  badges?: boolean;
+}) {
   const hue = hueFromString(course.slug || course.id);
-  const icon = TYPE_ICONS[course.contentType] ?? "🎓";
+  const a = `hsl(${hue} 42% 18%)`;
+  const b = `hsl(${(hue + 55) % 360} 50% 9%)`;
+  const words = (course.title || "Course")
+    .replace(/[—–\-:]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w.toUpperCase());
+  const code = course.contentType
+    ? course.contentType === "mini-course"
+      ? "MINI"
+      : course.contentType === "cheat-sheet"
+        ? "SHEET"
+        : course.contentType === "roadmap"
+          ? "MAP"
+          : "CRS"
+    : "CRS";
+
   return (
     <div
-      className={`relative flex w-full items-center justify-center overflow-hidden ${ratio === "2/3" ? "aspect-[2/3]" : "aspect-[16/9]"}`}
-      style={{
-        background: `linear-gradient(145deg, hsl(${hue} 42% 18%), hsl(${(hue + 55) % 360} 50% 9%))`,
-      }}
+      className="cover"
+      style={
+        {
+          "--cover-a": a,
+          "--cover-b": b,
+          ...(large ? { aspectRatio: "1.2" } : {}),
+        } as CSSProperties
+      }
     >
       {course.thumbnailUrl ? (
         // eslint-disable-next-line @next/next/no-img-element
         <img
-          src={cloudinaryUrl(course.thumbnailUrl, ratio === "2/3" ? { width: 280, height: 420 } : { width: 420, height: 236 }) ?? undefined}
+          src={cloudinaryUrl(course.thumbnailUrl, { width: 280, height: 420 }) ?? undefined}
           alt={course.title}
           loading="lazy"
-          className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
+          className="absolute inset-0 h-full w-full object-cover"
+          style={{ zIndex: 0 }}
         />
       ) : (
+        <span className="cover-code">
+          SC / {code} · {course.level.slice(0, 3).toUpperCase()}
+        </span>
+      )}
+      {mark && !course.thumbnailUrl && (
+        <span className="cover-mark">
+          {words.map((line) => (
+            <span key={line} style={{ display: "block" }}>
+              {line}
+            </span>
+          ))}
+        </span>
+      )}
+      {badges && (
         <>
-          <span className="text-3xl opacity-90">{icon}</span>
-          <span
-            className="absolute left-2.5 top-2.5 h-0.5 w-8 rounded-full"
-            style={{ background: "hsl(39 91% 55%)" }}
-          />
+          {course.isNew && <span className="cover-badge added">Added</span>}
+          {course.isPremium && <span className="cover-badge premium">Premium</span>}
         </>
-      )}
-      {course.isNew && (
-        <span className="absolute left-1 top-1 rounded-sm bg-success px-1.5 py-0.5 text-[10px] font-semibold text-black">
-          Added
-        </span>
-      )}
-      {course.isPremium && (
-        <span className="absolute bottom-1 left-1 rounded-sm bg-accent px-1.5 py-0.5 text-[10px] font-bold text-black">
-          Premium
-        </span>
       )}
     </div>
   );
@@ -99,51 +134,59 @@ export function CourseCard({
       .catch(() => undefined);
   };
 
-  const widthCls = fill ? "w-full" : "w-[130px] shrink-0 snap-start sm:w-[140px] md:w-[150px]";
-
   return (
-    <div className={`group relative min-w-0 ${widthCls}`}>
-      <Link href={`/courses/${course.slug}`} className="block min-w-0">
-        <div className="relative overflow-hidden rounded-lg bg-surface">
-          <CoverArt course={course} ratio={wide ? "16/9" : "2/3"} />
-          {rank !== undefined && (
-            <span className="absolute left-1 top-0 text-2xl font-bold text-text/90 drop-shadow-[0_1px_2px_rgba(0,0,0,0.8)]">
-              {rank}
-            </span>
-          )}
-        </div>
-        <div className={`mt-1.5 line-clamp-2 min-w-0 leading-snug text-text ${wide ? "text-[15px] font-semibold" : "text-[13px] font-medium"}`}>
-          {course.title}
-        </div>
-        <div className="mt-0.5 flex items-center gap-1 text-[11px] text-muted">
-          <span className={ratingColor(course.ratingAvg)}>★ {course.ratingAvg.toFixed(1)}</span>
-          <span className="text-dim">·</span>
-          <span>{course.level}</span>
-          <span className="text-dim">·</span>
-          <span>{formatDuration(course.durationMin)}</span>
-        </div>
-      </Link>
-
-      {/* quick actions — desktop hover only */}
-      <div className="absolute right-1 top-1 z-10 hidden items-center gap-1 md:group-hover:flex">
+    <Link href={`/courses/${course.slug}`} className="course-card" data-testid={`card-course-${course.slug}`}>
+      <div className="cover-wrap" style={{ position: "relative" }}>
+        <CoverArt course={course} large={wide} />
+        {rank !== undefined && (
+          <span
+            className="cover-badge"
+            style={{
+              position: "absolute",
+              left: 8,
+              top: 6,
+              background: "rgba(0,0,0,.55)",
+              color: "#fff",
+              fontSize: 13,
+              fontWeight: 800,
+              zIndex: 2,
+            }}
+          >
+            {rank}
+          </span>
+        )}
         <button
           onClick={toggleSave}
           title={saved ? "Remove from watchlist" : "Add to watchlist"}
-          className={`flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-xs backdrop-blur transition-colors hover:bg-black/80 ${
-            saved ? "text-accent" : "text-white"
-          }`}
+          className="save-icon"
+          style={{ position: "absolute", right: 8, top: 8, zIndex: 2 }}
+          aria-label="Save"
         >
-          {saved ? "♥" : "♡"}
+          {saved ? <Check size={14} /> : <Bookmark size={14} />}
         </button>
-        <Link
-          href={`/courses/${course.slug}`}
-          title="Open course"
-          className="flex h-7 w-7 items-center justify-center rounded-full bg-black/60 text-xs text-white backdrop-blur transition-colors hover:bg-black/80"
-        >
-          ▶
-        </Link>
+        {/* quick open — desktop hover only */}
+        <span
+          className="quick-open"
+          style={{ position: "absolute", inset: 0, zIndex: 1, display: "none" }}
+        />
       </div>
-    </div>
+      <div className="card-title">{course.title}</div>
+      <div className="card-meta">
+        <span className="rating">
+          <Star size={10} fill="currentColor" /> {course.ratingAvg.toFixed(1)}
+        </span>
+        <span>{course.level}</span>
+        <span>·</span>
+        <span>{formatDuration(course.durationMin)}</span>
+      </div>
+      {course.progress !== undefined && (
+        <div style={{ height: 3, background: "#2c2924", marginTop: 8, borderRadius: 5 }}>
+          <div style={{ width: `${course.progress}%`, height: "100%", background: "hsl(var(--primary))", borderRadius: 5 }} />
+        </div>
+      )}
+      {/* desktop hover quick actions */}
+      <span className="hidden md:block" />
+    </Link>
   );
 }
 
@@ -153,29 +196,22 @@ export function CourseRow({ course }: { course: CourseSummary }) {
       href={`/courses/${course.slug}`}
       className="flex w-full items-center gap-3 rounded-lg p-2 transition-colors hover:bg-surface-hover"
     >
-      <div className="h-[72px] w-[48px] shrink-0 overflow-hidden rounded-md bg-surface">
-        {course.thumbnailUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={cloudinaryUrl(course.thumbnailUrl, { width: 96, height: 144 }) ?? undefined} alt={course.title} loading="lazy" className="h-full w-full object-cover" />
-        ) : (
-          <div
-            className="flex h-full w-full items-center justify-center"
-            style={{ background: `linear-gradient(145deg, hsl(${hueFromString(course.slug)} 42% 18%), hsl(${(hueFromString(course.slug) + 55) % 360} 50% 9%))` }}
-          >
-            <span className="text-sm">{TYPE_ICONS[course.contentType] ?? "🎓"}</span>
-          </div>
-        )}
+      <div className="h-[72px] w-[48px] shrink-0 overflow-hidden rounded-md" style={{ position: "relative" }}>
+        <CoverArt course={course} mark={false} badges={false} />
       </div>
       <div className="min-w-0 flex-1">
         <div className="line-clamp-1 text-sm font-medium text-text">{course.title}</div>
         <div className="line-clamp-1 text-xs text-muted">{course.description}</div>
         <div className="mt-1 flex items-center gap-1.5 text-[11px]">
-          <Stars value={course.ratingAvg} size={11} />
-          <span className={ratingColor(course.ratingAvg)}>{course.ratingAvg.toFixed(1)}</span>
+          <Star size={11} fill="currentColor" className="rating" />
+          <span className="rating">{course.ratingAvg.toFixed(1)}</span>
           <span className="text-dim">·</span>
           <span>{compact(course.enrollmentCount)} students</span>
+          <span className="text-dim">·</span>
+          <span>{formatDuration(course.durationMin)}</span>
         </div>
       </div>
+      <Play size={14} className="text-dim" />
     </Link>
   );
 }

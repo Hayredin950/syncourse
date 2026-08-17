@@ -2,10 +2,11 @@
 
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { Filter, Search, SlidersHorizontal, X } from "lucide-react";
 import { get } from "@/lib/api";
 import type { CourseSummary } from "@/lib/types";
 import { CourseCard, CourseRow } from "@/components/CourseCard";
-import { EmptyState } from "@/components/EmptyState";
+import { MobileHeader } from "@/components/Nav";
 
 const LEVELS = ["All Levels", "Beginner", "Intermediate", "Advanced"];
 const TYPES = ["course", "mini-course", "cheat-sheet", "roadmap"];
@@ -70,52 +71,77 @@ function BrowseInner() {
     router.push(`/browse?${next.toString()}`);
   };
 
+  const heading = category
+    ? category.replaceAll("-", " ")
+    : type
+      ? `${type}s`
+      : sort === "top-rated"
+        ? "Top rated"
+        : "Browse";
+
   return (
-    <div className="pb-6">
-      <div className="flex items-center gap-2 border-b border-border px-4 py-3">
-        <h1 className="text-lg font-bold text-text">Browse</h1>
-        <button
-          onClick={() => setShowFilters(true)}
-          className="ml-auto rounded-full border border-border px-3 py-1 text-xs font-medium text-muted hover:text-text"
-        >
-          Filters{activeFilterCount > 0 ? ` ${activeFilterCount}` : ""}
+    <main className="page">
+      <MobileHeader title="Browse" />
+
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "end" }}>
+        <div>
+          <span className="eyebrow">{category ? "Topic index" : "Library index"}</span>
+          <h1 className="display" style={{ fontSize: 38, marginBottom: 5, textTransform: "capitalize" }}>{heading}</h1>
+          <p className="muted mono" style={{ fontSize: 11, margin: 0 }}>{total}+ results</p>
+        </div>
+        <button className="btn" onClick={() => setShowFilters(true)}>
+          <Filter size={14} style={{ display: "inline", verticalAlign: "middle" }} /> Filters{" "}
+          <span className="badge" style={{ padding: "2px 7px", marginLeft: 4 }}>{activeFilterCount}</span>
         </button>
-        <div className="flex overflow-hidden rounded-md border border-border">
-          <button
-            onClick={() => setView("grid")}
-            className={`px-2 py-1 text-xs ${view === "grid" ? "bg-surface-raised text-text" : "text-dim"}`}
-          >
-            ▦
-          </button>
-          <button
-            onClick={() => setView("list")}
-            className={`px-2 py-1 text-xs ${view === "list" ? "bg-surface-raised text-text" : "text-dim"}`}
-          >
-            ☰
+      </div>
+
+      <div className="filters">
+        <input
+          className="filter-search"
+          placeholder="Search this catalog"
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && e.currentTarget.value.trim()) {
+              router.push(`/search?q=${encodeURIComponent(e.currentTarget.value.trim())}`);
+            }
+          }}
+        />
+        <div className="pills">
+          {categories.slice(0, 8).map((c) => (
+            <button
+              key={c.slug}
+              className={`badge ${category === c.slug ? "primary" : ""}`}
+              onClick={() => setParam("category", category === c.slug ? "" : c.slug)}
+            >
+              {c.name}
+            </button>
+          ))}
+          <button className="badge" onClick={() => setView(view === "grid" ? "list" : "grid")}>
+            <SlidersHorizontal size={13} /> {view === "grid" ? "Grid" : "List"}
           </button>
         </div>
       </div>
 
-      <div className="px-4 py-2 text-xs text-muted">{total}+ results</div>
-
       {loading ? (
-        <div className="grid grid-cols-2 gap-3 p-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 2xl:grid-cols-6">
+        <div className="grid">
           {[...Array(12)].map((_, i) => (
-            <div key={i} className="aspect-[2/3] animate-pulse rounded-lg bg-surface" />
+            <div key={i} className="aspect-[2/3] animate-pulse rounded-xl bg-surface" />
           ))}
         </div>
       ) : results.length === 0 ? (
-        <div className="p-4">
-          <EmptyState title="No courses match those filters" body="Try removing a filter or two." />
+        <div className="dark-panel" style={{ padding: 40, textAlign: "center" }}>
+          <Search size={28} className="rating" />
+          <h3>No courses match that search.</h3>
+          <p className="muted">Try a broader topic or clear your filters.</p>
+          <button className="btn" onClick={() => router.push("/browse")}>Clear filters</button>
         </div>
       ) : view === "grid" ? (
-        <div className="grid grid-cols-2 gap-3 px-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 2xl:grid-cols-6">
+        <div className="grid">
           {results.map((c) => (
             <CourseCard key={c.id} course={c} fill />
           ))}
         </div>
       ) : (
-        <div className="flex flex-col gap-1 px-3">
+        <div className="flex flex-col gap-1">
           {results.map((c) => (
             <CourseRow key={c.id} course={c} />
           ))}
@@ -123,20 +149,15 @@ function BrowseInner() {
       )}
 
       {showFilters && (
-        <div className="fixed inset-0 z-30 flex items-end justify-center bg-black/60" onClick={() => setShowFilters(false)}>
-          <div
-            className="max-h-[80vh] w-full max-w-[420px] overflow-y-auto rounded-t-2xl border-t border-border bg-surface p-5"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-base font-bold text-text">Filters</h2>
-              <button onClick={() => setShowFilters(false)} className="text-sm text-muted hover:text-text">
-                Done
-              </button>
+        <div className="sheet" onClick={() => setShowFilters(false)}>
+          <div className="sheet-card" onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <h3>Filters</h3>
+              <button className="icon-btn" onClick={() => setShowFilters(false)}><X size={15} /></button>
             </div>
 
             <FilterGroup title="Content type">
-              <div className="flex flex-wrap gap-2">
+              <div className="pills">
                 {TYPES.map((t) => (
                   <Chip key={t} active={type === t} onClick={() => setParam("type", type === t ? "" : t)}>
                     {t}
@@ -146,7 +167,7 @@ function BrowseInner() {
             </FilterGroup>
 
             <FilterGroup title="Category">
-              <div className="flex flex-wrap gap-2">
+              <div className="pills">
                 {categories.map((c) => (
                   <Chip key={c.slug} active={category === c.slug} onClick={() => setParam("category", category === c.slug ? "" : c.slug)}>
                     {c.name}
@@ -156,7 +177,7 @@ function BrowseInner() {
             </FilterGroup>
 
             <FilterGroup title="Level">
-              <div className="flex flex-wrap gap-2">
+              <div className="pills">
                 {LEVELS.map((l) => (
                   <Chip key={l} active={level === l} onClick={() => setParam("level", level === l ? "" : l)}>
                     {l}
@@ -166,7 +187,7 @@ function BrowseInner() {
             </FilterGroup>
 
             <FilterGroup title="Min rating">
-              <div className="flex flex-wrap gap-2">
+              <div className="pills">
                 {["", "4", "4.5", "4.8"].map((r) => (
                   <Chip key={r || "any"} active={minRating === r} onClick={() => setParam("minRating", minRating === r ? "" : r)}>
                     {r ? `${r}★+` : "Any"}
@@ -176,7 +197,7 @@ function BrowseInner() {
             </FilterGroup>
 
             <FilterGroup title="Sort">
-              <div className="flex flex-wrap gap-2">
+              <div className="pills">
                 {SORTS.map((s) => (
                   <Chip key={s.value} active={sort === s.value} onClick={() => setParam("sort", sort === s.value ? "newest" : s.value)}>
                     {s.label}
@@ -187,14 +208,14 @@ function BrowseInner() {
           </div>
         </div>
       )}
-    </div>
+    </main>
   );
 }
 
 function FilterGroup({ title, children }: { title: string; children: React.ReactNode }) {
   return (
-    <div className="mb-4">
-      <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-dim">{title}</div>
+    <div style={{ marginBottom: 18 }}>
+      <div className="mono" style={{ fontSize: 10, letterSpacing: ".12em", color: "#c79b62", marginBottom: 10 }}>{title}</div>
       {children}
     </div>
   );
@@ -202,12 +223,7 @@ function FilterGroup({ title, children }: { title: string; children: React.React
 
 function Chip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
   return (
-    <button
-      onClick={onClick}
-      className={`rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
-        active ? "bg-accent text-black" : "bg-bg text-muted hover:text-text"
-      }`}
-    >
+    <button className={`badge ${active ? "primary" : ""}`} onClick={onClick}>
       {children}
     </button>
   );
@@ -215,7 +231,7 @@ function Chip({ active, onClick, children }: { active: boolean; onClick: () => v
 
 export default function BrowsePage() {
   return (
-    <Suspense fallback={<div className="p-4 text-sm text-muted">Loading…</div>}>
+    <Suspense fallback={<main className="page"><p className="muted">Loading…</p></main>}>
       <BrowseInner />
     </Suspense>
   );

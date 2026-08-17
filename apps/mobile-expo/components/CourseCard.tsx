@@ -23,30 +23,58 @@ export function CourseCard({ course, width = 132 }: { course: CourseSummary; wid
   const meta = [course.level, formatDuration(course.durationMin)].filter(Boolean).join(" · ");
   const coverH = Math.round(width * 1.14);
   const hue = hueFromString(course.slug || course.id);
-  const icon = TYPE_ICONS[course.contentType ?? "course"] ?? "🎓";
+  const hueB = (hue + 55) % 360;
+  const words = (course.title || "Course")
+    .replace(/[—–\-:]/g, " ")
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w.toUpperCase());
+  const code =
+    course.contentType === "mini-course"
+      ? "MINI"
+      : course.contentType === "cheat-sheet"
+        ? "SHEET"
+        : course.contentType === "roadmap"
+          ? "MAP"
+          : "CRS";
 
   return (
     <Link href={`/courses/${course.slug}`} asChild>
       <View style={{ width }}>
         {course.thumbnailUrl ? (
           <Image
-            source={
-              course.thumbnailUrl
-                ? { uri: cloudinaryUrl(course.thumbnailUrl, { width: width * 2, height: Math.round(width * 2 * 1.14) }) ?? undefined }
-                : undefined
-            }
+            source={{
+              uri: cloudinaryUrl(course.thumbnailUrl, { width: width * 2, height: Math.round(width * 2 * 1.14) }) ?? undefined,
+            }}
             style={[styles.cover, { width, height: coverH }]}
             resizeMode="cover"
           />
         ) : (
-          <View style={[styles.coverFallback, { width, height: coverH, backgroundColor: `hsl(${hue} 42% 18%)` }]}>
-            <Text style={styles.fallbackIcon}>{icon}</Text>
-            <View style={styles.accentBar} />
+          <View
+            style={[
+              styles.coverFallback,
+              { width, height: coverH, backgroundColor: `hsl(${hue} 42% 18%)` },
+            ]}
+          >
+            <Text style={styles.coverCode}>SC / {code} · {course.level.slice(0, 3).toUpperCase()}</Text>
+            <View style={styles.coverMark}>
+              {words.map((w, i) => (
+                <Text key={i} style={styles.coverMarkLine}>
+                  {w}
+                </Text>
+              ))}
+            </View>
+            {course.isPremium && (
+              <View style={styles.premium}>
+                <Text style={styles.premiumText}>Premium</Text>
+              </View>
+            )}
           </View>
         )}
         {course.isNew && (
           <View style={styles.added}>
-            <Text style={styles.addedText}>ADDED</Text>
+            <Text style={styles.addedText}>Added</Text>
           </View>
         )}
         <Text numberOfLines={2} style={styles.title}>
@@ -74,26 +102,49 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     overflow: "hidden",
   },
-  fallbackIcon: { fontSize: 26, opacity: 0.9 },
-  accentBar: {
+  coverCode: {
     position: "absolute",
     top: 10,
     left: 10,
-    height: 3,
-    width: 32,
-    borderRadius: 2,
-    backgroundColor: colors.accent,
+    color: colors.text,
+    opacity: 0.8,
+    fontFamily: "monospace",
+    fontSize: 8,
+    letterSpacing: 0.5,
   },
+  coverMark: {
+    position: "absolute",
+    left: 10,
+    right: 10,
+    bottom: 12,
+  },
+  coverMarkLine: {
+    color: colors.text,
+    fontSize: 15,
+    fontWeight: "800",
+    letterSpacing: -0.7,
+    lineHeight: 16,
+  },
+  premium: {
+    position: "absolute",
+    bottom: 10,
+    left: 10,
+    backgroundColor: colors.accent,
+    borderRadius: 6,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+  },
+  premiumText: { color: "#211308", fontSize: 9, fontWeight: "800" },
   added: {
     position: "absolute",
     top: 8,
-    left: 8,
+    right: 8,
     backgroundColor: colors.success,
-    borderRadius: 4,
+    borderRadius: 6,
     paddingHorizontal: 6,
-    paddingVertical: 2,
+    paddingVertical: 3,
   },
-  addedText: { color: "#000", fontSize: 9, fontWeight: "800" },
+  addedText: { color: "#10231a", fontSize: 9, fontWeight: "800" },
   title: {
     color: colors.text,
     fontSize: 13,

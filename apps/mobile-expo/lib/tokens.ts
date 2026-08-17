@@ -1,19 +1,19 @@
-// Mirrors packages/design-tokens — single source: near-black bg, amber accent.
+// Mirrors the approved UI/UX replica — warm near-black surfaces + amber primary (phonofilm layout patterns, Syncourse branding).
 export const colors = {
-  bg: "#0E0E10",
-  surface: "#1A1A1D",
-  surfaceHover: "#232327",
-  surfaceRaised: "#26262B",
-  border: "#2E2E34",
-  text: "#F4F4F5",
-  muted: "#9E9EA7",
-  dim: "#6B6B73",
-  accent: "#F5A524",
-  accentHover: "#FFB93C",
-  accentSoft: "rgba(245,165,36,0.15)",
+  bg: "#0E0D0B",
+  surface: "#171512",
+  surfaceHover: "#232019",
+  surfaceRaised: "#221F1A",
+  border: "#3A332B",
+  text: "#F1EADD",
+  muted: "#A49A8D",
+  dim: "#7A7166",
+  accent: "#F39027",
+  accentHover: "#FFA94D",
+  accentSoft: "rgba(243,143,39,0.15)",
   danger: "#E5484D",
-  success: "#30A46C",
-  star: "#F5A524",
+  success: "#6FE0A4",
+  star: "#FFC06E",
 } as const;
 
 export const radius = { sm: 8, md: 12, lg: 16, pill: 999 } as const;

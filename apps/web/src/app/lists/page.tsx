@@ -3,10 +3,11 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { ListPlus, Plus, X } from "lucide-react";
 import { get, post } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
-import { EmptyState } from "@/components/EmptyState";
 import { formatDate } from "@/lib/format";
+import { MobileHeader } from "@/components/Nav";
 
 interface ListRow {
   id: string;
@@ -60,130 +61,121 @@ export default function ListsPage() {
   };
 
   return (
-    <div className="pb-6">
-      <div className="border-b border-border px-4 py-3">
-        <div className="flex items-center justify-between">
-          <h1 className="text-lg font-bold text-text">Lists</h1>
-          <button onClick={() => setShowCreate(true)} className="rounded-full bg-accent px-3 py-1.5 text-xs font-bold text-black">
-            + New List
-          </button>
+    <main className="page">
+      <MobileHeader title="Lists" />
+      <div className="profile-head">
+        <div>
+          <span className="eyebrow">Collections</span>
+          <h1 className="display" style={{ fontSize: 42 }}>Course lists</h1>
+          <p className="muted" style={{ margin: 0 }}>Browse lists made by people who learn with intent.</p>
         </div>
-        <div className="mt-2 flex gap-2">
-          <input
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Search lists or creators"
-            className="flex-1 rounded-full border border-border bg-surface px-3 py-1.5 text-xs text-text placeholder:text-dim focus:border-accent focus:outline-none"
-          />
-          <select
-            value={sort}
-            onChange={(e) => setSort(e.target.value)}
-            className="rounded-full border border-border bg-surface px-2 py-1.5 text-xs text-muted focus:outline-none"
-          >
-            <option value="top">Top voted</option>
-            <option value="most-saved">Most saved</option>
-            <option value="newest">Newest</option>
-          </select>
+        <button className="btn primary" onClick={() => setShowCreate(true)}>
+          <Plus size={14} style={{ display: "inline", verticalAlign: "middle" }} /> New list
+        </button>
+      </div>
+
+      <div className="filters">
+        <input
+          className="filter-search"
+          placeholder="Search lists or creators"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+        />
+        <div className="pills">
+          {(["top", "most-saved", "newest"] as const).map((s) => (
+            <button key={s} className={`badge ${sort === s ? "primary" : ""}`} onClick={() => setSort(s)}>
+              {s === "top" ? "All topics" : s === "most-saved" ? "Top saved" : "Newest"}
+            </button>
+          ))}
         </div>
       </div>
 
       {token && myLists.length > 0 && (
-        <div className="px-4 pt-4">
-          <div className="mb-2 text-xs font-semibold uppercase tracking-wide text-dim">My lists</div>
-          <div className="space-y-2">
+        <section className="rail">
+          <div className="section-head"><h2>My lists</h2></div>
+          <div className="dark-panel" style={{ padding: 12 }}>
             {myLists.map((l) => (
-              <div key={l.id} className="rounded-lg border border-border bg-surface p-3">
-                <div className="text-sm font-semibold text-text">{l.name}</div>
-                <div className="text-[11px] text-dim">
-                  {l.visibility} · {l.itemCount} items · edited {formatDate(l.createdAt)}
-                </div>
-              </div>
+              <Link key={l.id} href={`/lists/${l.id}`} className="lesson">
+                <ListPlus size={16} className="rating" />
+                <span>{l.name}</span>
+                <span className="muted" style={{ marginLeft: "auto" }}>
+                  {l.visibility} · {l.itemCount} items · {formatDate(l.createdAt)}
+                </span>
+              </Link>
             ))}
           </div>
+        </section>
+      )}
+
+      {lists.length === 0 && !q ? (
+        <div className="dark-panel" style={{ padding: 40, textAlign: "center", marginTop: 30 }}>
+          <ListPlus size={28} className="rating" />
+          <h3>No lists yet</h3>
+          <p className="muted">Create your first list to organize the courses you want next.</p>
+          <button className="btn primary" onClick={() => setShowCreate(true)}>Create a list</button>
+        </div>
+      ) : (
+        <div className="grid" style={{ marginTop: 28, gridTemplateColumns: "repeat(3, minmax(0,1fr))" }}>
+          {lists.map((l) => (
+            <Link key={l.id} href={`/lists/${l.id}`} className="dark-panel" style={{ padding: 16, display: "block" }}>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 4, height: 100 }}>
+                {l.covers.slice(0, 3).map((c, i) => (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img key={i} src={c} alt="" className="h-full w-full rounded-md object-cover" loading="lazy" />
+                ))}
+                {l.covers.length === 0 && [0, 1, 2].map((i) => <div key={i} style={{ borderRadius: 5, background: "linear-gradient(135deg, hsl(32 42% 18%), hsl(20 50% 9%))" }} />)}
+              </div>
+              <h3 style={{ margin: "16px 0 7px", fontSize: 14 }}>{l.name}</h3>
+              {l.description && <p className="muted" style={{ fontSize: 11 }}>{l.description}</p>}
+              <div className="card-meta">
+                <span>by {l.ownerName ?? "—"}</span>
+                <span style={{ marginLeft: "auto" }}>{l.itemCount} courses · {l.savesCount} saves</span>
+              </div>
+            </Link>
+          ))}
         </div>
       )}
 
-      <div className="grid grid-cols-1 gap-3 p-4">
-        {lists.length === 0 && <EmptyState title="No lists found" body="Try a different search." />}
-        {lists.map((l) => (
-          <Link key={l.id} href={`/lists/${l.id}`} className="overflow-hidden rounded-lg border border-border bg-surface hover:bg-surface-hover">
-            {l.covers.length > 0 && (
-              <div className="flex h-20 gap-0.5 overflow-hidden">
-                {l.covers.map((c, i) => (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img key={i} src={c} alt="" className="h-full flex-1 object-cover" loading="lazy" />
-                ))}
-                {l.covers.length === 1 && <div className="flex-1 bg-surface-raised" />}
-              </div>
-            )}
-            <div className="p-3">
-              <div className="line-clamp-1 text-sm font-semibold text-text">{l.name}</div>
-              {l.description && <div className="mt-0.5 line-clamp-2 text-xs text-muted">{l.description}</div>}
-              <div className="mt-1.5 flex items-center gap-2 text-[11px] text-dim">
-                <span>by {l.ownerName ?? "—"}</span>
-                <span>·</span>
-                <span>{l.itemCount} contents</span>
-                <span>·</span>
-                <span>{l.savesCount} saves</span>
-              </div>
-            </div>
-          </Link>
-        ))}
-      </div>
-
       {showCreate && (
-        <div className="fixed inset-0 z-30 flex items-end justify-center bg-black/60" onClick={() => setShowCreate(false)}>
-          <div className="w-full max-w-[420px] rounded-t-2xl border-t border-border bg-surface p-5" onClick={(e) => e.stopPropagation()}>
-            <h2 className="text-base font-bold text-text">New List</h2>
-            <label className="mt-3 block text-xs font-medium text-muted">NAME</label>
-            <input
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. Backend Roadmap 2026"
-              className="mt-1 w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-text placeholder:text-dim focus:border-accent focus:outline-none"
-            />
-            <label className="mt-3 block text-xs font-medium text-muted">DESCRIPTION (optional)</label>
-            <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              placeholder="What belongs in this list?"
-              className="mt-1 w-full resize-none rounded-lg border border-border bg-bg px-3 py-2 text-sm text-text placeholder:text-dim focus:border-accent focus:outline-none"
-              rows={2}
-            />
-            <div className="mt-3 flex gap-2">
-              {(
-                [
-                  ["private", "Private", "Only you can see this list."],
-                  ["public", "Public", "Anyone can find and save this list."],
-                ] as const
-              ).map(([v, label, hint]) => (
-                <button
-                  key={v}
-                  onClick={() => setVisibility(v)}
-                  className={`flex-1 rounded-lg border p-2 text-left ${visibility === v ? "border-accent bg-accent-soft" : "border-border"}`}
-                >
-                  <div className="text-xs font-semibold text-text">{label}</div>
-                  <div className="text-[10px] text-dim">{hint}</div>
-                </button>
-              ))}
+        <div className="sheet" onClick={() => setShowCreate(false)}>
+          <div className="sheet-card" onClick={(e) => e.stopPropagation()}>
+            <div style={{ display: "flex", justifyContent: "space-between" }}>
+              <h3>New learning list</h3>
+              <button className="icon-btn" onClick={() => setShowCreate(false)}><X size={15} /></button>
             </div>
-            <div className="mt-4 flex gap-2">
-              <button onClick={() => setShowCreate(false)} className="flex-1 rounded-full border border-border py-2 text-sm text-muted hover:text-text">
-                Cancel
+            <p className="muted" style={{ fontSize: 12 }}>Give the list a clear destination.</p>
+            <input className="form-input" placeholder="e.g. Build my first product" value={name} onChange={(e) => setName(e.target.value)} />
+            <textarea className="form-input" rows={3} placeholder="What belongs in this list? (optional)" value={description} onChange={(e) => setDescription(e.target.value)} />
+            <div className="pills" style={{ margin: "5px 0 18px" }}>
+              <button className={`badge ${visibility === "private" ? "primary" : ""}`} onClick={() => setVisibility("private")}>
+                <LockIcon /> Private
               </button>
-              <button onClick={createList} className="flex-1 rounded-full bg-accent py-2 text-sm font-bold text-black disabled:opacity-40" disabled={!name.trim()}>
-                Create list
+              <button className={`badge ${visibility === "public" ? "primary" : ""}`} onClick={() => setVisibility("public")}>
+                <UsersIcon /> Public
               </button>
+            </div>
+            <div className="actions">
+              <button className="btn" onClick={() => setShowCreate(false)}>Cancel</button>
+              <button className="btn primary" disabled={!name.trim()} onClick={createList}>Create list</button>
             </div>
           </div>
         </div>
       )}
 
       {toast && (
-        <div className="fixed inset-x-0 bottom-16 z-40 mx-auto w-fit rounded-full bg-surface-raised px-4 py-2 text-xs text-text shadow-lg">
-          {toast}
+        <div className="sheet" style={{ pointerEvents: "none", background: "transparent", display: "grid", placeItems: "end center", paddingBottom: 40 }}>
+          <div className="dark-panel" style={{ padding: "14px 22px", background: "#f6a437", color: "#211308", fontWeight: 800, fontSize: 12 }}>
+            {toast}
+          </div>
         </div>
       )}
-    </div>
+    </main>
   );
+}
+
+function LockIcon() {
+  return <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><rect x="3" y="11" width="18" height="11" rx="2" /><path d="M7 11V7a5 5 0 0 1 10 0v4" /></svg>;
+}
+function UsersIcon() {
+  return <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /><path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" /></svg>;
 }

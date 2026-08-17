@@ -1,95 +1,186 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useState, type FormEvent, type ReactNode } from "react";
+import {
+  Bookmark,
+  CircleUserRound,
+  Home,
+  Layers3,
+  Search,
+  Zap,
+} from "lucide-react";
 import { useAuth } from "@/lib/auth";
 
-const tabs = [
-  { href: "/", label: "Home", icon: "🏠" },
-  { href: "/search", label: "Search", icon: "🔍" },
-  { href: "/my-learning", label: "My Learning", icon: "📚" },
-  { href: "/me", label: "Me", icon: "👤" },
-];
-
-export function Nav() {
+/* ---------- TopNav — desktop top bar (phonofilm-style) ---------- */
+export function TopNav() {
   const pathname = usePathname();
+  const router = useRouter();
   const { user, isPremium } = useAuth();
+  const [value, setValue] = useState("");
 
-  const active = (href: string) =>
-    href === "/" ? pathname === "/" : pathname.startsWith(href);
+  const submit = (event: FormEvent) => {
+    event.preventDefault();
+    router.push(`/search${value.trim() ? `?q=${encodeURIComponent(value.trim())}` : ""}`);
+  };
+
+  const active = (href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href));
 
   return (
-    <>
-      {/* top header — mobile only; desktop uses the left sidebar nav */}
-      <header className="sticky top-0 z-20 border-b border-border bg-bg/90 backdrop-blur lg:hidden">
-        <div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-3 md:px-8">
-          <Link href="/" className="text-lg font-bold tracking-tight text-text">
-            Syncourse<span className="text-accent">.</span>
+    <header className="topbar desktop-only">
+      <Link href="/" className="brand">
+        sync<i />ourse
+      </Link>
+      <Link href="/browse" className={active("/browse") ? "active" : ""}>
+        Browse
+      </Link>
+      <form className="top-search" onSubmit={submit}>
+        <Search size={15} />
+        <input
+          aria-label="Search courses"
+          placeholder="Search courses"
+          value={value}
+          onChange={(e) => setValue(e.target.value)}
+        />
+      </form>
+      <nav className="nav-links">
+        <Link href="/circles" className={active("/circles") ? "active" : ""}>
+          circles
+        </Link>
+        <Link href="/lists" className={active("/lists") ? "active" : ""}>
+          Collections
+        </Link>
+        <Link href="/me" className={active("/me") ? "active" : ""}>
+          Me
+        </Link>
+        {isPremium ? (
+          <span className="badge primary">Premium</span>
+        ) : (
+          <Link href="/premium" className="upgrade">
+            Go Premium <Zap size={12} style={{ display: "inline", verticalAlign: "middle" }} />
           </Link>
-          <nav className="ml-auto flex items-center gap-3 text-sm">
-            <Link
-              href="/browse"
-              className={pathname.startsWith("/browse") ? "font-medium text-accent" : "text-muted hover:text-text"}
-            >
-              Browse
-            </Link>
-            <Link
-              href="/circles"
-              className={`hidden sm:inline ${pathname.startsWith("/circles") ? "font-medium text-accent" : "text-muted hover:text-text"}`}
-            >
-              circles
-            </Link>
-            <Link
-              href="/lists"
-              className={`hidden sm:inline ${pathname.startsWith("/lists") ? "font-medium text-accent" : "text-muted hover:text-text"}`}
-            >
-              Collections
-            </Link>
-            {isPremium ? (
-              <span className="rounded-full bg-accent-soft px-2.5 py-1 text-xs font-semibold text-accent">Premium</span>
+        )}
+        {user ? (
+          <Link
+            href="/me"
+            title={user.name}
+            className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full bg-surface-raised"
+          >
+            {user.avatarUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={user.avatarUrl} alt="" className="h-full w-full object-cover" />
             ) : (
-              <Link
-                href="/premium"
-                className="rounded-full bg-accent px-3 py-1 text-xs font-bold text-black hover:bg-accent-hover"
-              >
-                Free-Upgrade
-              </Link>
+              <span className="text-xs font-bold text-accent">{user.name.charAt(0).toUpperCase()}</span>
             )}
-            {user ? (
-              <Link href="/me" className="flex h-7 w-7 items-center justify-center overflow-hidden rounded-full bg-surface-raised">
-                {user.avatarUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={user.avatarUrl} alt="" className="h-full w-full object-cover" />
-                ) : (
-                  <span className="text-xs font-semibold text-accent">{user.name.charAt(0).toUpperCase()}</span>
-                )}
-              </Link>
-            ) : (
-              <Link href="/auth" className="text-sm font-medium text-accent hover:text-accent-hover">
-                Sign in
-              </Link>
-            )}
-          </nav>
-        </div>
-      </header>
-
-      {/* bottom nav — mobile only; desktop uses the top header nav */}
-      <nav className="fixed inset-x-0 bottom-0 z-20 border-t border-border bg-surface/95 backdrop-blur md:hidden">
-        <div className="mx-auto flex max-w-7xl items-center justify-around px-4 py-1.5">
-          {tabs.map((t) => (
-            <Link
-              key={t.href}
-              href={t.href}
-              className={`flex flex-col items-center gap-0.5 px-4 py-1 text-[10px] ${
-                active(t.href) ? "text-accent" : "text-dim hover:text-muted"
-              }`}
-            >
-              <span className="text-lg leading-none">{t.icon}</span>
-              <span className="font-medium">{t.label}</span>
-            </Link>
-          ))}
-        </div>
+          </Link>
+        ) : (
+          <Link href="/auth" className={active("/auth") ? "active" : ""}>
+            Sign in
+          </Link>
+        )}
       </nav>
-    </>
+    </header>
   );
 }
+
+/* ---------- MobileHeader — per-page title (mobile only) ---------- */
+export function MobileHeader({ title = "Syncourse" }: { title?: string }) {
+  return (
+    <div className="mobile-only" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 23 }}>
+      <Link href="/" className="brand">
+        {title}
+      </Link>
+      <Link href="/search" className="icon-btn" aria-label="Search">
+        <Search size={18} />
+      </Link>
+    </div>
+  );
+}
+
+/* ---------- BottomNav — fixed mobile tab bar ---------- */
+export function BottomNav() {
+  const pathname = usePathname();
+  const active = (href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href));
+  const tabs = [
+    { href: "/", label: "Home", icon: Home },
+    { href: "/search", label: "Search", icon: Search },
+    { href: "/lists", label: "Collections", icon: Layers3 },
+    { href: "/me", label: "Me", icon: CircleUserRound },
+  ];
+  return (
+    <nav className="mobile-nav mobile-only">
+      {tabs.map((t) => (
+        <Link key={t.href} href={t.href} className={active(t.href) ? "active" : ""}>
+          <t.icon />
+          <span>{t.label}</span>
+        </Link>
+      ))}
+    </nav>
+  );
+}
+
+/* ---------- Footer — desktop only ---------- */
+export function Footer() {
+  return (
+    <footer className="footer desktop-only">
+      <div>
+        <div className="brand">
+          sync<i />ourse
+        </div>
+        <p className="muted">Practical skills for people who build.</p>
+      </div>
+      <div>
+        <div className="mono">GET THE APP</div>
+        <div>Android · Windows · macOS</div>
+      </div>
+      <div>
+        <div className="mono">SUPPORT</div>
+        <div>
+          <Link href="/legal/terms">Contact support</Link> · <Link href="/legal/terms">Terms</Link> ·{" "}
+          <Link href="/legal/privacy">Privacy</Link> · <Link href="/legal/refund">Refunds</Link>
+        </div>
+      </div>
+    </footer>
+  );
+}
+
+/* ---------- shared layout pieces ---------- */
+export function Page({ children }: { children: ReactNode }) {
+  return <main className="page">{children}</main>;
+}
+
+export function SectionHead({
+  title,
+  href,
+  right,
+}: {
+  title: ReactNode;
+  href?: string;
+  right?: ReactNode;
+}) {
+  return (
+    <div className="section-head">
+      <h2>{title}</h2>
+      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+        {right}
+        {href && (
+          <Link href={href}>
+            See all <ChevronRightInline />
+          </Link>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ChevronRightInline() {
+  return (
+    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ verticalAlign: "middle" }}>
+      <path d="m9 18 6-6-6-6" />
+    </svg>
+  );
+}
+
+/* re-export a few icons commonly needed by pages */
+export { Bookmark, Home as HomeIcon, Layers3 as LayersIcon };

@@ -3,11 +3,13 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import { ChevronRight, Plus, Star } from "lucide-react";
 import { get } from "@/lib/api";
-import type { OrganizationDetail } from "@/lib/types";
+import type { CourseSummary, OrganizationDetail } from "@/lib/types";
 import { cloudinaryUrl } from "@/lib/cloudinary";
-import { compact, formatDuration, ratingColor } from "@/lib/format";
-import { Stars } from "@/components/StarRating";
+import { compact, formatDuration } from "@/lib/format";
+import { CourseCard } from "@/components/CourseCard";
+import { MobileHeader } from "@/components/Nav";
 
 export default function OrganizationPage() {
   const { slug } = useParams<{ slug: string }>();
@@ -22,57 +24,88 @@ export default function OrganizationPage() {
 
   if (error || !o) {
     return (
-      <div className="p-4 text-center text-sm text-muted">{error ? "Organization not found" : "Loading…"}</div>
+      <main className="page">
+        <MobileHeader title="Channel" />
+        <div className="dark-panel" style={{ padding: 40, textAlign: "center" }}>
+          <p className="muted">{error ? "Channel not found" : "Loading…"}</p>
+        </div>
+      </main>
     );
   }
 
   return (
-    <div className="pb-6">
-      <div className="flex flex-col items-center border-b border-border px-4 py-6 text-center">
-        {o.logoUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={cloudinaryUrl(o.logoUrl, { width: 160, height: 160 }) ?? undefined}
-            alt={o.name}
-            className="h-20 w-20 rounded-2xl bg-surface object-contain"
-          />
-        ) : (
-          <span className="flex h-20 w-20 items-center justify-center rounded-2xl bg-surface-raised text-3xl font-bold text-accent">
-            {o.name.charAt(0)}
-          </span>
-        )}
-        <h1 className="mt-3 text-xl font-bold text-text">{o.name}</h1>
-        {o.description && <p className="mt-2 max-w-xl text-[13px] leading-relaxed text-muted">{o.description}</p>}
-        <div className="mt-2 text-[11px] text-dim">
-          {compact(o.subscribers)} subscribers · {o.courses.length} courses
+    <main className="page">
+      <MobileHeader title="Channel" />
+      <div className="profile-head">
+        <div className="profile-row">
+          <div className="avatar">
+            {o.logoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={cloudinaryUrl(o.logoUrl, { width: 160, height: 160 }) ?? undefined} alt={o.name} className="h-full w-full rounded-[20px] object-cover" />
+            ) : (
+              o.name.charAt(0)
+            )}
+          </div>
+          <div>
+            <span className="eyebrow">Publisher</span>
+            <h1 className="display" style={{ fontSize: 39, margin: "8px 0" }}>{o.name}</h1>
+            <p className="muted" style={{ margin: 0 }}>
+              Publisher · {compact(o.subscribers)} learners · {o.courses.length} courses
+            </p>
+          </div>
         </div>
+        <button className="btn"><Plus size={14} style={{ display: "inline", verticalAlign: "middle" }} /> Follow</button>
       </div>
 
-      <div className="px-4 pt-5">
-        <h2 className="mb-2 text-base font-semibold text-text">Catalog · {o.courses.length} courses</h2>
-        <div className="divide-y divide-border rounded-lg border border-border">
+      {o.description && (
+        <p className="muted" style={{ maxWidth: 700, lineHeight: 1.7, marginTop: 24 }}>{o.description}</p>
+      )}
+
+      <section className="rail">
+        <div className="section-head">
+          <h2>Catalog · {o.courses.length}</h2>
+          <Link href="/browse">See all <ChevronRight size={14} style={{ verticalAlign: "middle" }} /></Link>
+        </div>
+        <div className="rail-row">
           {o.courses.map((c) => (
-            <Link key={c.id} href={`/courses/${c.slug}`} className="flex items-center gap-3 bg-surface px-3 py-2.5 hover:bg-surface-hover">
-              <div className="h-9 w-14 shrink-0 overflow-hidden rounded-md bg-bg">
-                {c.thumbnailUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={cloudinaryUrl(c.thumbnailUrl, { width: 96, height: 144 }) ?? undefined} alt={c.title} loading="lazy" className="h-full w-full object-cover" />
-                ) : null}
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="line-clamp-1 text-sm font-medium text-text">{c.title}</div>
-                <div className="text-[11px] text-muted">
-                  {c.level} · {formatDuration(c.durationMin)}
-                </div>
-              </div>
-              <div className="flex shrink-0 items-center gap-1.5 text-[11px]">
-                <Stars value={c.ratingAvg} size={11} />
-                <span className={ratingColor(c.ratingAvg)}>{c.ratingAvg.toFixed(1)}</span>
-              </div>
-            </Link>
+            <CourseCard key={c.id} course={toSummary(c)} />
           ))}
         </div>
-      </div>
-    </div>
+      </section>
+
+      <section className="rail">
+        <div className="section-head">
+          <h2>All courses</h2>
+        </div>
+        <div className="dark-panel">
+          {o.courses.map((c) => (
+            <Link key={c.id} href={`/courses/${c.slug}`} className="lesson">
+              <span>{String(o.courses.indexOf(c) + 1).padStart(2, "0")}</span>
+              <span>{c.title}</span>
+              <span className="muted" style={{ marginLeft: "auto", marginRight: 14 }}>
+                <Star size={11} fill="currentColor" className="rating" style={{ display: "inline", verticalAlign: "middle" }} /> {c.ratingAvg.toFixed(1)}
+              </span>
+              <span className="muted">{c.level} · {formatDuration(c.durationMin)}</span>
+            </Link>
+          ))}
+          {o.courses.length === 0 && <div className="dark-panel" style={{ padding: 30, textAlign: "center" }}><p className="muted" style={{ margin: 0 }}>No courses published yet.</p></div>}
+        </div>
+      </section>
+    </main>
   );
+}
+
+function toSummary(c: {
+  id: string;
+  title: string;
+  slug: string;
+  description: string;
+  thumbnailUrl: string | null;
+  level: string;
+  durationMin: number;
+  ratingAvg: number;
+  ratingCount: number;
+  enrollmentCount: number;
+}): CourseSummary {
+  return { ...c, lessonCount: 0, downloadCount: 0, isPremium: false, isFeatured: false, contentType: "course", categoryNames: [], lecturerName: null, organizationName: null, publishedAt: "" };
 }

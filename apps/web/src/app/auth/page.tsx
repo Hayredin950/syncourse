@@ -4,6 +4,7 @@ import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 import { apiUrl, setToken } from "@/lib/api";
+import { MobileHeader } from "@/components/Nav";
 
 function AuthInner() {
   const router = useRouter();
@@ -54,17 +55,17 @@ function AuthInner() {
   };
 
   return (
-    <div className="flex min-h-[70vh] flex-col justify-center px-6">
-      <div className="text-center">
-        <div className="text-2xl font-bold text-text">
-          Syncourse<span className="text-accent">.</span>
-        </div>
-        <p className="mt-2 text-xs text-muted">
+    <main className="page" style={{ maxWidth: 480 }}>
+      <MobileHeader />
+      <div style={{ textAlign: "center", marginBottom: 26 }}>
+        <div className="brand" style={{ fontSize: 30 }}>sync<i />ourse</div>
+        <p className="muted" style={{ fontSize: 12, marginTop: 10 }}>
           Use the same account on web and mobile. Your ratings, lists and learning history come with you.
         </p>
       </div>
 
-      <div className="mt-6 space-y-3">
+      <div className="dark-panel" style={{ padding: 24 }}>
+      <div className="space-y-3">
         {mode === "register" && (
           <>
             <input
@@ -124,7 +125,8 @@ function AuthInner() {
           {mode === "login" ? "No account yet? Create one" : "Already have an account? Sign in"}
         </button>
       </div>
-    </div>
+      </div>
+    </main>
   );
 }
 

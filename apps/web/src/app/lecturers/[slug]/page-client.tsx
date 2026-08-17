@@ -3,11 +3,13 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
+import { ChevronRight, Plus, Star } from "lucide-react";
 import { get } from "@/lib/api";
-import type { LecturerDetail } from "@/lib/types";
+import type { CourseSummary, LecturerDetail } from "@/lib/types";
 import { cloudinaryUrl } from "@/lib/cloudinary";
-import { formatDuration, ratingColor } from "@/lib/format";
-import { Stars } from "@/components/StarRating";
+import { formatDuration } from "@/lib/format";
+import { CourseCard } from "@/components/CourseCard";
+import { MobileHeader } from "@/components/Nav";
 
 export default function LecturerPage() {
   const { slug } = useParams<{ slug: string }>();
@@ -22,79 +24,90 @@ export default function LecturerPage() {
 
   if (error || !l) {
     return (
-      <div className="p-4 text-center text-sm text-muted">{error ? "Lecturer not found" : "Loading…"}</div>
+      <main className="page">
+        <MobileHeader title="Lecturer" />
+        <div className="dark-panel" style={{ padding: 40, textAlign: "center" }}>
+          <p className="muted">{error ? "Lecturer not found" : "Loading…"}</p>
+        </div>
+      </main>
     );
   }
 
-  const knownFor = [...l.courses].sort((a, b) => b.ratingAvg - a.ratingAvg).slice(0, 6);
-
   return (
-    <div className="pb-6">
-      <div className="flex flex-col items-center border-b border-border px-4 py-6 text-center">
-        {l.photoUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={cloudinaryUrl(l.photoUrl, { width: 192, height: 192 }) ?? undefined}
-            alt={l.name}
-            className="h-24 w-24 rounded-full bg-surface object-cover"
-          />
-        ) : (
-          <span className="flex h-24 w-24 items-center justify-center rounded-full bg-surface-raised text-4xl font-bold text-accent">
-            {l.name.charAt(0)}
-          </span>
-        )}
-        <h1 className="mt-3 text-xl font-bold text-text">{l.name}</h1>
-        {l.credentials && <div className="mt-1 text-sm font-medium text-accent">{l.credentials}</div>}
-        {l.bio && <p className="mt-2 max-w-xl text-[13px] leading-relaxed text-muted">{l.bio}</p>}
-      </div>
+    <main className="page">
+      <MobileHeader title="Lecturer" />
 
-      <div className="px-4 pt-5">
-        <h2 className="mb-3 text-base font-semibold text-text">Known for</h2>
-        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 2xl:grid-cols-6">
-          {knownFor.map((c) => (
-            <Link key={c.id} href={`/courses/${c.slug}`} className="group min-w-0">
-              <div className="aspect-[2/3] overflow-hidden rounded-lg bg-surface">
-                {c.thumbnailUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img
-                    src={cloudinaryUrl(c.thumbnailUrl, { width: 300, height: 450 }) ?? undefined}
-                    alt={c.title}
-                    loading="lazy"
-                    className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
-                  />
-                ) : (
-                  <div className="flex h-full w-full items-center justify-center text-3xl">🎓</div>
-                )}
-              </div>
-              <div className="mt-1.5 line-clamp-2 min-w-0 text-[13px] font-medium leading-snug text-text">{c.title}</div>
-            </Link>
-          ))}
+      <div className="profile-head">
+        <div className="profile-row">
+          <div className="avatar">
+            {l.photoUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={cloudinaryUrl(l.photoUrl, { width: 192, height: 192 }) ?? undefined} alt={l.name} className="h-full w-full rounded-[20px] object-cover" />
+            ) : (
+              l.name.charAt(0)
+            )}
+          </div>
+          <div>
+            <span className="eyebrow">Lecturer</span>
+            <h1 className="display" style={{ fontSize: 39, margin: "8px 0" }}>{l.name}</h1>
+            <p className="muted" style={{ margin: 0 }}>
+              {l.credentials || "Practical teacher"} · {l.courses.length} courses taught
+            </p>
+          </div>
         </div>
+        <button className="btn"><Plus size={14} style={{ display: "inline", verticalAlign: "middle" }} /> Follow</button>
       </div>
 
-      <div className="px-4 pt-6">
-        <h2 className="mb-2 text-base font-semibold text-text">All courses · {l.courses.length}</h2>
-        <div className="divide-y divide-border rounded-lg border border-border">
+      {l.bio && (
+        <p className="muted" style={{ maxWidth: 700, lineHeight: 1.7, marginTop: 24 }}>{l.bio}</p>
+      )}
+
+      <section className="rail">
+        <div className="section-head">
+          <h2>Courses taught · {l.courses.length}</h2>
+          <Link href="/browse">See all <ChevronRight size={14} style={{ verticalAlign: "middle" }} /></Link>
+        </div>
+        <div className="rail-row">
           {l.courses.map((c) => (
-            <Link key={c.id} href={`/courses/${c.slug}`} className="flex items-center gap-3 bg-surface px-3 py-2.5 hover:bg-surface-hover">
-              <div className="h-9 w-14 shrink-0 overflow-hidden rounded-md bg-bg">
-                {c.thumbnailUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={cloudinaryUrl(c.thumbnailUrl, { width: 96, height: 144 }) ?? undefined} alt={c.title} loading="lazy" className="h-full w-full object-cover" />
-                ) : null}
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="line-clamp-1 text-sm font-medium text-text">{c.title}</div>
-                <div className="text-[11px] text-muted">{formatDuration(c.durationMin)}</div>
-              </div>
-              <div className="flex shrink-0 items-center gap-1.5 text-[11px]">
-                <Stars value={c.ratingAvg} size={11} />
-                <span className={ratingColor(c.ratingAvg)}>{c.ratingAvg.toFixed(1)}</span>
-              </div>
-            </Link>
+            <CourseCard key={c.id} course={toSummary(c)} />
           ))}
         </div>
-      </div>
-    </div>
+      </section>
+
+      {/* all courses list */}
+      <section className="rail">
+        <div className="section-head">
+          <h2>All courses</h2>
+        </div>
+        <div className="dark-panel">
+          {l.courses.map((c) => (
+            <Link key={c.id} href={`/courses/${c.slug}`} className="lesson">
+              <span>{String(l.courses.indexOf(c) + 1).padStart(2, "0")}</span>
+              <span>{c.title}</span>
+              <span className="muted" style={{ marginLeft: "auto", marginRight: 14 }}>
+                <Star size={11} fill="currentColor" className="rating" style={{ display: "inline", verticalAlign: "middle" }} /> {c.ratingAvg.toFixed(1)}
+              </span>
+              <span className="muted">{formatDuration(c.durationMin)}</span>
+            </Link>
+          ))}
+          {l.courses.length === 0 && <div className="dark-panel" style={{ padding: 30, textAlign: "center" }}><p className="muted" style={{ margin: 0 }}>No courses published yet.</p></div>}
+        </div>
+      </section>
+    </main>
   );
+}
+
+function toSummary(c: {
+  id: string;
+  title: string;
+  slug: string;
+  description: string;
+  thumbnailUrl: string | null;
+  level: string;
+  durationMin: number;
+  ratingAvg: number;
+  ratingCount: number;
+  enrollmentCount: number;
+}): CourseSummary {
+  return { ...c, lessonCount: 0, downloadCount: 0, isPremium: false, isFeatured: false, contentType: "course", categoryNames: [], lecturerName: null, organizationName: null, publishedAt: "" };
 }

@@ -4,7 +4,9 @@ import { Suspense, useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { get } from "@/lib/api";
 import type { CourseSummary } from "@/lib/types";
+import { Search } from "lucide-react";
 import { CourseRow } from "@/components/CourseCard";
+import { MobileHeader } from "@/components/Nav";
 
 interface SearchData {
   total: number;
@@ -84,37 +86,35 @@ function SearchInner() {
   }, [q]);
 
   return (
-    <div className="pb-6">
-      <div className="border-b border-border px-4 py-3">
-        <div className="flex items-center gap-2">
-          <input
-            autoFocus
-            value={q}
-            onChange={(e) => setQ(e.target.value)}
-            placeholder="Search courses, lecturers…"
-            className="w-full flex-1 rounded-full border border-border bg-surface px-4 py-2.5 text-sm text-text placeholder:text-dim focus:border-accent focus:outline-none"
-          />
-          <button
-            onClick={toggleVoice}
-            title="Voice search"
-            className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full border text-base ${
-              listening
-                ? "border-accent bg-accent text-black"
-                : "border-border bg-surface text-muted hover:text-text"
-            }`}
-          >
-            {listening ? "■" : "🎙"}
-          </button>
-        </div>
-        {voiceUnsupported && (
-          <div className="mt-2 text-center text-[11px] text-muted">
-            Voice search isn&apos;t supported in this browser — try Chrome or Edge.
-          </div>
-        )}
-        {listening && (
-          <div className="mt-2 text-center text-[11px] text-accent">Listening… speak now</div>
-        )}
+    <main className="page">
+      <MobileHeader title="Search" />
+      <span className="eyebrow">Course search</span>
+      <h1 className="display" style={{ fontSize: 38, marginBottom: 18 }}>Find your next course.</h1>
+      <div className="top-search" style={{ maxWidth: "none", height: 44 }}>
+        <Search size={15} />
+        <input
+          autoFocus
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Search by course, lecturer, or topic"
+        />
+        <button
+          onClick={toggleVoice}
+          title="Voice search"
+          className={`icon-btn`}
+          style={{ marginLeft: "auto", padding: "6px 10px", background: listening ? "hsl(var(--primary))" : "transparent", border: 0 }}
+        >
+          {listening ? "■" : "🎙"}
+        </button>
       </div>
+      {voiceUnsupported && (
+        <div className="mt-2 text-center text-[11px] text-muted">
+          Voice search isn&apos;t supported in this browser — try Chrome or Edge.
+        </div>
+      )}
+      {listening && (
+        <div className="mt-2 text-center text-[11px] text-accent">Listening… speak now</div>
+      )}
 
       {!q.trim() && (
         <div className="px-4 pt-4">
@@ -135,9 +135,11 @@ function SearchInner() {
       )}
 
       {data && (
-        <div className="px-3 pt-2">
+        <div>
           {data.courses.length === 0 && data.lecturers.length === 0 && data.organizations.length === 0 ? (
-            <div className="py-10 text-center text-sm text-muted">No results for “{q}”</div>
+            <div className="dark-panel" style={{ padding: 40, textAlign: "center", marginTop: 26 }}>
+              <p className="muted">No results for “{q}”</p>
+            </div>
           ) : (
             <>
               {data.lecturers.length > 0 && (
@@ -179,7 +181,7 @@ function SearchInner() {
           )}
         </div>
       )}
-    </div>
+    </main>
   );
 }
 

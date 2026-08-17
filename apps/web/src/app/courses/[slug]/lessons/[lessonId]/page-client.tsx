@@ -99,12 +99,19 @@ export default function LessonPage() {
   };
 
   if (!lesson) {
-    return <div className="p-4 text-center text-sm text-muted">Loading lesson…</div>;
+    return (
+      <main className="page">
+        <div className="dark-panel" style={{ padding: 40, textAlign: "center" }}>
+          <p className="muted">Loading lesson…</p>
+        </div>
+      </main>
+    );
   }
 
   return (
-    <div className="pb-6">
-      <div className="sticky top-[53px] z-10 border-b border-border bg-bg/95 px-4 py-2">
+    <main className="page" style={{ maxWidth: 860 }}>
+      <div className="dark-panel" style={{ overflow: "hidden", borderTopLeftRadius: 0, borderTopRightRadius: 0 }}>
+      <div className="sticky top-[74px] z-10 border-b border-border bg-[#141310]/95 px-4 py-2 backdrop-blur">
         <div className="flex items-center gap-2 text-xs">
           <Link href={`/courses/${slug}`} className="font-medium text-accent">
             ← {lesson.course.title}
@@ -272,11 +279,14 @@ export default function LessonPage() {
       )}
 
       {toast && (
-        <div className="fixed inset-x-0 bottom-16 z-40 mx-auto w-fit max-w-[90%] rounded-full bg-surface-raised px-4 py-2 text-xs text-text shadow-lg">
-          {toast}
+        <div className="sheet" style={{ pointerEvents: "none", background: "transparent", display: "grid", placeItems: "end center", paddingBottom: 40 }}>
+          <div className="dark-panel" style={{ padding: "14px 22px", background: "#f6a437", color: "#211308", fontWeight: 800, fontSize: 12 }}>
+            {toast}
+          </div>
         </div>
       )}
-    </div>
+      </div>
+    </main>
   );
 }
 

@@ -3,10 +3,12 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { ArrowRight, Check, Settings, CircleUserRound } from "lucide-react";
 import { get, post } from "@/lib/api";
 import type { UserProfile } from "@/lib/types";
 import { useAuth } from "@/lib/auth";
 import { formatDate } from "@/lib/format";
+import { MobileHeader } from "@/components/Nav";
 
 export default function MePage() {
   const { user, token, isPremium, logout, refresh } = useAuth();
@@ -50,131 +52,128 @@ export default function MePage() {
   ];
 
   return (
-    <div className="pb-6">
-      {/* header */}
-      <div className="border-b border-border px-4 py-5 text-center">
-        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-surface-raised text-2xl font-bold text-accent">
-          {user.avatarUrl ? (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img src={user.avatarUrl} alt="" className="h-full w-full rounded-full object-cover" />
-          ) : (
-            user.name.charAt(0).toUpperCase()
-          )}
+    <main className="page">
+      <MobileHeader title="Me" />
+      <div className="profile-head">
+        <div className="profile-row">
+          <div className="avatar">
+            {user.avatarUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={user.avatarUrl} alt="" className="h-full w-full rounded-[20px] object-cover" />
+            ) : (
+              user.name.charAt(0).toUpperCase()
+            )}
+          </div>
+          <div>
+            <h1 className="display" style={{ fontSize: 32, marginBottom: 7 }}>{user.name} {user.isVerified && <Check size={16} className="rating" style={{ display: "inline" }} />}</h1>
+            <p className="muted mono" style={{ margin: 0, fontSize: 11 }}>@{user.username} · Member since {formatDate(user.memberSince)}</p>
+          </div>
         </div>
-        <div className="mt-2 text-lg font-bold text-text">
-          {user.name} {user.isVerified && <span className="text-accent">✓</span>}
-        </div>
-        <div className="text-xs text-muted">@{user.username} · Member since {formatDate(user.memberSince)}</div>
+        <Link href="/me" className="btn"><Settings size={14} style={{ display: "inline", verticalAlign: "middle" }} /> Edit profile</Link>
       </div>
 
-      {/* stat grid */}
-      <div className="grid grid-cols-3 gap-px border-b border-border bg-border">
+      <div className="stats">
         {stats.map(([label, value]) => (
-          <div key={label} className="bg-bg px-2 py-3 text-center">
-            <div className="text-lg font-bold text-text">{value}</div>
-            <div className="text-[10px] uppercase tracking-wide text-dim">{label}</div>
+          <div className="stat" key={label}>
+            <strong>{value}</strong>
+            <span>{label}</span>
           </div>
         ))}
       </div>
 
-      {/* plan banner */}
-      <div className="mx-4 mt-4 rounded-lg border border-border bg-surface p-4">
-        <div className="text-[11px] font-semibold uppercase tracking-wide text-dim">Current plan</div>
-        <div className="mt-1 flex items-center justify-between">
-          <div>
-            <span className={`text-base font-bold ${isPremium ? "text-accent" : "text-text"}`}>
-              {isPremium ? "Premium" : "Free"}
-            </span>
-            {user.planExpiresAt && isPremium && (
-              <div className="text-[11px] text-muted">active until {formatDate(user.planExpiresAt)}</div>
-            )}
-          </div>
-          {!isPremium && (
-            <Link href="/premium" className="rounded-full bg-accent px-4 py-1.5 text-xs font-bold text-black">
-              Go Premium
-            </Link>
-          )}
+      {/* premium banner */}
+      <div className="dark-panel recommend">
+        <div>
+          <span className="eyebrow">Current plan · {isPremium ? "Premium" : "Free"}</span>
+          <h3 style={{ margin: "7px 0 0" }}>
+            {isPremium ? "You&apos;re all in." : "Keep browsing. Learn without the limits."}
+          </h3>
+          <p>
+            {isPremium
+              ? user.planExpiresAt ? `Active until ${formatDate(user.planExpiresAt)}.` : "Full-speed downloads, offline notes, uninterrupted previews."
+              : "Full-speed downloads, offline notes, and uninterrupted previews are part of Premium."}
+          </p>
         </div>
         {!isPremium && (
-          <p className="mt-2 text-[11px] text-muted">
-            Browsing, lists and tracking are yours. Streaming and full-speed downloads are Premium.
-          </p>
+          <Link href="/premium" className="btn primary">
+            Go Premium <ArrowRight size={13} style={{ display: "inline", verticalAlign: "middle" }} />
+          </Link>
         )}
       </div>
 
       {/* shortcuts */}
-      <div className="mx-4 mt-4 space-y-1">
-        {[
-          ["📚", "My Learning", "/my-learning"],
-          ["🗂️", "My Lists", "/lists"],
-          ["⭐", "Premium plans", "/premium"],
-        ].map(([icon, label, href]) => (
-          <Link key={href} href={href} className="flex items-center gap-3 rounded-lg border border-border bg-surface px-4 py-3 hover:bg-surface-hover">
-            <span>{icon}</span>
-            <span className="text-sm text-text">{label}</span>
-            <span className="ml-auto text-dim">&gt;</span>
-          </Link>
-        ))}
-        {user.isStaff && (
-          <Link href="/admin" className="flex items-center gap-3 rounded-lg border border-accent/40 bg-accent/5 px-4 py-3 hover:bg-accent/10">
-            <span>🛠️</span>
-            <span className="text-sm text-text">Admin CMS</span>
-            <span className="ml-auto text-dim">&gt;</span>
-          </Link>
-        )}
+      <div className="rail">
+        <div className="section-head"><h2>Your library</h2></div>
+        <div className="dark-panel">
+          <Link href="/my-learning" className="lesson"><span>📚</span><span>My Learning</span><span className="muted" style={{ marginLeft: "auto" }}>›</span></Link>
+          <Link href="/lists" className="lesson"><span>🗂️</span><span>My Lists</span><span className="muted" style={{ marginLeft: "auto" }}>›</span></Link>
+          <Link href="/premium" className="lesson"><span>⭐</span><span>Premium plans</span><span className="muted" style={{ marginLeft: "auto" }}>›</span></Link>
+          {user.isStaff && (
+            <Link href="/admin" className="lesson"><span>🛠️</span><span>Admin CMS</span><span className="muted" style={{ marginLeft: "auto" }}>›</span></Link>
+          )}
+        </div>
       </div>
 
-      {/* settings */}
-      <div className="mx-4 mt-4 rounded-lg border border-border bg-surface p-4">
-        <div className="text-xs font-semibold uppercase tracking-wide text-dim">Link Telegram</div>
-        <p className="mt-1 text-[11px] text-muted">Link your Telegram to track your bot downloads here.</p>
-        <div className="mt-2 flex gap-2">
-          <input
-            value={telegram}
-            onChange={(e) => setTelegram(e.target.value)}
-            placeholder={user.telegramUsername ? `@${user.telegramUsername}` : "@username or t.me link"}
-            className="flex-1 rounded-full border border-border bg-bg px-3 py-2 text-xs text-text placeholder:text-dim focus:border-accent focus:outline-none"
-          />
-          <button onClick={linkTelegram} className="rounded-full bg-accent px-4 py-2 text-xs font-bold text-black">
-            {user.telegramUsername ? "Update" : "Continue"}
-          </button>
+      {/* telegram */}
+      <div className="rail">
+        <div className="section-head"><h2>Telegram delivery</h2></div>
+        <div className="dark-panel" style={{ padding: 18 }}>
+          <p className="muted" style={{ fontSize: 12, margin: "0 0 10px" }}>Link your Telegram to track your bot downloads here.</p>
+          <div className="actions">
+            <input
+              className="form-input"
+              style={{ flex: 1, margin: 0 }}
+              value={telegram}
+              onChange={(e) => setTelegram(e.target.value)}
+              placeholder={user.telegramUsername ? `@${user.telegramUsername}` : "@username or t.me link"}
+            />
+            <button className="btn primary" onClick={linkTelegram}>
+              {user.telegramUsername ? "Update" : "Continue"}
+            </button>
+          </div>
+          {user.telegramUsername && (
+            <div style={{ marginTop: 10, fontSize: 12, color: "#6fe0a4" }}>✓ Linked to @{user.telegramUsername}</div>
+          )}
         </div>
-        {user.telegramUsername && (
-          <div className="mt-1.5 text-[11px] text-success">✓ Linked to @{user.telegramUsername}</div>
-        )}
       </div>
 
       {/* sessions */}
-      <div className="mx-4 mt-4 rounded-lg border border-border bg-surface p-4">
-        <div className="flex items-center justify-between">
-          <div className="text-xs font-semibold uppercase tracking-wide text-dim">Sessions</div>
+      <div className="rail">
+        <div className="section-head">
+          <h2>Sessions</h2>
           {user.sessions.length > 1 && (
-            <button onClick={terminateAll} className="text-[11px] font-medium text-danger">
-              Terminate All
+            <button className="btn ghost" style={{ padding: 0, fontSize: 11 }} onClick={terminateAll}>
+              Terminate all
             </button>
           )}
         </div>
-        <div className="mt-2 space-y-1.5">
+        <div className="dark-panel" style={{ padding: 8 }}>
           {user.sessions.map((s) => (
-            <div key={s.id} className="flex items-center justify-between rounded bg-bg px-3 py-2 text-xs">
-              <span className="text-muted">{s.device ?? "Device"} {s.active && <span className="text-success">· Active now</span>}</span>
-              <span className="text-[10px] text-dim">{s.ip ?? "—"}</span>
+            <div className="lesson" key={s.id}>
+              <Check size={15} className="rating" />
+              <span>
+                {s.device ?? "Device"}
+                <br />
+                <small className="muted">{s.active ? "Active now" : "Signed out"} · {s.ip ?? "—"}</small>
+              </span>
             </div>
           ))}
         </div>
       </div>
 
-      <div className="mx-4 mt-4">
-        <button onClick={logout} className="w-full rounded-full border border-danger/40 py-2 text-sm font-medium text-danger hover:bg-danger/10">
+      <div className="rail">
+        <button className="btn" style={{ width: "100%", color: "hsl(var(--destructive))" }} onClick={logout}>
           Log out
         </button>
       </div>
 
       {toast && (
-        <div className="fixed inset-x-0 bottom-16 z-40 mx-auto w-fit rounded-full bg-surface-raised px-4 py-2 text-xs text-text shadow-lg">
-          {toast}
+        <div className="sheet" style={{ pointerEvents: "none", background: "transparent", display: "grid", placeItems: "end center", paddingBottom: 40 }}>
+          <div className="dark-panel" style={{ padding: "14px 22px", background: "#f6a437", color: "#211308", fontWeight: 800, fontSize: 12 }}>
+            {toast}
+          </div>
         </div>
       )}
-    </div>
+    </main>
   );
 }

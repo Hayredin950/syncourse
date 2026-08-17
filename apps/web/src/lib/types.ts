@@ -20,6 +20,8 @@ export interface CourseSummary {
   publishedAt: string;
   rank?: number;
   isNew?: boolean;
+  /** progress percentage — present on learning rows (my-learning) */
+  progress?: number;
 }
 
 export interface LessonLite {

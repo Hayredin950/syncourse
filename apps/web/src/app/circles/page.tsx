@@ -2,47 +2,43 @@
 
 import Link from "next/link";
 import { useAuth } from "@/lib/auth";
+import { MobileHeader } from "@/components/Nav";
 
 export default function CirclesPage() {
   const { user } = useAuth();
 
   return (
-    <div className="pb-6">
-      <div className="border-b border-border px-4 py-3">
-        <h1 className="text-lg font-bold text-text">Circles</h1>
-        <div className="mt-2 flex gap-2 text-xs">
-          <span className="rounded-full bg-accent px-3 py-1 font-medium text-black">Activity</span>
-          <span className="rounded-full bg-surface px-3 py-1 text-muted">Circles</span>
-        </div>
+    <main className="page">
+      <MobileHeader title="Circles" />
+      <span className="eyebrow">Study circles</span>
+      <h1 className="display" style={{ fontSize: 45 }}>Learn in public.<br />Keep the signal.</h1>
+      <div className="pills">
+        <button className="badge primary">Activity</button>
+        <button className="badge">Circles</button>
       </div>
-
-      <div className="p-4">
-        {!user ? (
-          <div className="rounded-lg border border-border bg-surface p-6 text-center">
-            <div className="text-3xl">👥</div>
-            <div className="mt-2 text-sm font-medium text-text">Follow people to see what they&apos;re watching</div>
-            <p className="mx-auto mt-1 max-w-[260px] text-xs text-muted">
-              See what your people watch, rate and save — then discover courses through them.
-            </p>
-            <Link href="/auth?next=/circles" className="mt-3 inline-block rounded-full bg-accent px-4 py-1.5 text-xs font-bold text-black">
-              Sign in
-            </Link>
-          </div>
+      <div className="dark-panel" style={{ padding: 35, textAlign: "center", marginTop: 34 }}>
+        <UsersIcon />
+        <h3>{user ? "Start your first circle" : "Follow people to see what they are learning."}</h3>
+        <p className="muted" style={{ maxWidth: 420, margin: "0 auto 20px" }}>
+          {user
+            ? "Follow people back to send them courses directly. Your activity feed fills in as your circle grows."
+            : "Start a circle with peers, share progress, and trade the lessons that moved your work forward."}
+        </p>
+        {user ? (
+          <Link href="/browse" className="btn primary" style={{ display: "inline-block" }}>Find courses</Link>
         ) : (
-          <div className="rounded-lg border border-border bg-surface p-6 text-center">
-            <div className="text-3xl">🪄</div>
-            <div className="mt-2 text-sm font-medium text-text">Start your first circle</div>
-            <p className="mx-auto mt-1 max-w-[260px] text-xs text-muted">
-              Follow people back to send them courses directly. Your activity feed fills in as your circle grows.
-            </p>
-            <div className="mt-3 flex justify-center gap-2 text-xs">
-              <Link href="/browse" className="rounded-full bg-accent px-4 py-1.5 font-bold text-black">
-                Find courses
-              </Link>
-            </div>
-          </div>
+          <Link href="/auth?next=/circles" className="btn primary" style={{ display: "inline-block" }}>Start your first circle</Link>
         )}
       </div>
-    </div>
+    </main>
+  );
+}
+
+function UsersIcon() {
+  return (
+    <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="hsl(var(--accent))" strokeWidth="1.8" style={{ marginBottom: 14 }}>
+      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" />
+      <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
+    </svg>
   );
 }

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { get } from "@/lib/api";
+import { MobileHeader } from "@/components/Nav";
 
 const TITLES: Record<string, string> = {
   terms: "Terms of Service",
@@ -27,13 +28,15 @@ export default function LegalPage() {
   }, [type]);
 
   return (
-    <div className="p-5">
-      <h1 className="text-lg font-bold text-text">{TITLES[type] ?? "Legal"}</h1>
+    <main className="page legal">
+      <MobileHeader title="Legal" />
+      <span className="eyebrow">Syncourse legal</span>
+      <h1 className="display" style={{ fontSize: 46 }}>{TITLES[type] ?? "Legal"}</h1>
       {loading ? (
-        <div className="mt-3 text-sm text-muted">Loading…</div>
+        <p className="muted">Loading…</p>
       ) : (
-        <div className="mt-3 whitespace-pre-wrap text-sm leading-relaxed text-muted">{body}</div>
+        <div className="whitespace-pre-wrap">{body || "Document coming soon."}</div>
       )}
-    </div>
+    </main>
   );
 }
