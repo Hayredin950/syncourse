@@ -55,8 +55,9 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
   private lastUpdateAt: Date | null = null;
   private pollErrors = 0;
   private lastError: { at: string; message: string; stack?: string } | null = null;
-  /** Per-chat cache of the most recent file the user forwarded/sent to the bot. */
-  private lastFileByChat = new Map<
+  /** Per-user cache of the most recent file the user forwarded/sent to the bot —
+   *  keyed by Telegram user id so `/link` works from any chat (DM, group, topic). */
+  private lastFileByUser = new Map<
     number,
     { messageId: number; fileId: string; fileName: string | null; fileSize: number | null }
   >();
@@ -163,11 +164,12 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     const chatId = msg.chat.id;
     const threadId = msg.message_thread_id ?? null;
 
-    // Cache the most recent file per chat so `/link <slug>` works as a plain
-    // message right after forwarding a ZIP to the bot (no reply gesture needed).
+    // Cache the most recent file per USER so `/link <slug>` works as a plain
+    // message right after forwarding a ZIP anywhere (no reply gesture needed).
     const msgDoc = msg.document ?? msg.video ?? msg.audio;
+    const fileOwner = msg.from?.id ?? chatId;
     if (msgDoc) {
-      this.lastFileByChat.set(chatId, {
+      this.lastFileByUser.set(fileOwner, {
         messageId: msg.message_id,
         fileId: msgDoc.file_id,
         fileName: msgDoc.file_name ?? null,
@@ -200,7 +202,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
         await this.sendCourseList(chatId, threadId);
         break;
       case '/link':
-        if (await this.isAdmin(fromId)) await this.linkCourse(chatId, arg, msg, threadId);
+        if (await this.isAdmin(fromId)) await this.linkCourse(chatId, arg, msg, threadId, fromId);
         else await this.sendText(chatId, '⛔ This command is for admins only.', threadId);
         break;
       case '/unlink':
@@ -264,6 +266,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     arg: string,
     msg?: NonNullable<TelegramUpdate['message']>,
     threadId?: number | null,
+    fromId?: number,
   ) {
     const slug = arg.split(/\s+/)[0] ?? '';
     if (!slug || slug.includes('<') || slug.includes('>')) {
@@ -291,14 +294,14 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     // forwarding the ZIP to the bot).
     const reply = msg?.reply_to_message;
     const replyDoc = reply ? (reply.document ?? reply.video ?? reply.audio) : undefined;
-    const cached = this.lastFileByChat.get(chatId);
+    const cached = fromId ? this.lastFileByUser.get(fromId) : undefined;
     const doc = replyDoc
       ? { file_id: replyDoc.file_id, file_name: replyDoc.file_name, file_size: replyDoc.file_size }
       : cached && !reply
         ? { file_id: cached.fileId, file_name: cached.fileName, file_size: cached.fileSize }
         : null;
     if (doc) {
-      const sourceName = replyDoc ? 'the file you replied to' : 'the last file you sent/forwarded to this chat';
+      const sourceName = replyDoc ? 'the file you replied to' : 'the last file you sent/forwarded to the bot';
       await this.saveLink({
         courseId: course.id,
         chatId: BigInt(chatId),
@@ -320,15 +323,15 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       return this.sendText(chatId, 'The message you replied to does not contain a file (ZIP/video/audio). Reply to the file message itself.', threadId);
     }
 
-    // Mode 2: t.me link in the DM.
+    // Mode 2: no file cached yet — guide the admin clearly.
     const url = arg.split(/\s+/)[1] ?? '';
     if (!url) {
       return this.sendText(
         chatId,
-        'You sent the slug but no file. Two ways to link it:\n\n' +
-          '1️⃣ In the GROUP: tap the ZIP message → Reply → /link <slug>\n' +
-          '2️⃣ In this chat: /link <slug> https://t.me/syncourse/<topic-id>/<message-id>\n\n' +
-          'I need the actual file message — not a plain new message.',
+        'I don\'t have a file for that yet. Two easy ways:\n\n' +
+          '1️⃣ Forward the course ZIP to this bot (any chat), then send /link <slug> again\n' +
+          '2️⃣ Reply to the ZIP message in the group with /link <slug>\n\n' +
+          'Example:\nForward the ZIP → then: /link complete-machine-learning-and-data-science-2021',
         threadId,
       );
     }
