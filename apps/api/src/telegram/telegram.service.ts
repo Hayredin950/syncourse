@@ -47,6 +47,9 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
   private readonly logger = new Logger('TelegramBot');
   private polling = false;
   private stopped = false;
+  private lastPollAt: Date | null = null;
+  private lastUpdateAt: Date | null = null;
+  private pollErrors = 0;
 
   constructor(private readonly prisma: PrismaService) {}
 
@@ -82,8 +85,10 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
 
   private async pollLoop() {
     let offset = 0;
+    let conflictBackoff = 0;
     while (this.polling && !this.stopped) {
       try {
+        this.lastPollAt = new Date();
         const res = await fetch(
           `https://api.telegram.org/bot${this.token}/getUpdates?timeout=25&offset=${offset}&allowed_updates=${encodeURIComponent(
             JSON.stringify(['message', 'callback_query']),
@@ -92,24 +97,36 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
         const data = (await res.json()) as { ok: boolean; result?: TelegramUpdate[]; description?: string };
         if (!data.ok) {
           if (data.description?.includes('409')) {
-            this.logger.error('Bot is already being polled by another instance — stopping local polling.');
-            this.polling = false;
-            return;
+            // Another instance (old deploy) holds the poll lock. It will die on
+            // its own during the deploy — back off and RETRY instead of giving
+            // up forever, otherwise the bot stays dead after every redeploy.
+            conflictBackoff = Math.min(conflictBackoff + 5, 60);
+            this.pollErrors++;
+            this.logger.warn(`409 conflict (another instance polling) — retrying in ${conflictBackoff}s`);
+            await this.sleep(conflictBackoff * 1000);
+            continue;
           }
+          conflictBackoff = 0;
+          this.pollErrors++;
           this.logger.warn(`getUpdates failed: ${data.description}`);
           await this.sleep(2000);
           continue;
         }
-        for (const update of data.result ?? []) {
+        conflictBackoff = 0;
+        const updates = data.result ?? [];
+        for (const update of updates) {
           offset = Math.max(offset, update.update_id + 1);
+          this.lastUpdateAt = new Date();
           try {
             await this.handleUpdate(update);
           } catch (err) {
+            this.pollErrors++;
             this.logger.error(`update ${update.update_id} failed: ${(err as Error).message}`);
           }
         }
       } catch (err) {
         if (this.stopped) return;
+        this.pollErrors++;
         this.logger.warn(`poll error: ${(err as Error).message} — retrying`);
         await this.sleep(2000);
       }
@@ -571,6 +588,9 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       enabled: this.enabled,
       polling: this.polling,
       botUsername: `@${BOT_USERNAME}`,
+      lastPollAt: this.lastPollAt ? this.lastPollAt.toISOString() : null,
+      lastUpdateAt: this.lastUpdateAt ? this.lastUpdateAt.toISOString() : null,
+      pollErrors: this.pollErrors,
       linkedCourses: links.map((l) => ({
         slug: l.course.slug,
         title: l.course.title,
