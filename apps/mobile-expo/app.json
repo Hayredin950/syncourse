@@ -8,12 +8,11 @@
     "icon": "./assets/icon.png",
     "scheme": "syncourse",
     "userInterfaceStyle": "dark",
-    "backgroundColor": "#0E0E10",
-    "newArchEnabled": true,
+    "backgroundColor": "#0E0D0B",
+    "newArchEnabled": false,
     "plugins": [
       "expo-router",
-      "expo-web-browser",
-      "expo-updates"
+      "expo-web-browser"
     ],
     "updates": {
       "url": "https://u.expo.dev/d47a1209-7356-4518-bb9c-1fa06648345e",
@@ -27,17 +26,22 @@
       }
     },
     "splash": {
-      "backgroundColor": "#0E0E10"
+      "image": "./assets/splash-icon.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#0E0D0B"
     },
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "app.syncourse.mobile"
+      "bundleIdentifier": "app.syncourse.mobile",
+      "icon": "./assets/icon.png"
     },
     "android": {
       "package": "app.syncourse.mobile",
       "adaptiveIcon": {
-        "backgroundColor": "#0E0E10"
+        "foregroundImage": "./assets/icon.png",
+        "backgroundColor": "#0E0D0B"
       },
+      "icon": "./assets/icon.png",
       "predictiveBackGestureEnabled": false
     },
     "web": {
