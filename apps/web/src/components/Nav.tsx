@@ -22,7 +22,7 @@ export function Nav() {
     <>
       {/* top header */}
       <header className="sticky top-0 z-20 border-b border-border bg-bg/90 backdrop-blur">
-        <div className="mx-auto flex max-w-[420px] items-center gap-3 px-4 py-3">
+        <div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-3 md:px-8">
           <Link href="/" className="text-lg font-bold tracking-tight text-text">
             Syncourse<span className="text-accent">.</span>
           </Link>
@@ -35,13 +35,13 @@ export function Nav() {
             </Link>
             <Link
               href="/circles"
-              className={pathname.startsWith("/circles") ? "font-medium text-accent" : "text-muted hover:text-text"}
+              className={`hidden sm:inline ${pathname.startsWith("/circles") ? "font-medium text-accent" : "text-muted hover:text-text"}`}
             >
               circles
             </Link>
             <Link
               href="/lists"
-              className={pathname.startsWith("/lists") ? "font-medium text-accent" : "text-muted hover:text-text"}
+              className={`hidden sm:inline ${pathname.startsWith("/lists") ? "font-medium text-accent" : "text-muted hover:text-text"}`}
             >
               Collections
             </Link>
@@ -73,9 +73,9 @@ export function Nav() {
         </div>
       </header>
 
-      {/* bottom nav (mobile-first; stays centered on desktop) */}
-      <nav className="fixed inset-x-0 bottom-0 z-20 border-t border-border bg-surface/95 backdrop-blur">
-        <div className="mx-auto flex max-w-[420px] items-center justify-around py-1.5">
+      {/* bottom nav — mobile only; desktop uses the top header nav */}
+      <nav className="fixed inset-x-0 bottom-0 z-20 border-t border-border bg-surface/95 backdrop-blur md:hidden">
+        <div className="mx-auto flex max-w-7xl items-center justify-around px-4 py-1.5">
           {tabs.map((t) => (
             <Link
               key={t.href}

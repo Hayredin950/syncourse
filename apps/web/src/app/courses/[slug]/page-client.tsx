@@ -482,16 +482,16 @@ export default function CoursePage() {
       {similar.length > 0 && (
         <div className="mt-5 px-4">
           <h2 className="mb-2 text-base font-semibold text-text">More like this</h2>
-          <div className="no-scrollbar flex snap-x gap-3 overflow-x-auto">
+          <div className="no-scrollbar flex snap-x gap-3 overflow-x-auto md:grid md:grid-cols-[repeat(auto-fill,minmax(150px,1fr))] md:gap-4 md:overflow-visible">
             {similar.map((c) => (
-              <Link key={c.id} href={`/courses/${c.slug}`} className="w-[130px] shrink-0">
+              <Link key={c.id} href={`/courses/${c.slug}`} className="w-[130px] min-w-0 shrink-0 md:w-auto">
                 <div className="aspect-[2/3] overflow-hidden rounded-lg bg-surface">
                   {c.thumbnailUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img src={cloudinaryUrl(c.thumbnailUrl, { width: 260, height: 390 }) ?? undefined} alt={c.title} loading="lazy" className="h-full w-full object-cover" />
                   ) : null}
                 </div>
-                <div className="mt-1 line-clamp-1 text-xs text-text">{c.title}</div>
+                <div className="mt-1 line-clamp-1 min-w-0 text-xs text-text">{c.title}</div>
               </Link>
             ))}
           </div>

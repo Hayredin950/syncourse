@@ -115,7 +115,7 @@ export default function HomePage() {
           <Link
             key={p.id}
             href="/browse"
-            className="block w-[170px] shrink-0 overflow-hidden rounded-lg border border-border bg-surface"
+            className="block w-[170px] shrink-0 overflow-hidden rounded-lg border border-border bg-surface md:w-auto"
           >
             <div className="flex aspect-[16/9] items-center justify-center bg-surface-raised text-2xl">🗺️</div>
             <div className="p-2">
@@ -134,7 +134,7 @@ export default function HomePage() {
           <Link
             key={c.id}
             href={`/browse?category=${c.slug}`}
-            className="flex w-[140px] shrink-0 flex-col items-center gap-1 rounded-lg border border-border bg-surface px-3 py-4"
+            className="flex w-[140px] shrink-0 flex-col items-center gap-1 rounded-lg border border-border bg-surface px-3 py-4 md:w-auto"
           >
             <span className="text-2xl">{c.icon}</span>
             <span className="line-clamp-1 text-xs font-medium text-text">{c.name}</span>
@@ -149,7 +149,7 @@ export default function HomePage() {
           <Link
             key={l.id}
             href={`/browse?lecturer=${l.slug}`}
-            className="flex w-[110px] shrink-0 flex-col items-center gap-1 rounded-lg px-2 py-3 text-center"
+            className="flex w-[110px] shrink-0 flex-col items-center gap-1 rounded-lg px-2 py-3 text-center md:w-auto"
           >
             <span className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-full bg-surface-raised text-lg font-bold text-accent">
               {l.name.charAt(0)}
@@ -166,7 +166,7 @@ export default function HomePage() {
           <Link
             key={o.id}
             href={`/browse?organization=${o.slug}`}
-            className="flex w-[150px] shrink-0 items-center gap-2 rounded-lg border border-border bg-surface px-3 py-3"
+            className="flex w-[150px] shrink-0 items-center gap-2 rounded-lg border border-border bg-surface px-3 py-3 md:w-auto"
           >
             <span className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full bg-surface-raised text-sm font-bold text-accent">
               {o.name.charAt(0)}

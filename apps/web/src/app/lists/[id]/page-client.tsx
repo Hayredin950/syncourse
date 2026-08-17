@@ -88,16 +88,16 @@ export default function ListDetailPage() {
           <EmptyState title="Nothing here. This collection is empty." />
         </div>
       ) : (
-        <div className="grid grid-cols-3 gap-3 p-4">
+        <div className="grid grid-cols-2 gap-3 p-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 2xl:grid-cols-6">
           {list.items.map((c) => (
-            <Link key={c.id} href={`/courses/${c.slug}`} className="group">
+            <Link key={c.id} href={`/courses/${c.slug}`} className="group min-w-0">
               <div className="aspect-[2/3] overflow-hidden rounded-lg bg-surface">
                 {c.thumbnailUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={c.thumbnailUrl} alt={c.title} loading="lazy" className="h-full w-full object-cover transition-transform group-hover:scale-105" />
                 ) : null}
               </div>
-              <div className="mt-1 line-clamp-1 text-xs text-text">{c.title}</div>
+              <div className="mt-1 line-clamp-1 min-w-0 text-xs text-text">{c.title}</div>
               <div className="text-[10px] text-muted">★ {c.ratingAvg.toFixed(1)} · {c.level}</div>
             </Link>
           ))}

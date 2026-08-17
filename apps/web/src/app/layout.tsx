@@ -15,9 +15,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <body>
         <AuthProvider>
           <Nav />
-          <main className="mx-auto w-full max-w-[420px] min-h-screen pb-20">{children}</main>
+          <main className="mx-auto w-full max-w-7xl min-h-screen px-4 pb-20 md:px-8 md:pb-10">{children}</main>
           <footer className="border-t border-border bg-bg">
-            <div className="mx-auto flex max-w-[420px] flex-col items-center gap-1 px-4 py-6 text-center">
+            <div className="mx-auto flex max-w-7xl flex-col items-center gap-1 px-4 py-6 text-center md:px-8">
               <div className="text-xs text-muted">
                 <span className="font-semibold text-text">GET THE APP</span> — Android · Android TV · Windows · macOS
               </div>

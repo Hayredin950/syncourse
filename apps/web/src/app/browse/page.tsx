@@ -99,8 +99,8 @@ function BrowseInner() {
       <div className="px-4 py-2 text-xs text-muted">{total}+ results</div>
 
       {loading ? (
-        <div className="grid grid-cols-3 gap-3 p-4">
-          {[...Array(9)].map((_, i) => (
+        <div className="grid grid-cols-2 gap-3 p-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 2xl:grid-cols-6">
+          {[...Array(12)].map((_, i) => (
             <div key={i} className="aspect-[2/3] animate-pulse rounded-lg bg-surface" />
           ))}
         </div>
@@ -109,9 +109,9 @@ function BrowseInner() {
           <EmptyState title="No courses match those filters" body="Try removing a filter or two." />
         </div>
       ) : view === "grid" ? (
-        <div className="grid grid-cols-3 gap-3 px-4">
+        <div className="grid grid-cols-2 gap-3 px-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 2xl:grid-cols-6">
           {results.map((c) => (
-            <CourseCard key={c.id} course={c} />
+            <CourseCard key={c.id} course={c} fill />
           ))}
         </div>
       ) : (

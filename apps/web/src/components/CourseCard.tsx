@@ -6,11 +6,22 @@ import { compact, formatDuration, ratingColor } from "@/lib/format";
 import { cloudinaryUrl } from "@/lib/cloudinary";
 import { Stars } from "./StarRating";
 
-export function CourseCard({ course, rank }: { course: CourseSummary; rank?: number }) {
+export function CourseCard({
+  course,
+  rank,
+  fill,
+}: {
+  course: CourseSummary;
+  rank?: number;
+  /** Fill its grid cell (browse grid) instead of a fixed rail width. */
+  fill?: boolean;
+}) {
   return (
     <Link
       href={`/courses/${course.slug}`}
-      className="group block w-[130px] shrink-0 snap-start sm:w-[140px]"
+      className={`group block min-w-0 ${
+        fill ? "w-full" : "w-[130px] shrink-0 snap-start sm:w-[140px] md:w-auto"
+      }`}
     >
       <div className="relative aspect-[2/3] overflow-hidden rounded-lg bg-surface">
         {course.thumbnailUrl ? (
@@ -40,7 +51,7 @@ export function CourseCard({ course, rank }: { course: CourseSummary; rank?: num
           </span>
         )}
       </div>
-      <div className="mt-1.5 line-clamp-2 text-[13px] font-medium leading-snug text-text">{course.title}</div>
+      <div className="mt-1.5 line-clamp-2 min-w-0 text-[13px] font-medium leading-snug text-text">{course.title}</div>
       <div className="mt-0.5 flex items-center gap-1 text-[11px] text-muted">
         <span className={ratingColor(course.ratingAvg)}>{course.ratingAvg.toFixed(1)}</span>
         <span className="text-dim">·</span>
