@@ -574,16 +574,19 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       const body: Record<string, unknown> = {
         chat_id: chatId,
         text,
-        parse_mode: 'HTML',
+        // IMPORTANT: no parse_mode. Telegram rejects messages containing raw
+        // <angle brackets> when parse_mode=HTML, which made every /link reply
+        // fail silently. Plain text is bulletproof.
         disable_web_page_preview: true,
       };
       if (threadId) body.message_thread_id = threadId;
       const res = await this.api('sendMessage', body);
-      if (!(await res.json()).ok) {
-        this.logger.warn(`sendMessage rejected (${chatId}): ${((await res.json()) as { description?: string }).description}`);
+      const json = (await res.json()) as { ok: boolean; description?: string };
+      if (!json.ok) {
+        this.logger.error(`sendMessage rejected (${chatId}): ${json.description}`);
       }
     } catch (err) {
-      this.logger.warn(`sendMessage failed: ${(err as Error).message}`);
+      this.logger.error(`sendMessage failed: ${(err as Error).message}`);
     }
   }
 
@@ -665,25 +668,25 @@ function courseCaption(
 
 function welcomeMessage(): string {
   return (
-    `👋 Welcome to <b>Syncourse</b>!\n\n` +
+    `👋 Welcome to Syncourse!\n\n` +
     `I send you course files straight to this chat.\n\n` +
-    `• <b>Get a course</b>: send /courses to see what's available\n` +
-    `• <b>Download one</b>: /download &lt;slug&gt;\n\n` +
+    `• Get a course: send /courses to see what's available\n` +
+    `• Download one: /download <slug>\n\n` +
     `Find the whole catalog at syncourse.pages.dev`
   );
 }
 
 function helpMessage(): string {
   return (
-    `<b>Syncourse bot</b>\n\n` +
-    `<b>For everyone:</b>\n` +
+    `Syncourse bot\n\n` +
+    `For everyone:\n` +
     `/courses — list courses with files\n` +
-    `/download &lt;slug&gt; — get a course file\n\n` +
-    `<b>For admins:</b>\n` +
-    `/link &lt;slug&gt; &lt;t.me link&gt; — attach the file in a group topic to a course\n` +
-    `/unlink &lt;slug&gt; — detach the file\n` +
+    `/download <slug> — get a course file\n\n` +
+    `For admins:\n` +
+    `/link <slug> <t.me link> — attach the file in a group topic to a course\n` +
+    `/unlink <slug> — detach the file\n` +
     `/newcourse Title | Instructor | Category | type | price | image — create a course\n` +
-    `/broadcast &lt;text&gt; — message all linked users\n\n` +
+    `/broadcast <text> — message all linked users\n\n` +
     `Example link: https://t.me/syncourse/2/41 (group → topic → message)`
   );
 }
