@@ -1,8 +1,9 @@
 import ListDetailPageClient from "./page-client";
+import { listIds } from "@/lib/static-params";
 
-// Static export: real list URLs are served at runtime via the SPA fallback (_redirects).
+// Every real list id is exported so deep links and client navigation resolve.
 export async function generateStaticParams() {
-  return [{ id: "public" }];
+  return listIds();
 }
 
 export default function ListDetailPage() {

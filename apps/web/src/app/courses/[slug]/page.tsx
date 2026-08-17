@@ -1,8 +1,9 @@
 import CoursePageClient from "./page-client";
+import { courseSlugs } from "@/lib/static-params";
 
-// Static export: real slugs are served at runtime via the SPA fallback (_redirects).
+// Every real course slug is exported so deep links and client navigation resolve.
 export async function generateStaticParams() {
-  return [{ slug: "course" }];
+  return courseSlugs();
 }
 
 export default function CoursePage() {

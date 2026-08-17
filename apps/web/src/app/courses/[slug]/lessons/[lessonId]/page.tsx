@@ -1,8 +1,9 @@
 import LessonPageClient from "./page-client";
+import { lessonParams } from "@/lib/static-params";
 
-// Static export: real lesson URLs are served at runtime via the SPA fallback (_redirects).
+// Every real lesson is exported so deep links and client navigation resolve.
 export async function generateStaticParams() {
-  return [{ slug: "course", lessonId: "lesson" }];
+  return lessonParams();
 }
 
 export default function LessonPage() {

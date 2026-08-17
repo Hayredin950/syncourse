@@ -1,8 +1,9 @@
 import OrganizationPage from "./page-client";
+import { organizationSlugs } from "@/lib/static-params";
 
-// Static export: real organization URLs are served at runtime via the SPA fallback (_redirects).
+// Every real organization slug is exported so deep links and client navigation resolve.
 export async function generateStaticParams() {
-  return [{ slug: "organization" }];
+  return organizationSlugs();
 }
 
 export default function OrganizationRoute() {

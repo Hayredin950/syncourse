@@ -1,8 +1,9 @@
 import EditCoursePageClient from "./page-client";
+import { courseSlugs } from "@/lib/static-params";
 
-// Static export: real course slugs are served at runtime via the SPA fallback (_redirects).
+// Admin edit routes use course slugs — export the real ones so navigation resolves.
 export async function generateStaticParams() {
-  return [{ slug: "course" }];
+  return courseSlugs();
 }
 
 export default function EditCoursePage() {

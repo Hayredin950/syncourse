@@ -1,8 +1,9 @@
 import LecturerPage from "./page-client";
+import { lecturerSlugs } from "@/lib/static-params";
 
-// Static export: real lecturer URLs are served at runtime via the SPA fallback (_redirects).
+// Every real lecturer slug is exported so deep links and client navigation resolve.
 export async function generateStaticParams() {
-  return [{ slug: "lecturer" }];
+  return lecturerSlugs();
 }
 
 export default function LecturerRoute() {
