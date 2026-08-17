@@ -109,7 +109,7 @@ async function main() {
       data: {
         name: l.name,
         slug: slugify(l.name),
-        photoUrl: img(100 + lecturerDefs.indexOf(l)),
+        photoUrl: null, // clients render initial-letter avatars until a real photo is uploaded
         bio: l.bio,
         credentials: l.creds,
         socialLinks: JSON.stringify({ twitter: `https://twitter.com/${slugify(l.name).replace(/-/g, '')}` }),
@@ -127,7 +127,7 @@ async function main() {
   const orgs: Record<string, string> = {};
   for (const o of orgDefs) {
     const org = await prisma.organization.create({
-      data: { name: o.name, slug: slugify(o.name), subscribers: o.subscribers, description: o.description, logoUrl: img(200 + orgDefs.indexOf(o)) },
+      data: { name: o.name, slug: slugify(o.name), subscribers: o.subscribers, description: o.description, logoUrl: null }, // initials avatar until a real logo is uploaded
     });
     orgs[o.name] = org.id;
   }
@@ -350,7 +350,7 @@ async function main() {
   ];
   for (let p = 0; p < paths.length; p++) {
     const path = await prisma.learningPath.create({
-      data: { title: paths[p].title, description: paths[p].desc, coverUrl: img(900 + p), sortOrder: p },
+      data: { title: paths[p].title, description: paths[p].desc, coverUrl: null, sortOrder: p }, // clients render the path card art
     });
     for (let c = 0; c < Math.min(courseIds.length, 4); c++) {
       await prisma.learningPathCourse.create({
