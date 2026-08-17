@@ -9,7 +9,13 @@ interface TelegramUpdate {
     from?: { id: number; username?: string; first_name?: string };
     text?: string;
     date: number;
-    reply_to_message?: { message_id: number };
+    reply_to_message?: {
+      message_id: number;
+      message_thread_id?: number;
+      document?: { file_id: string; file_name?: string; file_size?: number };
+      video?: { file_id: string; file_name?: string; file_size?: number };
+      audio?: { file_id: string; file_name?: string; file_size?: number };
+    };
   };
   callback_query?: {
     id: string;
@@ -150,7 +156,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
         await this.sendCourseList(chatId);
         break;
       case '/link':
-        if (await this.isAdmin(fromId)) await this.linkCourse(chatId, arg);
+        if (await this.isAdmin(fromId)) await this.linkCourse(chatId, arg, msg);
         else await this.sendText(chatId, '⛔ This command is for admins only.');
         break;
       case '/unlink':
@@ -203,16 +209,23 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     return Boolean(staff);
   }
 
-  /** /link <course-slug> <t.me link to the file message in the group topic> */
-  private async linkCourse(chatId: number, arg: string) {
-    const [slug, url] = arg.split(/\s+/);
-    if (!slug || !url || slug.includes('<') || slug.includes('>')) {
+  /**
+   * /link <course-slug> [t.me link]
+   * Easiest: in the group, REPLY to the ZIP message with /link <course-slug> —
+   * the bot grabs the file straight from the reply. Alternatively pass a
+   * t.me/group/TOPIC/MESSAGE link in the DM.
+   */
+  private async linkCourse(
+    chatId: number,
+    arg: string,
+    msg?: NonNullable<TelegramUpdate['message']>,
+  ) {
+    const slug = arg.split(/\s+/)[0] ?? '';
+    if (!slug || slug.includes('<') || slug.includes('>')) {
       return this.sendText(
         chatId,
-        'Usage: /link <course-slug> <t.me/group/TOPIC/MESSAGE link>\n\n' +
-          'Replace <course-slug> with a REAL slug from this list:\n\n' +
-          (await this.courseSlugList()) +
-          '\nCopy the file link from the group: open the ZIP message → tap it → Copy link.',
+        'Usage (easiest): in the group, REPLY to the ZIP message with:\n/link <course-slug>\n\nor in the DM:\n/link <course-slug> <t.me/group/TOPIC/MESSAGE link>\n\nReplace <course-slug> with a REAL slug from this list:\n\n' +
+          (await this.courseSlugList()),
       );
     }
     const course = await this.prisma.course.findUnique({
@@ -226,6 +239,32 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       );
     }
 
+    // Mode 1: replied to a file message inside the group — no link needed.
+    const reply = msg?.reply_to_message;
+    if (reply) {
+      const doc = reply.document ?? reply.video ?? reply.audio;
+      if (doc) {
+        await this.saveLink({
+          courseId: course.id,
+          chatId: BigInt(chatId),
+          chatUsername: msg.chat.username ?? null,
+          messageThreadId: reply.message_thread_id ? BigInt(reply.message_thread_id) : null,
+          fileMessageId: BigInt(reply.message_id),
+          fileId: doc.file_id,
+          fileName: doc.file_name ?? null,
+          fileSizeMb: doc.file_size ? Number((doc.file_size / 1024 / 1024).toFixed(1)) : null,
+          caption: null,
+        });
+        return this.sendText(
+          chatId,
+          `✅ Linked “${course.title}” to the file you replied to (${doc.file_name ?? 'file'}${doc.file_size ? ` · ${(doc.file_size / 1024 / 1024).toFixed(1)} MB` : ''}).\n\nUsers can now get it with /download ${slug} or from the app.`,
+        );
+      }
+      return this.sendText(chatId, 'The message you replied to does not contain a file (ZIP/video/audio). Reply to the file message itself.');
+    }
+
+    // Mode 2: t.me link in the DM.
+    const url = arg.split(/\s+/)[1] ?? '';
     const parsed = parseTelegramLink(url);
     if (!parsed) return this.sendText(chatId, 'Could not parse that t.me link. It should look like https://t.me/group/2/41');
 
@@ -255,35 +294,17 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
         return this.sendText(chatId, 'That message does not contain a file (document/video/audio). Attach a ZIP or video and try again.');
       }
 
-      const upsert = await this.prisma.telegramCourseLink.upsert({
-        where: { courseId: course.id },
-        create: {
-          courseId: course.id,
-          chatId: BigInt(groupChatId),
-          chatUsername: parsed.chatUsername ?? chatJson.result?.username ?? null,
-          messageThreadId: parsed.messageThreadId ? BigInt(parsed.messageThreadId) : null,
-          fileMessageId: BigInt(parsed.messageId),
-          fileId: doc.file_id,
-          fileName: doc.file_name ?? null,
-          fileSizeMb: doc.file_size ? Number((doc.file_size / 1024 / 1024).toFixed(1)) : null,
-          caption: m.caption ?? null,
-        },
-        update: {
-          chatId: BigInt(groupChatId),
-          chatUsername: parsed.chatUsername ?? chatJson.result?.username ?? null,
-          messageThreadId: parsed.messageThreadId ? BigInt(parsed.messageThreadId) : null,
-          fileMessageId: BigInt(parsed.messageId),
-          fileId: doc.file_id,
-          fileName: doc.file_name ?? null,
-          fileSizeMb: doc.file_size ? Number((doc.file_size / 1024 / 1024).toFixed(1)) : null,
-          caption: m.caption ?? null,
-        },
+      await this.saveLink({
+        courseId: course.id,
+        chatId: BigInt(groupChatId),
+        chatUsername: parsed.chatUsername ?? chatJson.result?.username ?? null,
+        messageThreadId: parsed.messageThreadId ? BigInt(parsed.messageThreadId) : null,
+        fileMessageId: BigInt(parsed.messageId),
+        fileId: doc.file_id,
+        fileName: doc.file_name ?? null,
+        fileSizeMb: doc.file_size ? Number((doc.file_size / 1024 / 1024).toFixed(1)) : null,
+        caption: m.caption ?? null,
       });
-      await this.prisma.course.update({
-        where: { id: course.id },
-        data: { downloadCount: { increment: 0 } },
-      });
-      void upsert;
       return this.sendText(
         chatId,
         `✅ Linked “${course.title}”\n📦 ${doc.file_name ?? 'file'}${doc.file_size ? ` · ${(doc.file_size / 1024 / 1024).toFixed(1)} MB` : ''}\n\nUsers can now get it with /download ${slug} or from the app.`,
@@ -457,6 +478,34 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     });
     if (courses.length === 0) return 'No courses yet — create one with /newcourse.\n';
     return courses.map((c) => `• ${c.slug}`).join('\n') + '\n';
+  }
+
+  /** Upsert a course↔Telegram-file mapping. */
+  private async saveLink(input: {
+    courseId: string;
+    chatId: bigint;
+    chatUsername: string | null;
+    messageThreadId: bigint | null;
+    fileMessageId: bigint;
+    fileId: string | null;
+    fileName: string | null;
+    fileSizeMb: number | null;
+    caption: string | null;
+  }) {
+    await this.prisma.telegramCourseLink.upsert({
+      where: { courseId: input.courseId },
+      create: input,
+      update: {
+        chatId: input.chatId,
+        chatUsername: input.chatUsername,
+        messageThreadId: input.messageThreadId,
+        fileMessageId: input.fileMessageId,
+        fileId: input.fileId,
+        fileName: input.fileName,
+        fileSizeMb: input.fileSizeMb,
+        caption: input.caption,
+      },
+    });
   }
 
   private async sendCourseList(chatId: number) {
