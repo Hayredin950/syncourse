@@ -69,14 +69,18 @@ export default function LecturerScreen() {
       <Text style={styles.heading}>All courses · {l.courses.length}</Text>
       {l.courses.map((c) => (
         <Link key={c.id} href={`/courses/${c.slug}`} style={styles.row}>
-          <View style={styles.thumb}>
-            <Text style={{ color: colors.dim }}>▶</Text>
-          </View>
+          {c.thumbnailUrl ? (
+            <Image source={{ uri: cloudinaryUrl(c.thumbnailUrl, { width: 96, height: 72 }) ?? undefined }} style={styles.thumb} resizeMode="cover" />
+          ) : (
+            <View style={[styles.thumb, styles.thumbFallback]}>
+              <Text style={{ color: colors.dim }}>▶</Text>
+            </View>
+          )}
           <View style={styles.rowBody}>
             <Text numberOfLines={1} style={styles.rowTitle}>
               {c.title}
             </Text>
-            <Text style={styles.muted}>{formatDuration(c.durationMin)}</Text>
+            <Text style={styles.muted}>{c.level} · {formatDuration(c.durationMin)}</Text>
           </View>
           <Stars value={c.ratingAvg} />
         </Link>
@@ -112,13 +116,12 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.border,
   },
   thumb: {
-    width: 48,
-    height: 36,
-    borderRadius: 6,
+    width: 64,
+    height: 48,
+    borderRadius: 8,
     backgroundColor: colors.surface,
-    alignItems: "center",
-    justifyContent: "center",
   },
+  thumbFallback: { alignItems: "center", justifyContent: "center" },
   rowBody: { flex: 1 },
   rowTitle: { color: colors.text, fontSize: 14, fontWeight: "600" },
 });

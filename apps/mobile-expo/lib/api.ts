@@ -3,6 +3,9 @@ import type {
   ActivityItem,
   AppVersion,
   Category,
+  CheckoutResult,
+  CircleDetail,
+  CircleLite,
   CourseCollection,
   CourseDetail,
   CourseSummary,
@@ -17,6 +20,7 @@ import type {
   Plan,
   Review,
   UserProfile,
+  UserStats,
 } from "./types";
 
 export const API_URL =
@@ -119,6 +123,8 @@ export const browse = (params: {
   level?: string;
   minRating?: number;
   q?: string;
+  lecturer?: string;
+  organization?: string;
   limit?: number;
 }) => {
   const qs = new URLSearchParams();
@@ -127,6 +133,8 @@ export const browse = (params: {
   if (params.level) qs.set("level", params.level);
   if (params.minRating) qs.set("minRating", String(params.minRating));
   if (params.q) qs.set("q", params.q);
+  if (params.lecturer) qs.set("lecturer", params.lecturer);
+  if (params.organization) qs.set("organization", params.organization);
   qs.set("limit", String(params.limit ?? 60));
   return get<{ total: number; results: CourseSummary[] }>(
     `/courses?${qs.toString()}`
@@ -165,25 +173,41 @@ export const trendingSearches = () =>
 
 // --- collections ---
 export const myLists = () => get<CourseCollection[]>("/me/lists");
-export const createList = (name: string) =>
-  post<CourseCollection>("/lists", { name, visibility: "private" });
+export const createList = (input: { name: string; description?: string; visibility?: string }) =>
+  post<CourseCollection>("/lists", {
+    name: input.name,
+    ...(input.description ? { description: input.description } : {}),
+    visibility: input.visibility ?? "private",
+  });
 export const listDetail = (id: string) => get<CourseCollection>(`/lists/${id}`);
 
 // --- payments ---
 export const plans = () => get<Plan[]>("/payments/plans");
 export const checkout = (planId: string, method: string) =>
-  post<Record<string, unknown>>("/payments/checkout", {
+  post<CheckoutResult>("/payments/checkout", {
     planId,
     method,
     currency: method === "telebirr" ? "ETB" : "USD",
+  });
+export const submitReference = (subscriptionId: string, reference: string) =>
+  post<{ submitted: boolean; message: string }>(`/payments/subscriptions/${subscriptionId}/reference`, {
+    reference,
   });
 
 // --- circles ---
 export const circlesActivity = () =>
   get<{ activity: ActivityItem[] }>("/circles/activity");
+export const circles = () => get<CircleLite[]>("/circles");
+export const createCircle = (input: { name: string; description?: string }) =>
+  post<CircleDetail>("/circles", input);
+export const circleDetail = (id: string) => get<CircleDetail>(`/circles/${id}`);
+export const joinCircle = (id: string) => post<{ joined: boolean }>(`/circles/${id}/join`);
+export const leaveCircle = (id: string) => post<{ left: boolean }>(`/circles/${id}/leave`);
+export const activityFeed = () => get<{ activity: ActivityItem[] }>("/activity");
 
 // --- users ---
 export const me = () => get<UserProfile>("/users/me");
+export const stats = () => get<UserStats>("/users/me/stats");
 export const updateProfile = (data: { name?: string; username?: string; gender?: string; avatarUrl?: string }) =>
   request<UserProfile>("/users/me", {
     method: "PATCH",
@@ -194,9 +218,15 @@ export const linkTelegram = (telegramUsername: string) =>
   post("/auth/link-telegram", { telegramUsername });
 export const terminateSession = (sessionId: string) =>
   post(`/users/sessions/${sessionId}/terminate`);
+export const changePassword = (currentPassword: string, newPassword: string) =>
+  post("/users/me/change-password", { currentPassword, newPassword });
+export const forgotPassword = (email: string) =>
+  post("/auth/forgot-password", { email });
 
 export const recordDownload = (lessonId: string, quality?: string) =>
   post<{ id: string; recorded: boolean }>(`/lessons/${lessonId}/download`, quality ? { quality } : undefined);
+export const downloadToTelegram = (lessonId: string) =>
+  post<{ status: string; message: string }>(`/lessons/${lessonId}/download-to-telegram`);
 
 // --- catalog extras ---
 export const categories = () => get<Category[]>("/categories");

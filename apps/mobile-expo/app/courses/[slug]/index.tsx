@@ -18,7 +18,7 @@ import {
 import * as ImagePicker from "expo-image-picker";
 import * as api from "../../../lib/api";
 import { colors, radius } from "../../../lib/tokens";
-import { formatDurationSec, type CourseDetail } from "../../../lib/types";
+import { formatDurationSec, type Category, type CourseDetail, type CourseSummary } from "../../../lib/types";
 import { Stars, StarPicker, StarRow } from "../../../components/StarRating";
 
 
@@ -56,6 +56,28 @@ export default function CourseDetailScreen() {
   const [spoilers, setSpoilers] = useState(false);
   const [coverOpen, setCoverOpen] = useState(false);
   const [coverUrl, setCoverUrl] = useState("");
+  const [downloadsOpen, setDownloadsOpen] = useState(false);
+
+  const similarQ = useQuery({
+    queryKey: ["similar", slug],
+    queryFn: async () => {
+      const c = data;
+      if (!c) return [] as CourseSummary[];
+      const cat = c.categoryNames?.[0];
+      const cats = await api.categories().catch(() => [] as Category[]);
+      const catSlug = cats.find((x) => x.name === cat)?.slug ?? cat;
+      const r = await api.browse({ category: catSlug, limit: 8 }).catch(() => ({ results: [] as CourseSummary[] }));
+      const filtered = r.results.filter((x) => x.id !== c.id);
+      if (filtered.length >= 4) return filtered;
+      if (c.lecturer?.slug) {
+        const r2 = await api.browse({ lecturer: c.lecturer.slug, limit: 8 }).catch(() => ({ results: [] as CourseSummary[] }));
+        const f2 = r2.results.filter((x) => x.id !== c.id);
+        if (f2.length >= 4) return f2;
+      }
+      return filtered;
+    },
+    enabled: !!data,
+  });
 
   const { data: me } = useQuery({
     queryKey: ["me"],
@@ -393,7 +415,112 @@ export default function CourseDetailScreen() {
             </View>
           </View>
         ))}
+
+        {/* downloads — bulk module + per-lesson (phonofilm: season download) */}
+        <View style={styles.downloadsBox}>
+          <View style={styles.downloadsHead}>
+            <Text style={styles.heading}>Downloads</Text>
+            <Pressable onPress={() => setDownloadsOpen(true)}>
+              <Text style={styles.seeAll}>All lessons ⬇</Text>
+            </Pressable>
+          </View>
+          <Text style={styles.muted}>
+            Grab a whole module at once or pick individual lessons. Premium gets full-speed delivery.
+          </Text>
+          {c.sections.slice(0, 3).map((s, si) => (
+            <View key={s.id} style={styles.bulkRow}>
+              <Text style={styles.bulkText} numberOfLines={1}>
+                Module {si + 1} — {s.title}
+              </Text>
+              <Text style={styles.muted}>{s.lessons.length} lessons</Text>
+              <Link
+                href={`/courses/${c.slug}/lessons/${s.lessons[0]?.id ?? ""}?bulk=1`}
+                style={styles.bulkBtn}
+              >
+                <Text style={styles.bulkBtnLabel}>⬇ Module</Text>
+              </Link>
+            </View>
+          ))}
+        </View>
+
+        {/* More like this (phonofilm: 12-item related rail) */}
+        {similarQ.data && similarQ.data.length > 0 && (
+          <View style={{ marginTop: 22 }}>
+            <View style={styles.downloadsHead}>
+              <Text style={styles.heading}>More like this</Text>
+            </View>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.similarRow}>
+              {similarQ.data.map((sc) => (
+                <Link key={sc.id} href={`/courses/${sc.slug}`} asChild>
+                  <View style={{ width: 132 }}>
+                    {sc.thumbnailUrl ? (
+                      <Image source={{ uri: cloudinaryUrl(sc.thumbnailUrl, { width: 264, height: 300 }) ?? undefined }} style={styles.similarThumb} resizeMode="cover" />
+                    ) : (
+                      <View style={[styles.similarThumb, styles.similarFallback]}>
+                        <Text style={{ color: colors.dim }}>▶</Text>
+                      </View>
+                    )}
+                    <Text numberOfLines={2} style={styles.similarTitle}>{sc.title}</Text>
+                  </View>
+                </Link>
+              ))}
+            </ScrollView>
+          </View>
+        )}
       </View>
+
+      {/* downloads sheet */}
+      <Modal visible={downloadsOpen} transparent animationType="slide" onRequestClose={() => setDownloadsOpen(false)}>
+        <Pressable style={styles.backdrop} onPress={() => setDownloadsOpen(false)}>
+          <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
+            <View style={styles.sheetHeader}>
+              <Text style={styles.sheetTitle}>Available downloads</Text>
+              <Pressable onPress={() => setDownloadsOpen(false)}>
+                <Text style={styles.done}>Done</Text>
+              </Pressable>
+            </View>
+            <ScrollView style={{ maxHeight: "80%" }}>
+              <Text style={styles.muted}>
+                Lesson files are served through short-lived signed links. Premium members get full-speed delivery.
+              </Text>
+              {c.sections.map((s, si) => (
+                <View key={s.id} style={{ marginTop: 14 }}>
+                  <Pressable
+                    style={styles.bulkDownload}
+                    onPress={() => {
+                      setDownloadsOpen(false);
+                    }}
+                  >
+                    <Link
+                      href={`/courses/${c.slug}/lessons/${s.lessons[0]?.id ?? ""}?bulk=1`}
+                      style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1 }}
+                    >
+                      <Text style={{ color: colors.accent, fontWeight: "800" }}>⬇</Text>
+                      <Text style={{ color: colors.text, fontWeight: "700", fontSize: 13, flex: 1 }} numberOfLines={1}>
+                        Module {si + 1} — {s.title}
+                      </Text>
+                      <Text style={styles.muted}>{s.lessons.length} lessons</Text>
+                      <Text style={styles.bestText}>⚡ Fast</Text>
+                    </Link>
+                  </Pressable>
+                  {s.lessons.map((l) => (
+                    <Link
+                      key={l.id}
+                      href={`/courses/${c.slug}/lessons/${l.id}`}
+                      style={styles.lessonDownload}
+                    >
+                      <Text style={{ color: colors.dim }}>⬇</Text>
+                      <Text style={{ color: colors.text, fontSize: 13, flex: 1 }} numberOfLines={1}>{l.title}</Text>
+                      <Text style={styles.muted}>{formatDurationSec(l.durationSec)}</Text>
+                      {c.isPremium && <Text style={styles.bestText}>⚡ Fast</Text>}
+                    </Link>
+                  ))}
+                </View>
+              ))}
+            </ScrollView>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </ScrollView>
   );
 }
@@ -582,4 +709,71 @@ const styles = StyleSheet.create({
   actionIcon: { color: colors.muted, fontSize: 11 },
   actionLabel: { color: colors.muted, fontSize: 12 },
   upvoted: { color: colors.accent },
+  downloadsBox: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 14,
+    marginTop: 22,
+  },
+  downloadsHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  seeAll: { color: colors.accent, fontSize: 13, fontWeight: "600" },
+  bulkRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    borderWidth: 1,
+    borderStyle: "dashed",
+    borderColor: colors.accent,
+    borderRadius: radius.sm,
+    padding: 10,
+    marginTop: 10,
+    backgroundColor: colors.accentSoft,
+  },
+  bulkText: { color: colors.text, fontSize: 13, fontWeight: "700", flex: 1 },
+  bulkBtn: {
+    backgroundColor: colors.accent,
+    borderRadius: radius.pill,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  bulkBtnLabel: { color: "#000", fontSize: 11, fontWeight: "800" },
+  similarRow: { paddingHorizontal: 16, gap: 12, paddingTop: 8 },
+  similarThumb: { width: 132, height: 150, borderRadius: radius.md, backgroundColor: colors.surface },
+  similarFallback: { alignItems: "center", justifyContent: "center" },
+  similarTitle: { color: colors.text, fontSize: 12, fontWeight: "600", marginTop: 5 },
+  backdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "flex-end" },
+  sheet: {
+    backgroundColor: colors.surface,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 20,
+    paddingBottom: 40,
+    maxHeight: "85%",
+  },
+  sheetHeader: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12 },
+  sheetTitle: { color: colors.text, fontSize: 17, fontWeight: "800" },
+  done: { color: colors.accent, fontSize: 14, fontWeight: "700" },
+  bulkDownload: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    borderWidth: 1,
+    borderStyle: "dashed",
+    borderColor: colors.accent,
+    borderRadius: radius.sm,
+    padding: 12,
+    backgroundColor: colors.accentSoft,
+  },
+  lessonDownload: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    backgroundColor: colors.bg,
+    borderRadius: radius.sm,
+    padding: 11,
+    marginTop: 8,
+  },
+  bestText: { color: colors.accent, fontSize: 9, fontWeight: "800" },
 });

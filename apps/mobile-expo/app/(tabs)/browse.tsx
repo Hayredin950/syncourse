@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "expo-router";
-import React, { useMemo, useState } from "react";
+import { Link, useLocalSearchParams } from "expo-router";
+import React, { useEffect, useMemo, useState } from "react";
 import { cloudinaryUrl } from "../../lib/cloudinary";
 import {
   ActivityIndicator,
@@ -35,10 +35,18 @@ interface Filters {
 }
 
 export default function BrowseScreen() {
+  const params = useLocalSearchParams<{ category?: string }>();
   const [sort, setSort] = useState<string>("top-rated");
   const [view, setView] = useState<"grid" | "list">("list");
   const [showFilters, setShowFilters] = useState(false);
   const [filters, setFilters] = useState<Filters>({ category: "", level: "", minRating: "" });
+
+  // deep link from a home category tile: /browse?category=<slug>
+  useEffect(() => {
+    if (params.category) {
+      setFilters((f) => ({ ...f, category: params.category as string }));
+    }
+  }, [params.category]);
 
   const { data, isLoading, error } = useQuery({
     queryKey: ["browse", sort, filters],

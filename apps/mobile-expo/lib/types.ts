@@ -135,6 +135,10 @@ export interface UserProfile {
   planExpiresAt: string | null;
   telegramUsername: string | null;
   memberSince: string;
+  hasGoogle?: boolean;
+  hasPassword?: boolean;
+  settings?: { autoplayNext?: boolean; previewAutoplay?: boolean } | null;
+  privacy?: Record<string, string> | null;
   stats: {
     enrolled: number;
     completed: number;
@@ -151,10 +155,53 @@ export interface HomeRail {
   courses: CourseSummary[];
 }
 
+export interface BestOfOrg {
+  id: string;
+  name: string;
+  slug: string;
+  logoUrl: string | null;
+  courseCount: number;
+  courses: CourseSummary[];
+}
+
+export interface FeaturedPath {
+  id: string;
+  title: string;
+  description: string | null;
+  coverUrl: string | null;
+  courseCount: number;
+  ratingAvg: number;
+  totalVotes: number;
+  courses: { id: string; title: string; slug: string; thumbnailUrl: string | null }[];
+}
+
+export interface HomeLecturer {
+  id: string;
+  name: string;
+  slug: string;
+  photoUrl: string | null;
+  credentials: string | null;
+  courseCount: number;
+}
+
+export interface HomeOrganization {
+  id: string;
+  name: string;
+  slug: string;
+  logoUrl: string | null;
+  subscribers: number;
+  courseCount: number;
+}
+
 export interface HomeFeed {
   trending: CourseSummary[];
   latest: CourseSummary[];
   topRated: CourseSummary[];
+  bestOf: BestOfOrg[];
+  featuredPaths: FeaturedPath[];
+  categories: Category[];
+  lecturers: HomeLecturer[];
+  organizations: HomeOrganization[];
   rails: HomeRail[];
 }
 
@@ -263,6 +310,48 @@ export interface LearningPath {
   courses: { id: string; title: string; slug: string; order: number }[];
 }
 
+export interface CircleMember {
+  id: string;
+  name: string;
+  avatarUrl: string | null;
+  isOwner: boolean;
+}
+
+export interface CircleLite {
+  id: string;
+  name: string;
+  description: string | null;
+  slug: string;
+  memberCount: number;
+  joined: boolean;
+}
+
+export interface CircleDetail extends CircleLite {
+  ownerName: string;
+  members: CircleMember[];
+  activity: ActivityItem[];
+}
+
+export interface ActivityItem {
+  id: string;
+  userName: string;
+  userAvatar: string | null;
+  verb: string;
+  targetTitle: string;
+  targetSlug?: string;
+  createdAt: string;
+}
+
+export interface CheckoutResult {
+  subscriptionId: string;
+  status: string;
+  steps?: {
+    step1: { title: string; text: string; accountName: string; accountNumber: string };
+    step2: { title: string; hint: string };
+  };
+  redirectUrl?: string;
+}
+
 export interface Category {
   id: string;
   name: string;
@@ -278,6 +367,25 @@ export interface Session {
   ip: string | null;
   active: boolean;
   createdAt: string;
+}
+
+export interface UserStats {
+  engagedTotal: number;
+  ratingDistribution: { stars: number; count: number }[];
+  monthlyCompleted: { month: string; count: number }[];
+  categoryCounts: { label: string; count: number }[];
+  instructorCounts: { label: string; count: number }[];
+  languageCounts: { label: string; count: number }[];
+  topInstructors: { name: string; count: number; photoUrl: string | null }[];
+  contentTypeBreakdown: { label: string; count: number; pct: number }[];
+  difficultyBreakdown: { label: string; count: number; pct: number }[];
+  yourWeek: { day: string; count: number }[];
+  watchlistGrowth: { month: string; count: number }[];
+  topTags: { label: string; count: number }[];
+  pathProgress: { id: string; title: string; coverUrl: string | null; enrolled: number; completed: number; total: number; pct: number }[];
+  hasGoogle: boolean;
+  hasPassword: boolean;
+  emailVerified: boolean;
 }
 
 export interface UserProfileFull extends UserProfile {

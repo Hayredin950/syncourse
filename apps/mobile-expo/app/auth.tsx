@@ -3,7 +3,7 @@ import * as AuthSession from "expo-auth-session";
 import * as Google from "expo-auth-session/providers/google";
 import * as WebBrowser from "expo-web-browser";
 import React, { useEffect, useState } from "react";
-import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
+import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import * as api from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { colors } from "../lib/tokens";
@@ -22,6 +22,9 @@ export default function AuthScreen() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [forgotOpen, setForgotOpen] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [forgotBusy, setForgotBusy] = useState(false);
 
   // eslint-disable-next-line react-hooks/rules-of-hooks
   const [googleRequest, googleResponse, googlePrompt] = Google.useAuthRequest({
@@ -74,6 +77,21 @@ export default function AuthScreen() {
     }
   };
 
+  const sendReset = async () => {
+    if (!forgotEmail.trim()) return;
+    setForgotBusy(true);
+    try {
+      await api.forgotPassword(forgotEmail.trim());
+      setForgotOpen(false);
+      setForgotEmail("");
+      Alert.alert("Reset email sent", "Check your inbox for the password reset link.");
+    } catch (e) {
+      Alert.alert("Reset", e instanceof Error ? e.message : "Could not send reset email");
+    } finally {
+      setForgotBusy(false);
+    }
+  };
+
   return (
     <KeyboardAvoidingView
       style={styles.screen}
@@ -116,6 +134,11 @@ export default function AuthScreen() {
         <Text style={styles.submitBtn} onPress={busy ? undefined : submit}>
           {busy ? "…" : mode === "register" ? "Create account" : "Sign in"}
         </Text>
+        {mode === "login" && (
+          <Text style={styles.forgot} onPress={() => setForgotOpen(true)}>
+            Forgot password?
+          </Text>
+        )}
         <Text
           style={styles.switch}
           onPress={() => {
@@ -129,6 +152,31 @@ export default function AuthScreen() {
           {busy ? "Signing in…" : "Continue with Google"}
         </Text>
       </ScrollView>
+
+      <Modal visible={forgotOpen} transparent animationType="fade" onRequestClose={() => setForgotOpen(false)}>
+        <Pressable style={styles.forgotBackdrop} onPress={() => setForgotOpen(false)}>
+          <Pressable style={styles.forgotCard} onPress={(e) => e.stopPropagation()}>
+            <Text style={styles.forgotTitle}>Reset your password</Text>
+            <Text style={styles.muted}>We&apos;ll email you a link to set a new password.</Text>
+            <TextInput
+              value={forgotEmail}
+              onChangeText={setForgotEmail}
+              placeholder="Email"
+              placeholderTextColor={colors.dim}
+              style={styles.input}
+              autoCapitalize="none"
+              keyboardType="email-address"
+            />
+            <Pressable
+              style={[styles.forgotBtn, (!forgotEmail.trim() || forgotBusy) && { opacity: 0.4 }]}
+              disabled={!forgotEmail.trim() || forgotBusy}
+              onPress={sendReset}
+            >
+              <Text style={styles.forgotBtnLabel}>{forgotBusy ? "…" : "Send reset link"}</Text>
+            </Pressable>
+          </Pressable>
+        </Pressable>
+      </Modal>
     </KeyboardAvoidingView>
   );
 }
@@ -162,4 +210,25 @@ const styles = StyleSheet.create({
   },
   switch: { color: colors.muted, fontSize: 13, textAlign: "center", marginTop: 4 },
   google: { color: colors.text, fontSize: 14, fontWeight: "600", textAlign: "center", marginTop: 8 },
+  forgot: { color: colors.muted, fontSize: 12, textAlign: "center", textDecorationLine: "underline", marginTop: 2 },
+  muted: { color: colors.muted, fontSize: 13, textAlign: "center" },
+  forgotBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.6)", alignItems: "center", justifyContent: "center", padding: 24 },
+  forgotCard: {
+    width: "100%",
+    backgroundColor: colors.surface,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 20,
+    gap: 12,
+  },
+  forgotTitle: { color: colors.text, fontSize: 17, fontWeight: "800", textAlign: "center" },
+  forgotBtn: {
+    backgroundColor: colors.accent,
+    borderRadius: 999,
+    paddingVertical: 12,
+    alignItems: "center",
+    marginTop: 4,
+  },
+  forgotBtnLabel: { color: "#000", fontWeight: "800", fontSize: 14 },
 });

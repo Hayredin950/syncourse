@@ -31,6 +31,8 @@ export default function OrganizationScreen() {
   }
 
   const o: OrganizationDetail = data;
+  const typeLabel =
+    (o as any).orgType === "university" ? "UNIVERSITY" : (o as any).orgType === "company" ? "COMPANY" : "PUBLISHER";
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
@@ -43,6 +45,9 @@ export default function OrganizationScreen() {
           </View>
         )}
         <Text style={styles.name}>{o.name}</Text>
+        <View style={styles.typeBadge}>
+          <Text style={styles.typeText}>{typeLabel}</Text>
+        </View>
         {o.description ? <Text style={styles.bio}>{o.description}</Text> : null}
         <Text style={styles.muted}>
           {o.subscribers?.toLocaleString() ?? 0} subscribers · {o.courses.length} courses
@@ -52,9 +57,13 @@ export default function OrganizationScreen() {
       <Text style={styles.heading}>Catalog · {o.courses.length} courses</Text>
       {o.courses.map((c) => (
         <Link key={c.id} href={`/courses/${c.slug}`} style={styles.row}>
-          <View style={styles.thumb}>
-            <Text style={{ color: colors.dim }}>▶</Text>
-          </View>
+          {c.thumbnailUrl ? (
+            <Image source={{ uri: cloudinaryUrl(c.thumbnailUrl, { width: 96, height: 72 }) ?? undefined }} style={styles.thumb} resizeMode="cover" />
+          ) : (
+            <View style={[styles.thumb, styles.thumbFallback]}>
+              <Text style={{ color: colors.dim }}>▶</Text>
+            </View>
+          )}
           <View style={styles.rowBody}>
             <Text numberOfLines={1} style={styles.rowTitle}>
               {c.title}
@@ -80,6 +89,16 @@ const styles = StyleSheet.create({
   logoFallback: { alignItems: "center", justifyContent: "center" },
   logoText: { color: colors.text, fontSize: 34, fontWeight: "800" },
   name: { color: colors.text, fontSize: 22, fontWeight: "800" },
+  typeBadge: {
+    borderWidth: 1,
+    borderColor: colors.accent,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 3,
+    marginTop: 6,
+    backgroundColor: colors.accentSoft,
+  },
+  typeText: { color: colors.accent, fontSize: 9, fontWeight: "800", letterSpacing: 1 },
   bio: { color: colors.muted, fontSize: 13, lineHeight: 19, textAlign: "center", marginTop: 8 },
   heading: { color: colors.text, fontSize: 17, fontWeight: "700", marginBottom: 12 },
   row: {
@@ -91,13 +110,12 @@ const styles = StyleSheet.create({
     borderBottomColor: colors.border,
   },
   thumb: {
-    width: 48,
-    height: 36,
-    borderRadius: 6,
+    width: 64,
+    height: 48,
+    borderRadius: 8,
     backgroundColor: colors.surface,
-    alignItems: "center",
-    justifyContent: "center",
   },
+  thumbFallback: { alignItems: "center", justifyContent: "center" },
   rowBody: { flex: 1 },
   rowTitle: { color: colors.text, fontSize: 14, fontWeight: "600" },
 });

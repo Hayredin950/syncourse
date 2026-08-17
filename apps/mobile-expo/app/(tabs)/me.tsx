@@ -72,6 +72,7 @@ export default function MeScreen() {
       </View>
 
       <MenuRow icon="list" label="My lists" href="/lists" />
+      <MenuRow icon="chart" label="Stats" href="/stats" />
       <MenuRow icon="path" label="Learning paths" href="/paths" />
       <MenuRow icon="download" label="Downloads" href="/downloads" />
       <MenuRow icon="bell" label="Notifications" href="/notifications" />

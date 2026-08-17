@@ -40,6 +40,12 @@ export default function LessonScreen() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["lesson", lessonId] }),
   });
 
+  const telegramMut = useMutation({
+    mutationFn: () => api.downloadToTelegram(lessonId!),
+    onSuccess: (r) => Alert.alert("Telegram", r.message ?? "Check your Telegram bot."),
+    onError: (e: any) => Alert.alert("Telegram", e?.message ?? "Could not send to Telegram"),
+  });
+
   if (isLoading || !data) {
     return (
       <View style={styles.center}>
@@ -91,6 +97,12 @@ export default function LessonScreen() {
           onPress={() => videoMut.mutate()}
         >
           ⬇ Download
+        </Text>
+        <Text
+          style={[styles.outlineBtn, telegramMut.isPending && { opacity: 0.5 }]}
+          onPress={() => telegramMut.mutate()}
+        >
+          {telegramMut.isPending ? "…" : "✈ Telegram"}
         </Text>
       </View>
 

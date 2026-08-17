@@ -57,7 +57,6 @@ export function CourseCard({ course, width = 132 }: { course: CourseSummary; wid
               { width, height: coverH, backgroundColor: `hsl(${hue} 42% 18%)` },
             ]}
           >
-            <Text style={styles.coverCode}>SC / {code} · {course.level.slice(0, 3).toUpperCase()}</Text>
             <View style={styles.coverMark}>
               {words.map((w, i) => (
                 <Text key={i} style={styles.coverMarkLine}>
@@ -101,16 +100,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
     overflow: "hidden",
-  },
-  coverCode: {
-    position: "absolute",
-    top: 10,
-    left: 10,
-    color: colors.text,
-    opacity: 0.8,
-    fontFamily: "monospace",
-    fontSize: 8,
-    letterSpacing: 0.5,
   },
   coverMark: {
     position: "absolute",

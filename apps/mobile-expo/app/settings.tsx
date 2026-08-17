@@ -1,13 +1,16 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import * as ImagePicker from "expo-image-picker";
+import * as Linking from "expo-linking";
 import React, { useState } from "react";
 import {
   ActivityIndicator,
   Image,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
+  Switch,
   Text,
   TextInput,
   View,
@@ -16,6 +19,36 @@ import * as api from "../lib/api";
 import { logout } from "../lib/api";
 import { colors, radius } from "../lib/tokens";
 import type { UserProfileFull } from "../lib/types";
+
+function ToggleRow({ label, value, onChange }: { label: string; value: boolean; onChange: (v: boolean) => void }) {
+  return (
+    <View style={styles.toggleRow}>
+      <Text style={styles.toggleLabel}>{label}</Text>
+      <Switch value={value} onValueChange={onChange} trackColor={{ true: colors.accent }} thumbColor={value ? "#fff" : undefined} />
+    </View>
+  );
+}
+
+function PrivacyRow({ label, value, onChange }: { label: string; value: string; onChange: (v: string) => void }) {
+  return (
+    <View style={styles.toggleRow}>
+      <Text style={styles.toggleLabel}>{label}</Text>
+      <View style={styles.segmented}>
+        {["everyone", "friends", "only-me"].map((opt) => (
+          <Pressable
+            key={opt}
+            style={[styles.segment, value === opt && styles.segmentActive]}
+            onPress={() => onChange(opt)}
+          >
+            <Text style={[styles.segmentLabel, value === opt && styles.segmentLabelActive]}>
+              {opt === "everyone" ? "Everyone" : opt === "friends" ? "Friends" : "Only me"}
+            </Text>
+          </Pressable>
+        ))}
+      </View>
+    </View>
+  );
+}
 
 export default function SettingsScreen() {
   const router = useRouter();
@@ -31,6 +64,9 @@ export default function SettingsScreen() {
   const [telegram, setTelegram] = useState("");
   const [saved, setSaved] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [pwOpen, setPwOpen] = useState(false);
+  const [pwCurrent, setPwCurrent] = useState("");
+  const [pwNew, setPwNew] = useState("");
 
   const pickAndUploadAvatar = async () => {
     const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -89,6 +125,27 @@ export default function SettingsScreen() {
   const terminateMut = useMutation({
     mutationFn: (sessionId: string) => api.terminateSession(sessionId),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["me"] }),
+  });
+
+  const settingsMut = useMutation({
+    mutationFn: (body: Record<string, unknown>) => api.updateProfile(body),
+    onSuccess: () => {
+      setSaved("Saved");
+      setTimeout(() => setSaved(""), 2000);
+      queryClient.invalidateQueries({ queryKey: ["me"] });
+    },
+  });
+
+  const pwMut = useMutation({
+    mutationFn: () => api.changePassword(pwCurrent, pwNew),
+    onSuccess: () => {
+      setPwOpen(false);
+      setPwCurrent("");
+      setPwNew("");
+      setSaved("Password updated");
+      setTimeout(() => setSaved(""), 2000);
+    },
+    onError: (e: any) => setSaved(e?.message ?? "Could not change password"),
   });
 
   if (isLoading) {
@@ -186,6 +243,54 @@ export default function SettingsScreen() {
         </Pressable>
       </View>
 
+      <Text style={styles.heading}>Playback</Text>
+      <View style={styles.card}>
+        <ToggleRow
+          label="Autoplay next lesson"
+          value={!!(profile.settings as any)?.autoplayNext}
+          onChange={(v) => settingsMut.mutate({ settings: { ...(profile.settings ?? {}), autoplayNext: v } })}
+        />
+        <ToggleRow
+          label="Autoplay previews"
+          value={!!(profile.settings as any)?.previewAutoplay}
+          onChange={(v) => settingsMut.mutate({ settings: { ...(profile.settings ?? {}), previewAutoplay: v } })}
+        />
+      </View>
+
+      <Text style={styles.heading}>What others can see</Text>
+      <View style={styles.card}>
+        {[
+          ["watchHistory", "Watch history"],
+          ["reviews", "Reviews in friends' feeds"],
+          ["watchlist", "Watchlist"],
+          ["likes", "Likes"],
+        ].map(([key, label]) => (
+          <PrivacyRow
+            key={key}
+            label={label}
+            value={(profile.privacy as Record<string, string>)?.[key] ?? "everyone"}
+            onChange={(v) => settingsMut.mutate({ privacy: { ...(profile.privacy ?? {}), [key]: v } })}
+          />
+        ))}
+      </View>
+
+      <Text style={styles.heading}>Password</Text>
+      <View style={styles.card}>
+        <Pressable style={styles.ghostBtn} onPress={() => setPwOpen(true)}>
+          <Text style={styles.ghostLabel}>
+            {profile.hasPassword ? "Change password" : "Set a password"}
+          </Text>
+        </Pressable>
+      </View>
+
+      <Text style={styles.heading}>Support</Text>
+      <View style={styles.card}>
+        <Text style={styles.muted}>Stuck on a course or a payment? We answer fast.</Text>
+        <Pressable style={styles.ghostBtn} onPress={() => Linking.openURL("mailto:support@syncourse.app")}>
+          <Text style={styles.ghostLabel}>Message support</Text>
+        </Pressable>
+      </View>
+
       <Text style={styles.heading}>Sessions</Text>
       <View style={styles.card}>
         {(profile.sessions ?? []).length === 0 && <Text style={styles.muted}>No active sessions</Text>}
@@ -205,6 +310,41 @@ export default function SettingsScreen() {
           </View>
         ))}
       </View>
+
+      {pwOpen && (
+        <Modal visible transparent animationType="fade" onRequestClose={() => setPwOpen(false)}>
+          <Pressable style={styles.forgotBackdrop} onPress={() => setPwOpen(false)}>
+            <Pressable style={styles.forgotCard} onPress={(e) => e.stopPropagation()}>
+              <Text style={styles.forgotTitle}>{profile.hasPassword ? "Change password" : "Set a password"}</Text>
+              {profile.hasPassword && (
+                <TextInput
+                  style={styles.input}
+                  value={pwCurrent}
+                  onChangeText={setPwCurrent}
+                  placeholder="Current password"
+                  placeholderTextColor={colors.dim}
+                  secureTextEntry
+                />
+              )}
+              <TextInput
+                style={styles.input}
+                value={pwNew}
+                onChangeText={setPwNew}
+                placeholder="New password (min 8 chars)"
+                placeholderTextColor={colors.dim}
+                secureTextEntry
+              />
+              <Pressable
+                style={[styles.forgotBtn, (pwNew.length < 8 || (profile.hasPassword && !pwCurrent) || pwMut.isPending) && { opacity: 0.4 }]}
+                disabled={pwNew.length < 8 || (profile.hasPassword && !pwCurrent) || pwMut.isPending}
+                onPress={() => pwMut.mutate()}
+              >
+                <Text style={styles.forgotBtnLabel}>{pwMut.isPending ? "…" : "Save password"}</Text>
+              </Pressable>
+            </Pressable>
+          </Pressable>
+        </Modal>
+      )}
 
       <Text style={styles.heading}>Plan</Text>
       <View style={styles.card}>
@@ -238,6 +378,25 @@ const styles = StyleSheet.create({
   muted: { color: colors.muted, fontSize: 12 },
   heading: { color: colors.text, fontSize: 17, fontWeight: "700", marginTop: 18, marginBottom: 8 },
   card: { backgroundColor: colors.surface, borderRadius: radius.md, padding: 14, gap: 8 },
+  forgotBackdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.6)", alignItems: "center", justifyContent: "center", padding: 24 },
+  forgotCard: {
+    width: "100%",
+    backgroundColor: colors.surface,
+    borderRadius: 18,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 20,
+    gap: 10,
+  },
+  forgotTitle: { color: colors.text, fontSize: 17, fontWeight: "800", textAlign: "center", marginBottom: 4 },
+  forgotBtn: {
+    backgroundColor: colors.accent,
+    borderRadius: 999,
+    paddingVertical: 11,
+    alignItems: "center",
+    marginTop: 6,
+  },
+  forgotBtnLabel: { color: "#000", fontWeight: "800", fontSize: 14 },
   label: { color: colors.dim, fontSize: 11, fontWeight: "700", textTransform: "uppercase", marginTop: 4 },
   avatarRow: { flexDirection: "row", alignItems: "center", gap: 12 },
   avatar: {
@@ -258,6 +417,8 @@ const styles = StyleSheet.create({
   },
   ghostLabel: { color: colors.text, fontSize: 12, fontWeight: "700" },
   hint: { color: colors.muted, fontSize: 11 },
+  toggleRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
+  toggleLabel: { color: colors.text, fontSize: 13, fontWeight: "600", flex: 1 },
   segmented: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
   segment: {
     borderWidth: 1,
