@@ -16,6 +16,21 @@ class UpdateProfileDto {
   @IsOptional()
   @IsString()
   avatarUrl?: string;
+
+  @IsOptional()
+  settings?: Record<string, unknown>;
+
+  @IsOptional()
+  privacy?: Record<string, string>;
+}
+
+class ChangePasswordDto {
+  @IsOptional()
+  @IsString()
+  currentPassword?: string;
+
+  @IsString()
+  newPassword!: string;
 }
 
 @Controller('users')
@@ -30,6 +45,21 @@ export class UsersController {
   @Patch('me')
   update(@CurrentUser() user: AuthUser, @Body() dto: UpdateProfileDto) {
     return this.users.updateProfile(user.id, dto);
+  }
+
+  @Get('me/stats')
+  stats(@CurrentUser() user: AuthUser) {
+    return this.users.stats(user.id);
+  }
+
+  @Post('me/unlink-google')
+  unlinkGoogle(@CurrentUser() user: AuthUser) {
+    return this.users.unlinkGoogle(user.id);
+  }
+
+  @Post('me/change-password')
+  changePassword(@CurrentUser() user: AuthUser, @Body() dto: ChangePasswordDto) {
+    return this.users.changePassword(user.id, dto.currentPassword, dto.newPassword);
   }
 
   @Post('sessions/:id/terminate')

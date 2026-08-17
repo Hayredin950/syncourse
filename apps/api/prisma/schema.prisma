@@ -243,6 +243,8 @@ model User {
   telegramId       BigInt?   @unique
   telegramUsername String?
   googleId         String?   @unique
+  settings         Json? // autoplayNext etc.
+  privacy          Json? // visibility: watchHistory | reviews | watchlist | likes
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 

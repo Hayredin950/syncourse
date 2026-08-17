@@ -282,6 +282,30 @@ export interface UserProfile {
   planExpiresAt: string | null;
   telegramUsername: string | null;
   memberSince: string;
+  hasGoogle: boolean;
+  hasPassword: boolean;
+  pendingPayment: { id: string; planName: string; paymentMethod: string; amount: number } | null;
+  settings: { autoplayNext?: boolean; previewAutoplay?: boolean } | null;
+  privacy: Record<string, string> | null;
   stats: { enrolled: number; completed: number; saved: number; liked: number; lists: number; reviews: number };
   sessions: { id: string; device: string | null; ip: string | null; active: boolean; createdAt: string }[];
+}
+
+export interface UserStats {
+  engagedTotal: number;
+  ratingDistribution: { stars: number; count: number }[];
+  monthlyCompleted: { month: string; count: number }[];
+  categoryCounts: { label: string; count: number }[];
+  instructorCounts: { label: string; count: number }[];
+  languageCounts: { label: string; count: number }[];
+  topInstructors: { name: string; count: number; photoUrl: string | null }[];
+  contentTypeBreakdown: { label: string; count: number; pct: number }[];
+  difficultyBreakdown: { label: string; count: number; pct: number }[];
+  yourWeek: { day: string; count: number }[];
+  watchlistGrowth: { month: string; count: number }[];
+  topTags: { label: string; count: number }[];
+  pathProgress: { id: string; title: string; coverUrl: string | null; enrolled: number; completed: number; total: number; pct: number }[];
+  hasGoogle: boolean;
+  hasPassword: boolean;
+  emailVerified: boolean;
 }
