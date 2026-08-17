@@ -22,7 +22,8 @@ export function Rail({
           </Link>
         )}
       </div>
-      <div className="no-scrollbar flex snap-x gap-3 overflow-x-auto px-4 pb-1 md:grid md:grid-cols-[repeat(auto-fill,minmax(150px,1fr))] md:gap-4 md:overflow-visible md:px-4 md:pb-2">
+      {/* mobile: horizontal scroll · desktop: wrap — no reserved dead space */}
+      <div className="no-scrollbar flex snap-x gap-3 overflow-x-auto px-4 pb-1 md:flex-wrap md:gap-4 md:overflow-visible md:px-4 md:pb-2">
         {children}
       </div>
     </section>

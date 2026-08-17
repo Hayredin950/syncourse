@@ -16,9 +16,9 @@ const TYPE_TABS = [
 
 /**
  * A rail with clickable content-type filter tabs (like PhonoFilm's
- * Movie / TV Show / Anime / Asian tabs on each home row). The active tab
- * fetches its own slice of courses from the API; "All" shows the preloaded
- * base list.
+ * Movie / TV Show / Anime / Asian tabs on each home row) plus an optional
+ * category dropdown. The active combination fetches its own slice from the
+ * API; "All" shows the preloaded base list.
  */
 export function FilteredRail({
   title,
@@ -26,30 +26,35 @@ export function FilteredRail({
   base,
   fetchPath,
   badgeNew = false,
+  wide = false,
+  categories,
 }: {
   title: string;
   href?: string;
   base: CourseSummary[];
-  /** Builds the API path for a specific content type, e.g. `/courses?sort=newest&contentType=course&limit=12` */
-  fetchPath: (type: string) => string;
+  /** Builds the API path for a content type + category, e.g. `/courses?sort=newest&contentType=course&category=web-development&limit=12` */
+  fetchPath: (type: string, category: string) => string;
   badgeNew?: boolean;
+  wide?: boolean;
+  categories?: { name: string; slug: string }[];
 }) {
   const [tab, setTab] = useState("");
+  const [cat, setCat] = useState("");
   const [items, setItems] = useState<CourseSummary[]>(base);
 
   useEffect(() => {
-    if (!tab) {
+    let alive = true;
+    if (!tab && !cat) {
       setItems(base);
       return;
     }
-    let alive = true;
-    get<{ results: CourseSummary[] }>(fetchPath(tab))
+    get<{ results: CourseSummary[] }>(fetchPath(tab, cat))
       .then((r) => alive && setItems(r.results))
       .catch(() => alive && setItems([]));
     return () => {
       alive = false;
     };
-  }, [tab, base, fetchPath]);
+  }, [tab, cat, base, fetchPath]);
 
   return (
     <section className="mt-6">
@@ -68,15 +73,30 @@ export function FilteredRail({
             </button>
           ))}
         </div>
+        {categories && categories.length > 0 && (
+          <select
+            value={cat}
+            onChange={(e) => setCat(e.target.value)}
+            className="h-6 shrink-0 cursor-pointer rounded-full border border-border bg-surface px-2 text-[11px] text-muted outline-none focus:border-accent"
+          >
+            <option value="">All categories</option>
+            {categories.map((c) => (
+              <option key={c.slug} value={c.slug}>
+                {c.name}
+              </option>
+            ))}
+          </select>
+        )}
         {href && (
           <Link href={href} className="ml-auto shrink-0 text-sm font-medium text-muted hover:text-text">
             See all &gt;
           </Link>
         )}
       </div>
-      <div className="no-scrollbar flex snap-x gap-3 overflow-x-auto px-4 pb-1 md:grid md:grid-cols-[repeat(auto-fill,minmax(150px,1fr))] md:gap-4 md:overflow-visible md:px-4 md:pb-2">
+      {/* mobile: horizontal scroll · desktop: wrap — no reserved dead space */}
+      <div className="no-scrollbar flex snap-x gap-3 overflow-x-auto px-4 pb-1 md:flex-wrap md:gap-4 md:overflow-visible md:px-4 md:pb-2">
         {items.map((c) => (
-          <CourseCard key={c.id} course={badgeNew ? { ...c, isNew: true } : c} />
+          <CourseCard key={c.id} course={badgeNew ? { ...c, isNew: true } : c} wide={wide} />
         ))}
         {items.length === 0 && <div className="px-1 py-4 text-xs text-dim">No {tab || "courses"} here yet.</div>}
       </div>

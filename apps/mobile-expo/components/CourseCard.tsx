@@ -6,27 +6,42 @@ import { formatDuration, type CourseSummary } from "../lib/types";
 import { cloudinaryUrl } from "../lib/cloudinary";
 import { Stars } from "./StarRating";
 
+export function hueFromString(s: string): number {
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360;
+  return h;
+}
+
+const TYPE_ICONS: Record<string, string> = {
+  course: "🎓",
+  "mini-course": "⚡",
+  "cheat-sheet": "📄",
+  roadmap: "🗺️",
+};
+
 export function CourseCard({ course, width = 132 }: { course: CourseSummary; width?: number }) {
-  const meta = [
-    course.level,
-    formatDuration(course.durationMin),
-  ].filter(Boolean).join(" · ");
+  const meta = [course.level, formatDuration(course.durationMin)].filter(Boolean).join(" · ");
+  const coverH = Math.round(width * 1.14);
+  const hue = hueFromString(course.slug || course.id);
+  const icon = TYPE_ICONS[course.contentType ?? "course"] ?? "🎓";
 
   return (
     <Link href={`/courses/${course.slug}`} asChild>
       <View style={{ width }}>
-        <Image
-          source={
-            course.thumbnailUrl
-              ? { uri: cloudinaryUrl(course.thumbnailUrl, { width: width * 2, height: Math.round(width * 2 * 1.14) }) ?? undefined }
-              : undefined
-          }
-          style={[styles.cover, { width, height: width * 1.14 }]}
-          resizeMode="cover"
-        />
-        {!course.thumbnailUrl && (
-          <View style={[styles.coverFallback, { width, height: width * 1.14 }]}>
-            <Text style={{ color: colors.dim, fontSize: 26 }}>▶</Text>
+        {course.thumbnailUrl ? (
+          <Image
+            source={
+              course.thumbnailUrl
+                ? { uri: cloudinaryUrl(course.thumbnailUrl, { width: width * 2, height: Math.round(width * 2 * 1.14) }) ?? undefined }
+                : undefined
+            }
+            style={[styles.cover, { width, height: coverH }]}
+            resizeMode="cover"
+          />
+        ) : (
+          <View style={[styles.coverFallback, { width, height: coverH, backgroundColor: `hsl(${hue} 42% 18%)` }]}>
+            <Text style={styles.fallbackIcon}>{icon}</Text>
+            <View style={styles.accentBar} />
           </View>
         )}
         {course.isNew && (
@@ -55,11 +70,19 @@ const styles = StyleSheet.create({
   cover: { borderRadius: radius.md, backgroundColor: colors.surface },
   coverFallback: {
     borderRadius: radius.md,
-    backgroundColor: colors.surface,
     alignItems: "center",
     justifyContent: "center",
+    overflow: "hidden",
+  },
+  fallbackIcon: { fontSize: 26, opacity: 0.9 },
+  accentBar: {
     position: "absolute",
-    top: 0,
+    top: 10,
+    left: 10,
+    height: 3,
+    width: 32,
+    borderRadius: 2,
+    backgroundColor: colors.accent,
   },
   added: {
     position: "absolute",

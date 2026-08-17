@@ -9,6 +9,7 @@ import { useAuth } from "@/lib/auth";
 import { Stars, StarPicker } from "@/components/StarRating";
 import { formatDuration, formatSec, compact, ratingColor, formatDate } from "@/lib/format";
 import { cloudinaryUrl } from "@/lib/cloudinary";
+import { hueFromString } from "@/components/CourseCard";
 
 export default function CoursePage() {
   const { slug } = useParams<{ slug: string }>();
@@ -200,7 +201,10 @@ export default function CoursePage() {
   return (
     <div className="pb-6">
       {/* banner */}
-      <div className="relative aspect-[16/9] w-full overflow-hidden bg-surface">
+      <div
+        className="relative aspect-[16/9] w-full overflow-hidden"
+        style={{ background: `linear-gradient(145deg, hsl(${hueFromString(course.slug)} 42% 16%), hsl(${(hueFromString(course.slug) + 55) % 360} 50% 8%))` }}
+      >
         {course.bannerUrl || course.thumbnailUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img src={cloudinaryUrl(course.bannerUrl || course.thumbnailUrl, { width: 840, height: 472 }) ?? undefined} alt={course.title} className="h-full w-full object-cover" />

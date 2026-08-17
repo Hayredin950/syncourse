@@ -256,8 +256,10 @@ async function main() {
         title: d.title,
         slug: slugify(d.title),
         description: d.desc,
-        thumbnailUrl: img(300 + i),
-        bannerUrl: img(500 + i),
+        // no placeholder images — clients render branded gradient covers
+        // until a real cover is uploaded through the admin CMS
+        thumbnailUrl: null,
+        bannerUrl: null,
         previewVideoUrl: SAMPLE_VIDEOS[i % SAMPLE_VIDEOS.length],
         language: 'English',
         levelId: levels[d.level],

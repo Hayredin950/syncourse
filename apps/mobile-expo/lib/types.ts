@@ -16,6 +16,7 @@ export interface CourseSummary {
   isPremium: boolean;
   isNew?: boolean;
   rank?: number;
+  contentType?: string;
   lecturerName?: string | null;
   organizationName?: string | null;
   categoryNames?: string[];

@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { get } from "@/lib/api";
-import type { HomeData } from "@/lib/types";
+import type { HomeData, LearningData } from "@/lib/types";
 import { CourseCard } from "@/components/CourseCard";
 import { Rail } from "@/components/Rail";
 import { FilteredRail } from "@/components/FilteredRail";
@@ -12,6 +12,7 @@ import { useAuth } from "@/lib/auth";
 
 export default function HomePage() {
   const [home, setHome] = useState<HomeData | null>(null);
+  const [learning, setLearning] = useState<LearningData | null>(null);
   const [error, setError] = useState(false);
   const { user } = useAuth();
 
@@ -23,6 +24,11 @@ export default function HomePage() {
       .then(setHome)
       .catch(() => setError(true));
   }, []);
+
+  // Signed-in users get real progress numbers in "Your Next Watch"
+  useEffect(() => {
+    if (user) get<LearningData>("/learning").then(setLearning).catch(() => undefined);
+  }, [user]);
 
   if (error) {
     return (
@@ -48,6 +54,12 @@ export default function HomePage() {
   const trendSource =
     trendTab === "day" ? home.trending : trendTab === "week" ? home.topRated : home.latest;
 
+  const catOptions = home.categories.map((c) => ({ name: c.name, slug: c.slug }));
+
+  const inProgress = learning?.counts?.inProgress ?? 0;
+  const completed = learning?.counts?.completed ?? 0;
+  const totalEnrolled = inProgress + completed;
+
   return (
     <div className="pb-6">
       {/* type tabs — filter links into Browse; desktop gets these in the sidebar */}
@@ -68,6 +80,19 @@ export default function HomePage() {
           </Link>
         ))}
       </div>
+
+      {/* Latest — hero carousel of new courses with "Added" badges */}
+      <FilteredRail
+        title="Latest"
+        href="/browse"
+        base={home.latest}
+        fetchPath={(type, cat) =>
+          `/courses?sort=newest&limit=10${type ? `&contentType=${type}` : ""}${cat ? `&category=${cat}` : ""}`
+        }
+        badgeNew
+        wide
+        categories={catOptions}
+      />
 
       {/* Trending — ranked, with Day/Week/Month tabs */}
       <section className="mt-6">
@@ -90,23 +115,14 @@ export default function HomePage() {
             See all &gt;
           </Link>
         </div>
-        <div className="no-scrollbar flex snap-x gap-3 overflow-x-auto px-4 pb-1 md:grid md:grid-cols-[repeat(auto-fill,minmax(150px,1fr))] md:gap-4 md:overflow-visible md:px-4 md:pb-2">
-          {trendSource.slice(0, 12).map((c, i) => (
-            <CourseCard key={c.id} course={c} rank={i + 1} />
+        <div className="no-scrollbar flex snap-x gap-3 overflow-x-auto px-4 pb-1 md:flex-wrap md:gap-4 md:overflow-visible md:px-4 md:pb-2">
+          {trendSource.slice(0, 12).map((c) => (
+            <CourseCard key={c.id} course={c} />
           ))}
         </div>
       </section>
 
-      {/* Latest — with type filter tabs */}
-      <FilteredRail
-        title="Latest"
-        href="/browse"
-        base={home.latest}
-        fetchPath={(type) => `/courses?sort=newest&limit=12${type ? `&contentType=${type}` : ""}`}
-        badgeNew
-      />
-
-      {/* Your Next Watch — recommendation module gated behind sign-in */}
+      {/* Your Next Watch — personalized nudge with progress */}
       {!user ? (
         <div className="mx-4 mt-6 rounded-lg border border-border bg-surface p-4">
           <div className="text-sm font-semibold text-text">Your Next Watch</div>
@@ -126,15 +142,11 @@ export default function HomePage() {
           <div className="text-sm font-semibold text-text">Your Next Watch</div>
           <p className="mt-1 text-xs text-muted">
             You&apos;re almost there — continue where you left off and rate what you learn. That&apos;s how Syncourse
-            learns your taste. The more you learn and rate, the sharper your picks get.
+            learns your taste.
           </p>
-          <div className="mt-3 flex flex-wrap gap-2">
-            <span className="rounded-full bg-surface-raised px-3 py-1 text-xs text-muted">
-              In progress · {user.stats?.enrolled ?? 0}
-            </span>
-            <span className="rounded-full bg-surface-raised px-3 py-1 text-xs text-muted">
-              Completed · {user.stats?.completed ?? 0}
-            </span>
+          <div className="mt-3 space-y-2">
+            <ProgressRow label="In progress" value={inProgress} total={totalEnrolled} />
+            <ProgressRow label="Completed" value={completed} total={totalEnrolled} />
           </div>
           <Link
             href="/my-learning"
@@ -145,12 +157,15 @@ export default function HomePage() {
         </div>
       )}
 
-      {/* Top Rated — with type filter tabs */}
+      {/* Top Rated — with type tabs + category dropdown */}
       <FilteredRail
         title="Top Rated"
         href="/browse?sort=top-rated"
         base={home.topRated}
-        fetchPath={(type) => `/courses?sort=top-rated&limit=12${type ? `&contentType=${type}` : ""}`}
+        fetchPath={(type, cat) =>
+          `/courses?sort=top-rated&limit=10${type ? `&contentType=${type}` : ""}${cat ? `&category=${cat}` : ""}`
+        }
+        categories={catOptions}
       />
 
       {/* Best of {org} */}
@@ -165,26 +180,28 @@ export default function HomePage() {
           ),
       )}
 
-      {/* Featured Learning Paths — franchise-style poster cards with descriptions */}
+      {/* Featured Learning Paths — franchise-style wide cards */}
       <Rail title="Featured Learning Paths" href="/browse">
         {home.featuredPaths.map((p) => (
           <Link
             key={p.id}
             href="/browse"
-            className="group block w-[150px] min-w-0 shrink-0 snap-start overflow-hidden rounded-lg border border-border bg-surface md:w-auto"
+            className="group block w-[230px] min-w-0 shrink-0 snap-start overflow-hidden rounded-lg border border-border bg-surface md:w-[250px]"
           >
-            <div className="relative flex aspect-[2/3] items-center justify-center bg-surface-raised text-3xl">
+            <div className="relative flex aspect-[16/9] items-center justify-center overflow-hidden bg-surface-raised text-3xl">
               🗺️
               {p.coverUrl && (
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={p.coverUrl} alt="" className="absolute inset-0 h-full w-full object-cover" />
               )}
             </div>
-            <div className="p-2.5">
-              <div className="line-clamp-2 text-[13px] font-semibold leading-snug text-text">{p.title}</div>
-              {p.description && <div className="mt-0.5 line-clamp-2 text-[11px] leading-snug text-muted">{p.description}</div>}
-              <div className="mt-1 text-[11px] text-dim">
-                {p.courseCount} courses · ★ {p.ratingAvg.toFixed(1)} avg
+            <div className="p-3">
+              <div className="line-clamp-1 text-sm font-semibold text-text">{p.title}</div>
+              {p.description && (
+                <div className="mt-0.5 line-clamp-2 text-[11px] leading-snug text-muted">{p.description}</div>
+              )}
+              <div className="mt-1.5 text-[11px] text-dim">
+                {p.courseCount} courses · ★ {p.ratingAvg.toFixed(1)} avg · {p.totalVotes.toLocaleString()} votes
               </div>
             </div>
           </Link>
@@ -197,7 +214,7 @@ export default function HomePage() {
           <Link
             key={c.id}
             href={`/browse?category=${c.slug}`}
-            className="flex w-[140px] shrink-0 flex-col items-center gap-1 rounded-lg border border-border bg-surface px-3 py-4 md:w-auto"
+            className="flex w-[140px] shrink-0 flex-col items-center gap-1 rounded-lg border border-border bg-surface px-3 py-4"
           >
             <span className="text-2xl">{c.icon}</span>
             <span className="line-clamp-1 text-xs font-medium text-text">{c.name}</span>
@@ -212,7 +229,7 @@ export default function HomePage() {
           <Link
             key={l.id}
             href={`/lecturers/${l.slug}`}
-            className="flex w-[110px] shrink-0 flex-col items-center gap-1 rounded-lg px-2 py-3 text-center md:w-auto"
+            className="flex w-[110px] shrink-0 flex-col items-center gap-1 rounded-lg px-2 py-3 text-center"
           >
             <span className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-full bg-surface-raised text-lg font-bold text-accent">
               {l.photoUrl ? (
@@ -234,7 +251,7 @@ export default function HomePage() {
           <Link
             key={o.id}
             href={`/organizations/${o.slug}`}
-            className="flex w-[150px] shrink-0 items-center gap-2 rounded-lg border border-border bg-surface px-3 py-3 md:w-auto"
+            className="flex w-[150px] shrink-0 items-center gap-2 rounded-lg border border-border bg-surface px-3 py-3"
           >
             <span className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full bg-surface-raised text-sm font-bold text-accent">
               {o.logoUrl ? (
@@ -262,6 +279,24 @@ export default function HomePage() {
         >
           Load More
         </Link>
+      </div>
+    </div>
+  );
+}
+
+function ProgressRow({ label, value, total }: { label: string; value: number; total: number }) {
+  const pct = total > 0 ? Math.round((value / total) * 100) : 0;
+  return (
+    <div>
+      <div className="flex items-center justify-between text-[11px] text-muted">
+        <span>{label}</span>
+        <span>
+          {value}
+          {total > 0 ? `/${total}` : ""}
+        </span>
+      </div>
+      <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-bg">
+        <div className="h-full rounded-full bg-accent transition-all" style={{ width: `${pct}%` }} />
       </div>
     </div>
   );
