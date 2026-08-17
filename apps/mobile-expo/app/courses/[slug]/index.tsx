@@ -4,7 +4,9 @@ import React, { useState } from "react";
 import { cloudinaryUrl } from "../../../lib/cloudinary";
 import {
   ActivityIndicator,
+  Alert,
   Image,
+  Modal,
   ScrollView,
   StyleSheet,
   Text,
@@ -13,6 +15,7 @@ import {
   Pressable,
   Switch,
 } from "react-native";
+import * as ImagePicker from "expo-image-picker";
 import * as api from "../../../lib/api";
 import { colors, radius } from "../../../lib/tokens";
 import { formatDurationSec, type CourseDetail } from "../../../lib/types";
@@ -46,6 +49,48 @@ export default function CourseDetailScreen() {
   const [myRating, setMyRating] = useState(0);
   const [reviewText, setReviewText] = useState("");
   const [spoilers, setSpoilers] = useState(false);
+  const [coverOpen, setCoverOpen] = useState(false);
+  const [coverUrl, setCoverUrl] = useState("");
+
+  const { data: me } = useQuery({
+    queryKey: ["me"],
+    queryFn: api.me,
+    retry: false,
+  });
+
+  const coverMut = useMutation({
+    mutationFn: async (input: { dataUrl?: string; imageUrl?: string }) => {
+      const up = await api.uploadImage(input);
+      await api.setCourseCover(slug!, up.url);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["course", slug] });
+      setCoverOpen(false);
+      setCoverUrl("");
+    },
+    onError: (e: any) => Alert.alert("Upload failed", e?.message || "Try again"),
+  });
+
+  const pickFromGallery = async () => {
+    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (!perm.granted) {
+      Alert.alert("Permission needed", "Allow photo access to pick a cover.");
+      return;
+    }
+    const res = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ["images"],
+      quality: 0.8,
+      base64: true,
+    });
+    if (res.canceled || !res.assets[0]?.base64) return;
+    const asset = res.assets[0];
+    coverMut.mutate({ dataUrl: `data:${asset.mimeType ?? "image/jpeg"};base64,${asset.base64}` });
+  };
+
+  const uploadFromUrl = () => {
+    if (!coverUrl.trim()) return;
+    coverMut.mutate({ imageUrl: coverUrl.trim() });
+  };
 
   if (isLoading || !data) {
     return (
@@ -70,20 +115,64 @@ export default function CourseDetailScreen() {
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
-      <Image
-        source={
-          c.bannerUrl || c.thumbnailUrl
-            ? { uri: cloudinaryUrl(c.bannerUrl || c.thumbnailUrl, { width: 840, height: 420 }) ?? undefined }
-            : undefined
-        }
-        style={styles.banner}
-        resizeMode="cover"
-      />
-      {!c.bannerUrl && !c.thumbnailUrl && (
-        <View style={[styles.banner, styles.bannerFallback]}>
-          <Text style={{ color: colors.dim, fontSize: 40 }}>▶</Text>
+      <View style={styles.bannerWrap}>
+        <Image
+          source={
+            c.bannerUrl || c.thumbnailUrl
+              ? { uri: cloudinaryUrl(c.bannerUrl || c.thumbnailUrl, { width: 840, height: 420 }) ?? undefined }
+              : undefined
+          }
+          style={styles.banner}
+          resizeMode="cover"
+        />
+        {!c.bannerUrl && !c.thumbnailUrl && (
+          <View style={[styles.banner, styles.bannerFallback]}>
+            <Text style={{ color: colors.dim, fontSize: 40 }}>▶</Text>
+          </View>
+        )}
+        {me?.isStaff && (
+          <Pressable style={styles.editCoverBtn} onPress={() => setCoverOpen(true)}>
+            <Text style={styles.editCoverLabel}>
+              {coverMut.isPending ? "Uploading…" : "✎ Edit cover"}
+            </Text>
+          </Pressable>
+        )}
+      </View>
+
+      <Modal
+        visible={coverOpen}
+        transparent
+        animationType="slide"
+        onRequestClose={() => setCoverOpen(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalCard}>
+            <Text style={styles.modalTitle}>Change course cover</Text>
+            <Pressable style={styles.modalOption} onPress={pickFromGallery} disabled={coverMut.isPending}>
+              <Text style={styles.modalOptionText}>📷 Choose from gallery</Text>
+            </Pressable>
+            <TextInput
+              value={coverUrl}
+              onChangeText={setCoverUrl}
+              placeholder="…or paste an image URL"
+              placeholderTextColor={colors.dim}
+              style={styles.coverInput}
+              autoCapitalize="none"
+              autoCorrect={false}
+            />
+            <Pressable
+              style={[styles.modalOption, styles.modalPrimary, (!coverUrl.trim() || coverMut.isPending) && { opacity: 0.4 }]}
+              disabled={!coverUrl.trim() || coverMut.isPending}
+              onPress={uploadFromUrl}
+            >
+              <Text style={styles.modalPrimaryText}>Use this URL</Text>
+            </Pressable>
+            <Pressable style={styles.modalCancel} onPress={() => setCoverOpen(false)}>
+              <Text style={styles.muted}>Cancel</Text>
+            </Pressable>
+          </View>
         </View>
-      )}
+      </Modal>
 
       <View style={styles.body}>
         <Text style={styles.title}>{c.title}</Text>
@@ -296,8 +385,53 @@ const styles = StyleSheet.create({
   content: { paddingBottom: 40 },
   center: { flex: 1, backgroundColor: colors.bg, alignItems: "center", justifyContent: "center" },
   muted: { color: colors.muted, fontSize: 12 },
+  bannerWrap: { position: "relative" },
   banner: { width: "100%", height: 210, backgroundColor: colors.surface },
   bannerFallback: { alignItems: "center", justifyContent: "center" },
+  editCoverBtn: {
+    position: "absolute",
+    top: 10,
+    right: 10,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    borderRadius: radius.pill,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
+  editCoverLabel: { color: "#fff", fontSize: 12, fontWeight: "700" },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.6)",
+    justifyContent: "flex-end",
+  },
+  modalCard: {
+    backgroundColor: colors.surface,
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 20,
+    paddingBottom: 32,
+  },
+  modalTitle: { color: colors.text, fontSize: 17, fontWeight: "800", marginBottom: 14 },
+  modalOption: {
+    backgroundColor: colors.bg,
+    borderRadius: radius.md,
+    paddingVertical: 13,
+    alignItems: "center",
+    marginBottom: 10,
+  },
+  modalOptionText: { color: colors.text, fontSize: 14, fontWeight: "600" },
+  modalPrimary: { backgroundColor: colors.accent },
+  modalPrimaryText: { color: "#000", fontSize: 14, fontWeight: "800" },
+  coverInput: {
+    color: colors.text,
+    backgroundColor: colors.bg,
+    borderRadius: radius.sm,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 12,
+    fontSize: 13,
+    marginBottom: 10,
+  },
+  modalCancel: { alignItems: "center", paddingVertical: 8 },
   body: { padding: 16 },
   title: { color: colors.text, fontSize: 24, fontWeight: "800", letterSpacing: -0.5 },
   metaRow: { flexDirection: "row", alignItems: "center", marginTop: 8 },

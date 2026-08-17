@@ -203,6 +203,16 @@ export const rateCourse = (slug: string, stars: number) =>
 export const postReview = (slug: string, body: string, containsSpoilers: boolean) =>
   post<Review>(`/courses/${slug}/reviews`, { body, containsSpoilers });
 
+// --- images (Cloudinary) + course covers ---
+export const uploadImage = (input: { dataUrl?: string; imageUrl?: string }) =>
+  post<{ url: string; publicId: string }>("/images/upload", input);
+
+export const setCourseCover = (slug: string, thumbnailUrl: string, bannerUrl?: string) =>
+  post<{ slug: string; thumbnailUrl: string | null; bannerUrl: string | null }>(`/admin/courses/${slug}/cover`, {
+    thumbnailUrl,
+    ...(bannerUrl ? { bannerUrl } : {}),
+  });
+
 // --- discussion threads ---
 export const discussion = (slug: string) =>
   get<{ courseId: string; total: number; threads: DiscussionThread[] }>(

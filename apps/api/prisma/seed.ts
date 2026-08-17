@@ -366,6 +366,7 @@ async function main() {
       email: 'demo@syncourse.app',
       passwordHash: demoPassword,
       isVerified: true,
+      isStaff: true,
       gender: 'Male',
       planType: 'premium',
       planExpiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),

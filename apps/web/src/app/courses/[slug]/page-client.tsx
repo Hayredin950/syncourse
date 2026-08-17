@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { get, post } from "@/lib/api";
@@ -9,11 +9,6 @@ import { useAuth } from "@/lib/auth";
 import { Stars, StarPicker } from "@/components/StarRating";
 import { formatDuration, formatSec, compact, ratingColor, formatDate } from "@/lib/format";
 import { cloudinaryUrl } from "@/lib/cloudinary";
-
-// Static export: every real slug is served at runtime via the SPA fallback (_redirects).
-export async function generateStaticParams() {
-  return [{ slug: "course" }];
-}
 
 export default function CoursePage() {
   const { slug } = useParams<{ slug: string }>();
@@ -34,6 +29,8 @@ export default function CoursePage() {
   const [threads, setThreads] = useState<DiscussionThread[]>([]);
   const [threadText, setThreadText] = useState("");
   const [toast, setToast] = useState("");
+  const [coverBusy, setCoverBusy] = useState(false);
+  const coverInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     get<CourseDetail>(`/courses/${slug}`)
@@ -161,6 +158,33 @@ export default function CoursePage() {
     }
   };
 
+  const onCoverFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = ""; // allow re-selecting the same file
+    if (!file) return;
+    if (!token) {
+      router.push("/auth?next=" + encodeURIComponent(`/courses/${slug}`));
+      return;
+    }
+    setCoverBusy(true);
+    try {
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result as string);
+        reader.onerror = () => reject(new Error("Could not read file"));
+        reader.readAsDataURL(file);
+      });
+      const up = await post<{ url: string }>("/images/upload", { dataUrl });
+      await post(`/admin/courses/${slug}/cover`, { thumbnailUrl: up.url, bannerUrl: up.url });
+      setCourse((c) => (c ? { ...c, thumbnailUrl: up.url, bannerUrl: up.url } : c));
+      flash("Cover updated ✨");
+    } catch (err: any) {
+      flash(err?.message || "Upload failed");
+    } finally {
+      setCoverBusy(false);
+    }
+  };
+
   if (error || !course) {
     return (
       <div className="p-4 text-center text-sm text-muted">
@@ -178,6 +202,16 @@ export default function CoursePage() {
           <img src={cloudinaryUrl(course.bannerUrl || course.thumbnailUrl, { width: 840, height: 472 }) ?? undefined} alt={course.title} className="h-full w-full object-cover" />
         ) : null}
         <div className="absolute inset-0 bg-gradient-to-t from-bg via-bg/30 to-transparent" />
+        {user?.isStaff && (
+          <button
+            onClick={() => coverInputRef.current?.click()}
+            disabled={coverBusy}
+            className="absolute right-3 top-3 z-10 rounded-full bg-black/60 px-3 py-1.5 text-xs font-semibold text-white backdrop-blur hover:bg-black/80 disabled:opacity-60"
+          >
+            {coverBusy ? "Uploading…" : "✎ Edit cover"}
+          </button>
+        )}
+        <input ref={coverInputRef} type="file" accept="image/*" className="hidden" onChange={onCoverFile} />
         <div className="absolute bottom-0 left-0 right-0 p-4">
           <div className="text-[11px] uppercase tracking-wide text-muted">{course.categoryNames.join(" · ")}</div>
           <h1 className="mt-0.5 text-xl font-bold leading-tight text-text">{course.title}</h1>
