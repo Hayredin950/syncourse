@@ -16,6 +16,7 @@ import { SearchModule } from './search/search.module';
 import { DiscussionsModule } from './discussions/discussions.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { EmailModule } from './email/email.module';
+import { CloudinaryModule } from './cloudinary/cloudinary.module';
 
 @Module({
   imports: [
@@ -34,6 +35,7 @@ import { EmailModule } from './email/email.module';
     DiscussionsModule,
     NotificationsModule,
     EmailModule,
+    CloudinaryModule,
   ],
   providers: [
     {

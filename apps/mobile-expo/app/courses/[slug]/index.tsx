@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useLocalSearchParams } from "expo-router";
 import React, { useState } from "react";
+import { cloudinaryUrl } from "../../../lib/cloudinary";
 import {
   ActivityIndicator,
   Image,
@@ -70,7 +71,11 @@ export default function CourseDetailScreen() {
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
       <Image
-        source={c.bannerUrl || c.thumbnailUrl ? { uri: (c.bannerUrl || c.thumbnailUrl)! } : undefined}
+        source={
+          c.bannerUrl || c.thumbnailUrl
+            ? { uri: cloudinaryUrl(c.bannerUrl || c.thumbnailUrl, { width: 840, height: 420 }) ?? undefined }
+            : undefined
+        }
         style={styles.banner}
         resizeMode="cover"
       />

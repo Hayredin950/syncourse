@@ -3,6 +3,7 @@
 import Link from "next/link";
 import type { CourseSummary } from "@/lib/types";
 import { compact, formatDuration, ratingColor } from "@/lib/format";
+import { cloudinaryUrl } from "@/lib/cloudinary";
 import { Stars } from "./StarRating";
 
 export function CourseCard({ course, rank }: { course: CourseSummary; rank?: number }) {
@@ -15,7 +16,7 @@ export function CourseCard({ course, rank }: { course: CourseSummary; rank?: num
         {course.thumbnailUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
-            src={course.thumbnailUrl}
+            src={cloudinaryUrl(course.thumbnailUrl, { width: 280, height: 420 }) ?? undefined}
             alt={course.title}
             loading="lazy"
             className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
@@ -60,7 +61,7 @@ export function CourseRow({ course }: { course: CourseSummary }) {
       <div className="h-[72px] w-[48px] shrink-0 overflow-hidden rounded-md bg-surface">
         {course.thumbnailUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={course.thumbnailUrl} alt={course.title} loading="lazy" className="h-full w-full object-cover" />
+          <img src={cloudinaryUrl(course.thumbnailUrl, { width: 96, height: 144 }) ?? undefined} alt={course.title} loading="lazy" className="h-full w-full object-cover" />
         ) : null}
       </div>
       <div className="min-w-0 flex-1">

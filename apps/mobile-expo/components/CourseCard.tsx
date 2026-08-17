@@ -3,6 +3,7 @@ import React from "react";
 import { Image, StyleSheet, Text, View } from "react-native";
 import { colors, radius } from "../lib/tokens";
 import { formatDuration, type CourseSummary } from "../lib/types";
+import { cloudinaryUrl } from "../lib/cloudinary";
 import { Stars } from "./StarRating";
 
 export function CourseCard({ course, width = 132 }: { course: CourseSummary; width?: number }) {
@@ -17,7 +18,7 @@ export function CourseCard({ course, width = 132 }: { course: CourseSummary; wid
         <Image
           source={
             course.thumbnailUrl
-              ? { uri: course.thumbnailUrl }
+              ? { uri: cloudinaryUrl(course.thumbnailUrl, { width: width * 2, height: Math.round(width * 2 * 1.14) }) ?? undefined }
               : undefined
           }
           style={[styles.cover, { width, height: width * 1.14 }]}

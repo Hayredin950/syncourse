@@ -5,6 +5,7 @@ import { ActivityIndicator, Image, ScrollView, StyleSheet, Text, View } from "re
 import * as api from "../../lib/api";
 import { colors } from "../../lib/tokens";
 import { formatDuration, type OrganizationDetail } from "../../lib/types";
+import { cloudinaryUrl } from "../../lib/cloudinary";
 import { Stars } from "../../components/StarRating";
 
 export default function OrganizationScreen() {
@@ -35,7 +36,7 @@ export default function OrganizationScreen() {
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
       <View style={styles.header}>
         {o.logoUrl ? (
-          <Image source={{ uri: o.logoUrl }} style={styles.logo} resizeMode="contain" />
+          <Image source={{ uri: cloudinaryUrl(o.logoUrl, { width: 160, height: 160 }) ?? undefined }} style={styles.logo} resizeMode="contain" />
         ) : (
           <View style={[styles.logo, styles.logoFallback]}>
             <Text style={styles.logoText}>{o.name.charAt(0)}</Text>

@@ -1,6 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "expo-router";
 import React, { useMemo, useState } from "react";
+import { cloudinaryUrl } from "../../lib/cloudinary";
 import {
   ActivityIndicator,
   FlatList,
@@ -218,7 +219,7 @@ function GridCard({ course }: { course: CourseSummary }) {
     <Link href={`/courses/${course.slug}`} asChild>
       <View style={styles.gridCard}>
         {course.thumbnailUrl ? (
-          <Image source={{ uri: course.thumbnailUrl }} style={styles.gridThumb} resizeMode="cover" />
+          <Image source={{ uri: cloudinaryUrl(course.thumbnailUrl, { width: 300, height: 450 }) ?? undefined }} style={styles.gridThumb} resizeMode="cover" />
         ) : (
           <View style={[styles.gridThumb, styles.gridThumbFallback]}>
             <Text style={{ color: colors.dim }}>▶</Text>

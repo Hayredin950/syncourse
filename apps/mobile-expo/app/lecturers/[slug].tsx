@@ -5,6 +5,7 @@ import { ActivityIndicator, Image, ScrollView, StyleSheet, Text, View } from "re
 import * as api from "../../lib/api";
 import { colors, radius } from "../../lib/tokens";
 import { formatDuration, type LecturerDetail } from "../../lib/types";
+import { cloudinaryUrl } from "../../lib/cloudinary";
 import { Stars } from "../../components/StarRating";
 
 export default function LecturerScreen() {
@@ -36,7 +37,7 @@ export default function LecturerScreen() {
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
       <View style={styles.header}>
         {l.photoUrl ? (
-          <Image source={{ uri: l.photoUrl }} style={styles.photo} />
+          <Image source={{ uri: cloudinaryUrl(l.photoUrl, { width: 192, height: 192 }) ?? undefined }} style={styles.photo} />
         ) : (
           <View style={[styles.photo, styles.photoFallback]}>
             <Text style={styles.photoText}>{l.name.charAt(0)}</Text>
@@ -52,7 +53,7 @@ export default function LecturerScreen() {
         {knownFor.map((c) => (
           <Link key={c.id} href={`/courses/${c.slug}`} style={styles.gridCard}>
             {c.thumbnailUrl ? (
-              <Image source={{ uri: c.thumbnailUrl }} style={styles.gridThumb} resizeMode="cover" />
+              <Image source={{ uri: cloudinaryUrl(c.thumbnailUrl, { width: 300, height: 450 }) ?? undefined }} style={styles.gridThumb} resizeMode="cover" />
             ) : (
               <View style={[styles.gridThumb, styles.gridFallback]}>
                 <Text style={{ color: colors.dim }}>▶</Text>

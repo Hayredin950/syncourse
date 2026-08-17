@@ -8,6 +8,7 @@ import type { CourseDetail, CourseSummary, DiscussionThread, ReviewRow } from "@
 import { useAuth } from "@/lib/auth";
 import { Stars, StarPicker } from "@/components/StarRating";
 import { formatDuration, formatSec, compact, ratingColor, formatDate } from "@/lib/format";
+import { cloudinaryUrl } from "@/lib/cloudinary";
 
 // Static export: every real slug is served at runtime via the SPA fallback (_redirects).
 export async function generateStaticParams() {
@@ -174,7 +175,7 @@ export default function CoursePage() {
       <div className="relative aspect-[16/9] w-full overflow-hidden bg-surface">
         {course.bannerUrl || course.thumbnailUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={course.bannerUrl || course.thumbnailUrl!} alt={course.title} className="h-full w-full object-cover" />
+          <img src={cloudinaryUrl(course.bannerUrl || course.thumbnailUrl, { width: 840, height: 472 }) ?? undefined} alt={course.title} className="h-full w-full object-cover" />
         ) : null}
         <div className="absolute inset-0 bg-gradient-to-t from-bg via-bg/30 to-transparent" />
         <div className="absolute bottom-0 left-0 right-0 p-4">
@@ -453,7 +454,7 @@ export default function CoursePage() {
                 <div className="aspect-[2/3] overflow-hidden rounded-lg bg-surface">
                   {c.thumbnailUrl ? (
                     // eslint-disable-next-line @next/next/no-img-element
-                    <img src={c.thumbnailUrl} alt={c.title} loading="lazy" className="h-full w-full object-cover" />
+                    <img src={cloudinaryUrl(c.thumbnailUrl, { width: 260, height: 390 }) ?? undefined} alt={c.title} loading="lazy" className="h-full w-full object-cover" />
                   ) : null}
                 </div>
                 <div className="mt-1 line-clamp-1 text-xs text-text">{c.title}</div>
