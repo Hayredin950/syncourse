@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -278,8 +278,9 @@ export class UsersService {
   async unlinkGoogle(userId: string) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found');
+    if (!user.googleId) throw new BadRequestException('Google is not linked to this account');
     if (!user.passwordHash) {
-      throw new Error('Set a password first so you can still sign in');
+      throw new BadRequestException('Set a password first so you can still sign in');
     }
     await this.prisma.user.update({ where: { id: userId }, data: { googleId: null } });
     return { unlinked: true };
@@ -288,10 +289,10 @@ export class UsersService {
   async changePassword(userId: string, currentPassword: string | undefined, newPassword: string) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found');
-    if (newPassword.length < 8) throw new Error('Password must be at least 8 characters');
+    if (newPassword.length < 8) throw new BadRequestException('Password must be at least 8 characters');
     if (user.passwordHash) {
       if (!currentPassword || !bcrypt.compareSync(currentPassword, user.passwordHash)) {
-        throw new Error('Current password is incorrect');
+        throw new BadRequestException('Current password is incorrect');
       }
     }
     await this.prisma.user.update({
