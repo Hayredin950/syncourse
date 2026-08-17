@@ -206,14 +206,25 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
   /** /link <course-slug> <t.me link to the file message in the group topic> */
   private async linkCourse(chatId: number, arg: string) {
     const [slug, url] = arg.split(/\s+/);
-    if (!slug || !url) {
-      return this.sendText(chatId, 'Usage: /link <course-slug> <t.me/group/TOPIC/MESSAGE link>');
+    if (!slug || !url || slug.includes('<') || slug.includes('>')) {
+      return this.sendText(
+        chatId,
+        'Usage: /link <course-slug> <t.me/group/TOPIC/MESSAGE link>\n\n' +
+          'Replace <course-slug> with a REAL slug from this list:\n\n' +
+          (await this.courseSlugList()) +
+          '\nCopy the file link from the group: open the ZIP message → tap it → Copy link.',
+      );
     }
     const course = await this.prisma.course.findUnique({
       where: { slug },
       select: { id: true, title: true, deletedAt: true },
     });
-    if (!course || course.deletedAt) return this.sendText(chatId, `Course “${slug}” not found.`);
+    if (!course || course.deletedAt) {
+      return this.sendText(
+        chatId,
+        `Course “${slug}” not found. Choose a real slug from this list:\n\n${await this.courseSlugList()}`,
+      );
+    }
 
     const parsed = parseTelegramLink(url);
     if (!parsed) return this.sendText(chatId, 'Could not parse that t.me link. It should look like https://t.me/group/2/41');
@@ -235,7 +246,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       if (!msgJson.ok || !msgJson.result) {
         return this.sendText(
           chatId,
-          `Could not read message ${parsed.messageId} in that group. Make sure the bot is a member of the group (with the topic visible) and the message contains a file.\n\n${msgJson.description ?? ''}`,
+          `Could not read message ${parsed.messageId} in that group (${msgJson.description ?? 'not found'}).\n\nThe link must point at the actual file message — open the ZIP in the group topic → tap it → Copy link. That link looks like t.me/syncourse/<topic-id>/<message-id> with the real numbers, not the example 2/41.`,
         );
       }
       const m = msgJson.result;
@@ -434,6 +445,18 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     const appUrl = process.env.PUBLIC_APP_URL || 'https://syncourse.pages.dev';
     const text = `📚 Syncourse\n\n${lesson.course.title}\n${lesson.title}\n\n${appUrl}/courses/${lesson.course.slug}/lessons/${lesson.id}`;
     await this.sendText(chatId, text);
+  }
+
+  /** Numbered list of every course slug — shown when /link can't find one. */
+  private async courseSlugList(): Promise<string> {
+    const courses = await this.prisma.course.findMany({
+      where: { deletedAt: null },
+      orderBy: { title: 'asc' },
+      select: { slug: true, title: true },
+      take: 60,
+    });
+    if (courses.length === 0) return 'No courses yet — create one with /newcourse.\n';
+    return courses.map((c) => `• ${c.slug}`).join('\n') + '\n';
   }
 
   private async sendCourseList(chatId: number) {
