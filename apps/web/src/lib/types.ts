@@ -318,6 +318,83 @@ export interface AdminUserRow {
   lists: number;
 }
 
+export interface AdminStats {
+  courses: number;
+  users: number;
+  premiumSubscribers: number;
+  revenue30d: number;
+  pendingPayments: number;
+  reviewsTotal: number;
+  reviews7d: number;
+  lists: number;
+  circles: number;
+}
+
+export interface AdminActivityEvent {
+  type: "user" | "review" | "payment" | "course";
+  title: string;
+  detail?: string;
+  createdAt: string;
+}
+
+export interface AdminReviewRow {
+  id: string;
+  body: string;
+  containsSpoilers: boolean;
+  createdAt: string;
+  author: { id: string; name: string; email: string; avatarUrl: string | null };
+  course: { id: string; slug: string; title: string; thumbnailUrl: string | null };
+  replyCount: number;
+  upvoteCount: number;
+}
+
+export interface AdminPaymentRow {
+  id: string;
+  planName: string;
+  paymentMethod: string;
+  amount: number;
+  currency: string;
+  status: string;
+  txReference: string | null;
+  createdAt: string;
+  user: { id: string; name: string; email: string; telegramUsername: string | null };
+  references: { id: string; reference: string; verified: boolean; submittedAt: string }[];
+}
+
+export interface AdminLecturerRow {
+  id: string;
+  name: string;
+  slug: string;
+  photoUrl: string | null;
+  bio: string | null;
+  credentials: string | null;
+  courseCount: number;
+  createdAt: string;
+}
+
+export interface AdminPublisherRow {
+  id: string;
+  name: string;
+  slug: string;
+  logoUrl: string | null;
+  orgType: string;
+  description: string | null;
+  subscribers: number;
+  courseCount: number;
+  createdAt: string;
+}
+
+export interface AdminCategoryRow {
+  id: string;
+  name: string;
+  slug: string;
+  icon: string;
+  coverImage: string | null;
+  sortOrder: number;
+  courseCount: number;
+  createdAt: string;
+}
+
 export interface AdminLesson {
   id?: string;
   title: string;

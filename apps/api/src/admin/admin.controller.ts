@@ -157,9 +157,70 @@ class UpdateCoverDto {
   bannerUrl?: string;
 }
 
+class AdminLecturerDto {
+  @IsOptional()
+  @IsString()
+  name?: string;
+
+  @IsOptional()
+  @IsString()
+  bio?: string;
+
+  @IsOptional()
+  @IsString()
+  photoUrl?: string;
+}
+
+class AdminPublisherDto {
+  @IsOptional()
+  @IsString()
+  name?: string;
+
+  @IsOptional()
+  @IsString()
+  orgType?: string; // university | company | publisher
+
+  @IsOptional()
+  @IsString()
+  logoUrl?: string;
+
+  @IsOptional()
+  @IsString()
+  description?: string;
+}
+
+class AdminCategoryDto {
+  @IsOptional()
+  @IsString()
+  name?: string;
+
+  @IsOptional()
+  @IsString()
+  icon?: string;
+
+  @IsOptional()
+  @IsNumber()
+  sortOrder?: number;
+}
+
+class AdminPaymentActionDto {
+  @IsString()
+  status: 'approved' | 'rejected';
+}
+
 @Controller('admin')
 export class AdminController {
   constructor(private readonly admin: AdminService) {}
+
+  @Get('stats')
+  stats(@CurrentUser() user: AuthUser) {
+    return this.admin.stats(user.id);
+  }
+
+  @Get('activity')
+  activity(@CurrentUser() user: AuthUser) {
+    return this.admin.activity(user.id);
+  }
 
   @Get('courses')
   list(@CurrentUser() user: AuthUser) {
@@ -206,5 +267,107 @@ export class AdminController {
     @Body() body: { isStaff: boolean },
   ) {
     return this.admin.setUserRole(user.id, id, body);
+  }
+
+  // --- Reviews moderation ---
+
+  @Get('reviews')
+  listReviews(@CurrentUser() user: AuthUser) {
+    return this.admin.listReviews(user.id);
+  }
+
+  @Delete('reviews/:id')
+  removeReview(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.admin.removeReview(user.id, id);
+  }
+
+  // --- Payments queue ---
+
+  @Get('payments')
+  listPayments(@CurrentUser() user: AuthUser) {
+    return this.admin.listPayments(user.id);
+  }
+
+  @Patch('payments/:id')
+  reviewPayment(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Body() dto: AdminPaymentActionDto,
+  ) {
+    return this.admin.reviewPayment(user.id, id, dto.status);
+  }
+
+  // --- Lecturers / Publishers / Categories management ---
+
+  @Get('lecturers')
+  listLecturers(@CurrentUser() user: AuthUser) {
+    return this.admin.listLecturers(user.id);
+  }
+
+  @Post('lecturers')
+  createLecturer(@CurrentUser() user: AuthUser, @Body() dto: AdminLecturerDto) {
+    return this.admin.createLecturer(user.id, dto);
+  }
+
+  @Patch('lecturers/:id')
+  updateLecturer(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Body() dto: AdminLecturerDto,
+  ) {
+    return this.admin.updateLecturer(user.id, id, dto);
+  }
+
+  @Delete('lecturers/:id')
+  removeLecturer(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.admin.removeLecturer(user.id, id);
+  }
+
+  @Get('publishers')
+  listPublishers(@CurrentUser() user: AuthUser) {
+    return this.admin.listPublishers(user.id);
+  }
+
+  @Post('publishers')
+  createPublisher(@CurrentUser() user: AuthUser, @Body() dto: AdminPublisherDto) {
+    return this.admin.createPublisher(user.id, dto);
+  }
+
+  @Patch('publishers/:id')
+  updatePublisher(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Body() dto: AdminPublisherDto,
+  ) {
+    return this.admin.updatePublisher(user.id, id, dto);
+  }
+
+  @Delete('publishers/:id')
+  removePublisher(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.admin.removePublisher(user.id, id);
+  }
+
+  @Get('categories')
+  listCategories(@CurrentUser() user: AuthUser) {
+    return this.admin.listCategories(user.id);
+  }
+
+  @Post('categories')
+  createCategory(@CurrentUser() user: AuthUser, @Body() dto: AdminCategoryDto) {
+    return this.admin.createCategory(user.id, dto);
+  }
+
+  @Patch('categories/:id')
+  updateCategory(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Body() dto: AdminCategoryDto,
+  ) {
+    return this.admin.updateCategory(user.id, id, dto);
+  }
+
+  @Delete('categories/:id')
+  removeCategory(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.admin.removeCategory(user.id, id);
   }
 }

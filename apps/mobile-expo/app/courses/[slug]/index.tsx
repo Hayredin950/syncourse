@@ -16,6 +16,7 @@ import {
   Switch,
 } from "react-native";
 import * as ImagePicker from "expo-image-picker";
+import * as Linking from "expo-linking";
 import * as api from "../../../lib/api";
 import { colors, radius } from "../../../lib/tokens";
 import { formatDurationSec, type Category, type CourseDetail, type CourseSummary } from "../../../lib/types";
@@ -483,6 +484,16 @@ export default function CourseDetailScreen() {
               <Text style={styles.muted}>
                 Lesson files are served through short-lived signed links. Premium members get full-speed delivery.
               </Text>
+              <Pressable
+                style={styles.telegramRow}
+                onPress={() => Linking.openURL(`https://t.me/syncourse_bot?start=dl_${c.slug}`)}
+              >
+                <Text style={{ color: colors.accent, fontWeight: "800", fontSize: 15 }}>✈</Text>
+                <Text style={{ color: colors.text, fontWeight: "700", fontSize: 13, flex: 1 }} numberOfLines={1}>
+                  Get this course via Telegram
+                </Text>
+                <Text style={styles.muted}>sent to your chat</Text>
+              </Pressable>
               {c.sections.map((s, si) => (
                 <View key={s.id} style={{ marginTop: 14 }}>
                   <Pressable
@@ -764,6 +775,17 @@ const styles = StyleSheet.create({
     borderColor: colors.accent,
     borderRadius: radius.sm,
     padding: 12,
+    backgroundColor: colors.accentSoft,
+  },
+  telegramRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    borderWidth: 1,
+    borderColor: colors.accent,
+    borderRadius: radius.sm,
+    padding: 12,
+    marginTop: 12,
     backgroundColor: colors.accentSoft,
   },
   lessonDownload: {

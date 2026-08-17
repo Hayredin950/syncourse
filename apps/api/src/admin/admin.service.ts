@@ -46,6 +46,25 @@ export interface AdminCourseInput {
   sections?: AdminSectionInput[];
 }
 
+export interface AdminLecturerInput {
+  name?: string;
+  bio?: string;
+  photoUrl?: string;
+}
+
+export interface AdminPublisherInput {
+  name?: string;
+  orgType?: string;
+  logoUrl?: string;
+  description?: string;
+}
+
+export interface AdminCategoryInput {
+  name?: string;
+  icon?: string;
+  sortOrder?: number;
+}
+
 @Injectable()
 export class AdminService {
   constructor(private readonly prisma: PrismaService) {}
@@ -371,6 +390,392 @@ export class AdminService {
       select: { slug: true, title: true, thumbnailUrl: true, bannerUrl: true },
     });
     return updated;
+  }
+
+  // ================= Admin console: dashboard + moderation =================
+
+  /** Platform overview numbers for the Dashboard. */
+  async stats(userId: string) {
+    await this.assertStaff(userId);
+    const now = new Date();
+    const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const [courses, users, premium, revenue, pendingPayments, reviewsTotal, reviews7d, lists, circles] =
+      await Promise.all([
+        this.prisma.course.count({ where: { deletedAt: null } }),
+        this.prisma.user.count(),
+        this.prisma.user.count({ where: { planType: 'premium' } }),
+        this.prisma.subscription.aggregate({
+          where: { status: 'approved', createdAt: { gte: monthAgo } },
+          _sum: { amount: true },
+        }),
+        this.prisma.subscription.count({ where: { status: 'pending' } }),
+        this.prisma.review.count(),
+        this.prisma.review.count({ where: { createdAt: { gte: monthAgo } } }),
+        this.prisma.collectionList.count(),
+        this.prisma.circle.count(),
+      ]);
+    return {
+      courses,
+      users,
+      premiumSubscribers: premium,
+      revenue30d: revenue._sum.amount ?? 0,
+      pendingPayments,
+      reviewsTotal,
+      reviews7d,
+      lists,
+      circles,
+    };
+  }
+
+  /** Recent platform events (signups, reviews, subscriptions, courses) for the Dashboard feed. */
+  async activity(userId: string) {
+    await this.assertStaff(userId);
+    const [users, reviews, subs, courses] = await Promise.all([
+      this.prisma.user.findMany({
+        orderBy: { createdAt: 'desc' },
+        take: 5,
+        select: { id: true, name: true, email: true, createdAt: true },
+      }),
+      this.prisma.review.findMany({
+        orderBy: { createdAt: 'desc' },
+        take: 5,
+        include: {
+          user: { select: { name: true } },
+          course: { select: { title: true } },
+        },
+      }),
+      this.prisma.subscription.findMany({
+        orderBy: { createdAt: 'desc' },
+        take: 5,
+        include: { user: { select: { name: true } } },
+      }),
+      this.prisma.course.findMany({
+        where: { deletedAt: null },
+        orderBy: { createdAt: 'desc' },
+        take: 5,
+        select: { id: true, title: true, createdAt: true },
+      }),
+    ]);
+    const events: Array<{
+      type: 'user' | 'review' | 'payment' | 'course';
+      title: string;
+      detail?: string;
+      createdAt: Date;
+    }> = [
+      ...users.map((u) => ({
+        type: 'user' as const,
+        title: `${u.name} joined`,
+        detail: u.email,
+        createdAt: u.createdAt,
+      })),
+      ...reviews.map((r) => ({
+        type: 'review' as const,
+        title: `${r.user.name} reviewed “${r.course.title}”`,
+        detail: r.body.slice(0, 80),
+        createdAt: r.createdAt,
+      })),
+      ...subs.map((s) => ({
+        type: 'payment' as const,
+        title: `${s.user.name} — ${s.planName} (${s.paymentMethod})`,
+        detail: s.status,
+        createdAt: s.createdAt,
+      })),
+      ...courses.map((c) => ({
+        type: 'course' as const,
+        title: `Course published: ${c.title}`,
+        createdAt: c.createdAt,
+      })),
+    ];
+    events.sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+    return events.slice(0, 12);
+  }
+
+  /** All reviews (with course + author) for moderation. */
+  async listReviews(userId: string) {
+    await this.assertStaff(userId);
+    const reviews = await this.prisma.review.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+      include: {
+        user: { select: { id: true, name: true, email: true, avatarUrl: true } },
+        course: { select: { id: true, slug: true, title: true, thumbnailUrl: true } },
+        _count: { select: { replies: true, upvotedBy: true } },
+      },
+    });
+    return reviews.map((r) => ({
+      id: r.id,
+      body: r.body,
+      containsSpoilers: r.containsSpoilers,
+      createdAt: r.createdAt,
+      author: r.user,
+      course: r.course,
+      replyCount: r._count.replies,
+      upvoteCount: r._count.upvotedBy,
+    }));
+  }
+
+  /** Hard-delete a review (and its threaded replies). */
+  async removeReview(userId: string, reviewId: string) {
+    await this.assertStaff(userId);
+    const review = await this.prisma.review.findUnique({ where: { id: reviewId } });
+    if (!review) throw new NotFoundException('Review not found');
+    await this.prisma.review.delete({ where: { id: reviewId } }); // cascades replies
+    return { deleted: true, id: reviewId };
+  }
+
+  /** Payment queue: all subscriptions with their references. */
+  async listPayments(userId: string) {
+    await this.assertStaff(userId);
+    const subs = await this.prisma.subscription.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+      include: {
+        user: { select: { id: true, name: true, email: true, telegramUsername: true } },
+        paymentRefs: true,
+      },
+    });
+    return subs.map((s) => ({
+      id: s.id,
+      planName: s.planName,
+      paymentMethod: s.paymentMethod,
+      amount: s.amount,
+      currency: s.currency,
+      status: s.status,
+      txReference: s.txReference,
+      createdAt: s.createdAt,
+      user: s.user,
+      references: s.paymentRefs,
+    }));
+  }
+
+  /** Approve/reject a payment. Approving also upgrades the user to premium. */
+  async reviewPayment(userId: string, subscriptionId: string, status: 'approved' | 'rejected') {
+    await this.assertStaff(userId);
+    const sub = await this.prisma.subscription.findUnique({
+      where: { id: subscriptionId },
+      include: { user: true },
+    });
+    if (!sub) throw new NotFoundException('Subscription not found');
+    const days =
+      sub.planName === '1_month' ? 30 : sub.planName === '3_months' ? 90 : sub.planName === '6_months' ? 180 : 30;
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const s = await tx.subscription.update({
+        where: { id: subscriptionId },
+        data: {
+          status,
+          periodStart: status === 'approved' ? new Date() : undefined,
+          periodEnd:
+            status === 'approved'
+              ? new Date(Date.now() + days * 24 * 60 * 60 * 1000)
+              : undefined,
+        },
+      });
+      if (status === 'approved') {
+        await tx.user.update({
+          where: { id: sub.userId },
+          data: {
+            planType: 'premium',
+            planExpiresAt: new Date(Date.now() + days * 24 * 60 * 60 * 1000),
+          },
+        });
+        await tx.notification.create({
+          data: {
+            userId: sub.userId,
+            type: 'system',
+            title: 'Premium activated 🎉',
+            body: `Your ${sub.planName} plan is active. Enjoy full-speed downloads and an ad-free experience.`,
+          },
+        });
+      }
+      return s;
+    });
+    return {
+      id: updated.id,
+      status: updated.status,
+      message: status === 'approved' ? `${sub.user.name} is now Premium` : 'Payment rejected',
+    };
+  }
+
+  // --- Lecturers / Publishers / Categories management ---
+
+  async listLecturers(userId: string) {
+    await this.assertStaff(userId);
+    const rows = await this.prisma.lecturer.findMany({
+      orderBy: { name: 'asc' },
+      include: { _count: { select: { courses: true } } },
+    });
+    return rows.map((l) => ({
+      id: l.id,
+      name: l.name,
+      slug: l.slug,
+      photoUrl: l.photoUrl,
+      bio: l.bio,
+      credentials: l.credentials,
+      courseCount: l._count.courses,
+      createdAt: l.createdAt,
+    }));
+  }
+
+  async createLecturer(userId: string, dto: AdminLecturerInput) {
+    await this.assertStaff(userId);
+    if (!dto.name?.trim()) throw new BadRequestException('Name is required');
+    const name = dto.name.trim();
+    const lecturer = await this.prisma.lecturer.create({
+      data: {
+        name,
+        slug: await this.uniqueSlugFor('lecturer', slugify(name)),
+        bio: dto.bio || null,
+        photoUrl: dto.photoUrl || null,
+      },
+    });
+    return { id: lecturer.id, name: lecturer.name, slug: lecturer.slug };
+  }
+
+  async updateLecturer(userId: string, id: string, dto: AdminLecturerInput) {
+    await this.assertStaff(userId);
+    const existing = await this.prisma.lecturer.findUnique({ where: { id } });
+    if (!existing) throw new NotFoundException('Lecturer not found');
+    const updated = await this.prisma.lecturer.update({
+      where: { id },
+      data: {
+        ...(dto.name !== undefined ? { name: dto.name.trim() } : {}),
+        ...(dto.bio !== undefined ? { bio: dto.bio || null } : {}),
+        ...(dto.photoUrl !== undefined ? { photoUrl: dto.photoUrl || null } : {}),
+      },
+    });
+    return { id: updated.id, name: updated.name };
+  }
+
+  async removeLecturer(userId: string, id: string) {
+    await this.assertStaff(userId);
+    const count = await this.prisma.course.count({ where: { lecturerId: id, deletedAt: null } });
+    if (count > 0) {
+      throw new BadRequestException(`This lecturer teaches ${count} course(s) — reassign them first.`);
+    }
+    await this.prisma.lecturer.delete({ where: { id } });
+    return { deleted: true, id };
+  }
+
+  async listPublishers(userId: string) {
+    await this.assertStaff(userId);
+    const rows = await this.prisma.organization.findMany({
+      orderBy: { name: 'asc' },
+      include: { _count: { select: { courses: true } } },
+    });
+    return rows.map((o) => ({
+      id: o.id,
+      name: o.name,
+      slug: o.slug,
+      logoUrl: o.logoUrl,
+      orgType: o.orgType,
+      description: o.description,
+      subscribers: o.subscribers,
+      courseCount: o._count.courses,
+      createdAt: o.createdAt,
+    }));
+  }
+
+  async createPublisher(userId: string, dto: AdminPublisherInput) {
+    await this.assertStaff(userId);
+    if (!dto.name?.trim()) throw new BadRequestException('Name is required');
+    const name = dto.name.trim();
+    const org = await this.prisma.organization.create({
+      data: {
+        name,
+        slug: await this.uniqueSlugFor('organization', slugify(name)),
+        orgType: dto.orgType || 'publisher',
+        logoUrl: dto.logoUrl || null,
+        description: dto.description || null,
+      },
+    });
+    return { id: org.id, name: org.name, slug: org.slug };
+  }
+
+  async updatePublisher(userId: string, id: string, dto: AdminPublisherInput) {
+    await this.assertStaff(userId);
+    const existing = await this.prisma.organization.findUnique({ where: { id } });
+    if (!existing) throw new NotFoundException('Publisher not found');
+    const updated = await this.prisma.organization.update({
+      where: { id },
+      data: {
+        ...(dto.name !== undefined ? { name: dto.name.trim() } : {}),
+        ...(dto.orgType !== undefined ? { orgType: dto.orgType } : {}),
+        ...(dto.logoUrl !== undefined ? { logoUrl: dto.logoUrl || null } : {}),
+        ...(dto.description !== undefined ? { description: dto.description || null } : {}),
+      },
+    });
+    return { id: updated.id, name: updated.name };
+  }
+
+  async removePublisher(userId: string, id: string) {
+    await this.assertStaff(userId);
+    const count = await this.prisma.course.count({ where: { organizationId: id, deletedAt: null } });
+    if (count > 0) {
+      throw new BadRequestException(`This publisher has ${count} course(s) — reassign them first.`);
+    }
+    await this.prisma.organization.delete({ where: { id } });
+    return { deleted: true, id };
+  }
+
+  async listCategories(userId: string) {
+    await this.assertStaff(userId);
+    const rows = await this.prisma.category.findMany({
+      orderBy: { sortOrder: 'asc' },
+      include: { _count: { select: { courses: true } } },
+    });
+    return rows.map((c) => ({
+      id: c.id,
+      name: c.name,
+      slug: c.slug,
+      icon: c.icon,
+      coverImage: c.coverImage,
+      sortOrder: c.sortOrder,
+      courseCount: c._count.courses,
+      createdAt: c.createdAt,
+    }));
+  }
+
+  async createCategory(userId: string, dto: AdminCategoryInput) {
+    await this.assertStaff(userId);
+    if (!dto.name?.trim()) throw new BadRequestException('Name is required');
+    const name = dto.name.trim();
+    const existing = await this.prisma.category.findFirst({ where: { name } });
+    if (existing) throw new BadRequestException(`Category “${name}” already exists`);
+    const max = await this.prisma.category.aggregate({ _max: { sortOrder: true } });
+    const category = await this.prisma.category.create({
+      data: {
+        name,
+        slug: await this.uniqueSlugFor('category', slugify(name)),
+        icon: dto.icon || '📚',
+        sortOrder: dto.sortOrder ?? (max._max.sortOrder ?? 0) + 1,
+      },
+    });
+    return { id: category.id, name: category.name, slug: category.slug };
+  }
+
+  async updateCategory(userId: string, id: string, dto: AdminCategoryInput) {
+    await this.assertStaff(userId);
+    const existing = await this.prisma.category.findUnique({ where: { id } });
+    if (!existing) throw new NotFoundException('Category not found');
+    const updated = await this.prisma.category.update({
+      where: { id },
+      data: {
+        ...(dto.name !== undefined ? { name: dto.name.trim() } : {}),
+        ...(dto.icon !== undefined ? { icon: dto.icon } : {}),
+        ...(dto.sortOrder !== undefined ? { sortOrder: dto.sortOrder } : {}),
+      },
+    });
+    return { id: updated.id, name: updated.name };
+  }
+
+  async removeCategory(userId: string, id: string) {
+    await this.assertStaff(userId);
+    const count = await this.prisma.courseCategory.count({ where: { categoryId: id } });
+    if (count > 0) {
+      throw new BadRequestException(`This category is used by ${count} course(s).`);
+    }
+    await this.prisma.category.delete({ where: { id } });
+    return { deleted: true, id };
   }
 
   // --- helpers ---

@@ -568,6 +568,31 @@ export default function CoursePage() {
               <button className="icon-btn" onClick={() => setDownloadOpen(false)}><X size={15} /></button>
             </div>
             <p className="muted">Lesson files are served through short-lived signed links. <span className="rating">Premium members get full-speed delivery.</span></p>
+            {/* download via Telegram bot — the bot streams the course file from its group topic */}
+            <a
+              href={`https://t.me/syncourse_bot?start=dl_${course.slug}`}
+              target="_blank"
+              rel="noreferrer"
+              className="dark-panel"
+              style={{
+                marginTop: 12,
+                padding: "13px 16px",
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                border: "1px solid hsl(var(--primary) / .35)",
+                background: "hsl(var(--primary) / .08)",
+              }}
+            >
+              <SendInline />
+              <span style={{ flex: 1, fontWeight: 700, fontSize: 13 }}>
+                Get this course via Telegram
+                <span className="muted" style={{ fontWeight: 400, marginLeft: 8, fontSize: 11 }}>
+                  sent straight to your chat
+                </span>
+              </span>
+              <ChevronRight size={14} className="muted" />
+            </a>
             {course.sections.map((s, si) => (
               <div key={s.id} style={{ marginTop: 12 }}>
                 {/* bulk download — whole module in one click (phonofilm "Season [Download]") */}
@@ -633,6 +658,14 @@ function SparklesInline() {
   return (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style={{ display: "inline", verticalAlign: "middle" }}>
       <path d="M12 2l1.9 5.7L19.6 9.6l-5.7 1.9L12 17.2l-1.9-5.7L4.4 9.6l5.7-1.9L12 2z" />
+    </svg>
+  );
+}
+
+function SendInline() {
+  return (
+    <svg width="15" height="15" viewBox="0 0 24 24" fill="currentColor" style={{ display: "inline", verticalAlign: "middle", color: "hsl(var(--primary))" }}>
+      <path d="M2.01 21 23 12 2.01 3 2 10l15 2-15 2z" />
     </svg>
   );
 }

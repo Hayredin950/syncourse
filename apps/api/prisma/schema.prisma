@@ -105,6 +105,7 @@ model Course {
   savedBy         SavedCourse[]
   likedBy         LikedCourse[]
   downloadEvents  DownloadEvent[]
+  telegramLink    TelegramCourseLink?
 }
 
 model CourseCategory {
@@ -521,6 +522,26 @@ model AppVersion {
   version      String   @unique
   changelogMd  String
   releasedAt   DateTime @default(now())
+}
+
+// ---------------------------------------------------------------
+// Telegram bot — group topic → course file serving
+// ---------------------------------------------------------------
+
+model TelegramCourseLink {
+  id              String   @id @default(cuid())
+  courseId        String   @unique
+  chatId          BigInt
+  chatUsername    String?
+  messageThreadId BigInt? // forum topic id
+  fileMessageId   BigInt
+  fileId          String? // reusable Telegram file_id of the attached document
+  fileName        String?
+  fileSizeMb      Float?
+  caption         String?
+  createdById     String?
+  createdAt       DateTime @default(now())
+  course          Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
 }
 
 model LegalDocument {

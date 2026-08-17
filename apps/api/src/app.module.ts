@@ -20,6 +20,7 @@ import { CirclesModule } from './circles/circles.module';
 import { EmailModule } from './email/email.module';
 import { CloudinaryModule } from './cloudinary/cloudinary.module';
 import { AdminModule } from './admin/admin.module';
+import { TelegramModule } from './telegram/telegram.module';
 
 @Module({
   imports: [
@@ -41,6 +42,7 @@ import { AdminModule } from './admin/admin.module';
     EmailModule,
     CloudinaryModule,
     AdminModule,
+    TelegramModule,
   ],
   controllers: [AppController],
   providers: [

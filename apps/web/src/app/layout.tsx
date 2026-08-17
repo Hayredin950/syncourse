@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { AuthProvider } from "@/lib/auth";
-import { TopNav, Footer, BottomNav } from "@/components/Nav";
+import Shell from "@/components/Shell";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://syncourse.pages.dev"),
@@ -34,12 +34,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="en">
       <body>
         <AuthProvider>
-          <div className="site-shell">
-            <TopNav />
-            {children}
-            <Footer />
-            <BottomNav />
-          </div>
+          <Shell>{children}</Shell>
         </AuthProvider>
       </body>
     </html>
