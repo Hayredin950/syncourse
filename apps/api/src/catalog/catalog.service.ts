@@ -234,7 +234,7 @@ export class CatalogService {
   // Course detail — full stack from the spec: banner, meta, actions,
   // sections → lessons → notes → files, ratings, reviews, downloads stats.
   // ---------------------------------------------------------------
-  async courseDetail(slug: string) {
+  async courseDetail(slug: string, userId?: string) {
     const course = await this.prisma.course.findUnique({
       where: { slug },
       include: {
@@ -244,7 +244,7 @@ export class CatalogService {
 
     if (!course || course.deletedAt) throw new NotFoundException('Course not found');
 
-    const [ratings, reviewRows, downloadStats] = await Promise.all([
+    const [ratings, reviewRows, downloadStats, myUpvotes] = await Promise.all([
       this.prisma.rating.aggregate({ where: { courseId: course.id }, _avg: { stars: true }, _count: true }),
       this.prisma.review.findMany({
         where: { courseId: course.id, parentId: null },
@@ -253,7 +253,11 @@ export class CatalogService {
         include: { user: { select: { name: true, avatarUrl: true, isStaff: true } }, _count: { select: { replies: true } } },
       }),
       this.downloadStats(course.id),
+      userId
+        ? this.prisma.reviewUpvote.findMany({ where: { userId, review: { courseId: course.id } } })
+        : Promise.resolve([]),
     ]);
+    const upvotedIds = new Set(myUpvotes.map((u) => u.reviewId));
 
     const ratingDistribution = await this.ratingDistribution(course.id);
 
@@ -299,6 +303,8 @@ export class CatalogService {
         editedAt: r.editedAt,
         createdAt: r.createdAt,
         replyCount: r._count.replies,
+        upvotes: r.upvotes,
+        upvoted: upvotedIds.has(r.id),
         isStaff: r.user.isStaff,
       })),
       downloads: downloadStats,
@@ -440,15 +446,26 @@ export class CatalogService {
   private async downloadStats(courseId: string) {
     const now = new Date();
     const day = 24 * 60 * 60 * 1000;
-    const [total, last30, last7, today] = await Promise.all([
+    const [total, last30, last7, today, recent] = await Promise.all([
       this.prisma.downloadEvent.count({ where: { courseId } }),
       this.prisma.downloadEvent.count({ where: { courseId, createdAt: { gte: new Date(now.getTime() - 30 * day) } } }),
       this.prisma.downloadEvent.count({ where: { courseId, createdAt: { gte: new Date(now.getTime() - 7 * day) } } }),
       this.prisma.downloadEvent.count({
         where: { courseId, createdAt: { gte: new Date(now.getTime() - 1 * day) } },
       }),
+      this.prisma.downloadEvent.findMany({
+        where: { courseId, createdAt: { gte: new Date(now.getTime() - 14 * day) } },
+        select: { createdAt: true },
+      }),
     ]);
-    return { total, last30, last7, today };
+
+    // 14-day sparkline: downloads per day (oldest → newest)
+    const sparkline = new Array(14).fill(0);
+    for (const ev of recent) {
+      const idx = Math.floor((now.getTime() - ev.createdAt.getTime()) / day);
+      if (idx >= 0 && idx < 14) sparkline[13 - idx]++;
+    }
+    return { total, last30, last7, today, sparkline };
   }
 
   private async ratingDistribution(courseId: string) {

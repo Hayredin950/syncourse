@@ -231,7 +231,7 @@ export default function LessonPage() {
                         ⚡ Fast download
                       </button>
                       <button onClick={() => copyLink(f.label)} className="rounded-full border border-border px-3 py-1 text-muted hover:text-text">
-                        Copy link · IDM/1DM
+                        Copy link · IDM / 1DM
                       </button>
                       <a
                         href={`https://t.me/share/url?url=${encodeURIComponent(window.location.href)}`}

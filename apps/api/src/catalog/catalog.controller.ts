@@ -1,6 +1,8 @@
 import { Controller, Get, Param, Query } from '@nestjs/common';
 import { CatalogService } from './catalog.service';
 import { Public } from '../common/public.decorator';
+import { CurrentUser } from '../common/current-user.decorator';
+import { AuthUser } from '../common/jwt-auth.guard';
 
 @Public()
 @Controller()
@@ -55,8 +57,8 @@ export class CatalogController {
   }
 
   @Get('courses/:slug')
-  courseDetail(@Param('slug') slug: string) {
-    return this.catalog.courseDetail(slug);
+  courseDetail(@Param('slug') slug: string, @CurrentUser() user?: AuthUser) {
+    return this.catalog.courseDetail(slug, user?.id);
   }
 
   @Get('lecturers')

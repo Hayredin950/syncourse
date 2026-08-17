@@ -60,7 +60,19 @@ export default function CoursePage() {
         const cat = d.categoryNames[0];
         if (cat) {
           get<{ results: CourseSummary[] }>(`/courses?category=${encodeURIComponent(cat)}&limit=8`)
-            .then((r) => setSimilar(r.results.filter((c) => c.id !== d.id)))
+            .then((r) => {
+              const filtered = r.results.filter((c) => c.id !== d.id);
+              if (filtered.length >= 4) {
+                setSimilar(filtered);
+              } else if (d.lecturer) {
+                // fallback: same instructor
+                get<{ results: CourseSummary[] }>(`/courses?lecturer=${encodeURIComponent(d.lecturer.slug)}&limit=8`)
+                  .then((r2) => setSimilar(r2.results.filter((c) => c.id !== d.id)))
+                  .catch(() => setSimilar(filtered));
+              } else {
+                setSimilar(filtered);
+              }
+            })
             .catch(() => {});
         }
       })
@@ -160,6 +172,29 @@ export default function CoursePage() {
     try {
       const r = await post<{ upvoted: boolean; upvotes: number }>(`/discussion/${id}/upvote`);
       setThreads((prev) => prev.map((t) => (t.id === id ? { ...t, upvoted: r.upvoted, upvotes: r.upvotes } : t)));
+      setCourse((c) =>
+        c
+          ? {
+              ...c,
+              reviews: c.reviews.map((rv) => (rv.id === id ? { ...rv, upvoted: r.upvoted, upvotes: r.upvotes } : rv)),
+            }
+          : c,
+      );
+    } catch (e: any) {
+      flash(e.message);
+    }
+  };
+
+  const onReplyToReview = async (parentId: string, body: string) => {
+    if (!requireAuth() || !body.trim()) return;
+    try {
+      await post(`/courses/${slug}/reviews`, { body, parentId });
+      setCourse((c) =>
+        c
+          ? { ...c, reviews: c.reviews.map((rv) => (rv.id === parentId ? { ...rv, replyCount: rv.replyCount + 1 } : rv)) }
+          : c,
+      );
+      flash("Reply posted");
     } catch (e: any) {
       flash(e.message);
     }
@@ -248,55 +283,59 @@ export default function CoursePage() {
             <span>{course.lessonCount} lessons</span>
             <span>{course.language || "English"}</span>
           </div>
-          <div className="actions">
-            {firstLesson ? (
-              <Link href={`/courses/${course.slug}/lessons/${firstLesson.id}`} className="btn primary">
-                <Play size={14} fill="currentColor" style={{ display: "inline", verticalAlign: "middle" }} /> Start course
-              </Link>
-            ) : (
-              <button onClick={onEnroll} className="btn primary">
-                <Play size={14} fill="currentColor" style={{ display: "inline", verticalAlign: "middle" }} /> {enrolled ? "Enrolled" : "Enroll free"}
-              </button>
-            )}
-            <button onClick={() => setDownloadOpen(true)} className="btn primary">
-              <Download size={14} style={{ display: "inline", verticalAlign: "middle" }} /> Download materials
+        </div>
+      </div>
+
+      {/* action row — sits on the plain page background, off the hero image (phonofilm) */}
+      <div className="detail-actions">
+        <div className="actions">
+          {firstLesson ? (
+            <Link href={`/courses/${course.slug}/lessons/${firstLesson.id}`} className="btn primary">
+              <Play size={14} fill="currentColor" style={{ display: "inline", verticalAlign: "middle" }} /> Start course
+            </Link>
+          ) : (
+            <button onClick={onEnroll} className="btn primary">
+              <Play size={14} fill="currentColor" style={{ display: "inline", verticalAlign: "middle" }} /> {enrolled ? "Enrolled" : "Enroll free"}
             </button>
-            {course.previewVideoUrl ? (
-              <a href={course.previewVideoUrl} target="_blank" rel="noreferrer" className="btn">
-                <SparklesInline /> Preview
-              </a>
-            ) : (
-              <button onClick={onEnroll} className="btn">
-                <SparklesInline /> Trailer
-              </button>
-            )}
-          </div>
-          <div className="icon-actions">
-            <button className="icon-btn" onClick={onSave}>
-              {saved ? <Check size={14} /> : <Bookmark size={14} />} {saved ? "Saved" : "Save"}
+          )}
+          <button onClick={() => setDownloadOpen(true)} className="btn primary">
+            <Download size={14} style={{ display: "inline", verticalAlign: "middle" }} /> Download materials
+          </button>
+          {course.previewVideoUrl ? (
+            <a href={course.previewVideoUrl} target="_blank" rel="noreferrer" className="btn">
+              <SparklesInline /> Preview
+            </a>
+          ) : (
+            <button onClick={onEnroll} className="btn">
+              <SparklesInline /> Trailer
             </button>
-            <button className="icon-btn" onClick={onEnroll}>
-              <Check size={14} /> {enrolled ? "Enrolled" : "Mark complete"}
-            </button>
-            <button className="icon-btn" onClick={() => flash("Lists coming soon — save it for now")}>
-              <ListPlus size={14} /> List
-            </button>
-            <button className="icon-btn" onClick={onLike}>
-              <Heart size={14} /> {liked ? "Liked" : "Like"}
-            </button>
-            <button className="icon-btn" onClick={onShare}>
-              <Share2 size={14} /> Share
-            </button>
-          </div>
-          {user?.isStaff && (
-            <div style={{ marginTop: 4 }}>
-              <button className="btn ghost" onClick={() => coverInputRef.current?.click()} disabled={coverBusy}>
-                {coverBusy ? "Uploading…" : "✎ Edit cover"}
-              </button>
-              <input ref={coverInputRef} type="file" accept="image/*" className="hidden" onChange={onCoverFile} />
-            </div>
           )}
         </div>
+        <div className="icon-actions">
+          <button className="icon-btn" onClick={onSave}>
+            {saved ? <Check size={14} /> : <Bookmark size={14} />} {saved ? "Saved" : "Save"}
+          </button>
+          <button className="icon-btn" onClick={onEnroll}>
+            <Check size={14} /> {enrolled ? "Enrolled" : "Mark complete"}
+          </button>
+          <button className="icon-btn" onClick={() => flash("Lists coming soon — save it for now")}>
+            <ListPlus size={14} /> List
+          </button>
+          <button className="icon-btn" onClick={onLike}>
+            <Heart size={14} /> {liked ? "Liked" : "Like"}
+          </button>
+          <button className="icon-btn" onClick={onShare}>
+            <Share2 size={14} /> Share
+          </button>
+        </div>
+        {user?.isStaff && (
+          <div style={{ marginTop: 4 }}>
+            <button className="btn ghost" onClick={() => coverInputRef.current?.click()} disabled={coverBusy}>
+              {coverBusy ? "Uploading…" : "✎ Edit cover"}
+            </button>
+            <input ref={coverInputRef} type="file" accept="image/*" className="hidden" onChange={onCoverFile} />
+          </div>
+        )}
       </div>
 
       <div className="detail-columns">
@@ -387,18 +426,25 @@ export default function CoursePage() {
             <div className="section-head">
               <h2>Downloads on Syncourse</h2>
             </div>
-            <div className="dark-panel" style={{ padding: 18, display: "flex", gap: 28 }}>
-              {[
-                ["TOTAL", compact(course.downloads.total)],
-                ["LAST 30 DAYS", compact(course.downloads.last30)],
-                ["LAST 7 DAYS", compact(course.downloads.last7)],
-                ["TODAY", String(course.downloads.today)],
-              ].map(([label, value]) => (
-                <div key={label}>
-                  <strong style={{ fontSize: 20 }}>{value}</strong>
-                  <div className="muted mono" style={{ fontSize: 9 }}>{label}</div>
-                </div>
-              ))}
+            <div className="dark-panel" style={{ padding: 18 }}>
+              <div style={{ display: "flex", gap: 28 }}>
+                {[
+                  ["TOTAL", compact(course.downloads.total)],
+                  ["LAST 30 DAYS", compact(course.downloads.last30)],
+                  ["LAST 7 DAYS", compact(course.downloads.last7)],
+                  ["TODAY", String(course.downloads.today)],
+                ].map(([label, value]) => (
+                  <div key={label}>
+                    <strong style={{ fontSize: 20 }}>{value}</strong>
+                    <div className="muted mono" style={{ fontSize: 9 }}>{label}</div>
+                  </div>
+                ))}
+              </div>
+              {/* 14-day trend sparkline (phonofilm: chart under the stat numbers) */}
+              <div style={{ marginTop: 14 }}>
+                <Sparkline data={course.downloads.sparkline ?? []} />
+                <div className="muted mono" style={{ fontSize: 9, marginTop: 6 }}>Last 14 days</div>
+              </div>
             </div>
           </section>
         </div>
@@ -414,13 +460,24 @@ export default function CoursePage() {
             <div className="rating" style={{ fontSize: 11, marginTop: 2 }}>
               <Star size={13} fill="currentColor" style={{ display: "inline" }} /> Source rating · {compact(course.ratings.count)} votes
             </div>
-            <div className="bars">
-              {[5, 4, 3, 2, 1].map((n) => {
-                const count = course.ratings.distribution[n] ?? 0;
-                const max = Math.max(1, ...Object.values(course.ratings.distribution));
-                return <i key={n} style={{ height: `${(count / max) * 92}%` }} title={`${n}★`} />;
-              })}
-            </div>
+            {course.ratings.count > 0 ? (
+              <div className="bars">
+                {[5, 4, 3, 2, 1].map((n) => {
+                  const count = course.ratings.distribution[n] ?? 0;
+                  const max = Math.max(1, ...Object.values(course.ratings.distribution));
+                  const pct = (count / max) * 92;
+                  return (
+                    <i
+                      key={n}
+                      style={{ height: `${Math.max(pct, count > 0 ? 8 : 4)}%`, opacity: count > 0 ? 0.8 : 0.18 }}
+                      title={`${n}★ · ${count}`}
+                    />
+                  );
+                })}
+              </div>
+            ) : (
+              <p className="muted" style={{ fontSize: 11, margin: "16px 0 0" }}>No ratings yet — be the first to rate this course.</p>
+            )}
             <p className="muted mono" style={{ fontSize: 10, margin: "12px 0 0" }}>
               Community mean · {compact(course.ratings.count)} learners
             </p>
@@ -443,7 +500,7 @@ export default function CoursePage() {
               </div>
             )}
             {course.reviews.slice(0, 4).map((r) => (
-              <ReviewCard key={r.id} review={r} />
+              <ReviewCard key={r.id} review={r} onUpvote={onUpvote} onReply={onReplyToReview} />
             ))}
           </div>
 
@@ -526,22 +583,53 @@ export default function CoursePage() {
               <h3>Available downloads</h3>
               <button className="icon-btn" onClick={() => setDownloadOpen(false)}><X size={15} /></button>
             </div>
-            <p className="muted">Lesson files are served through short-lived signed links. Premium members get full-speed delivery.</p>
-            {course.sections.map((s) =>
-              s.lessons.map((l) => (
-                <Link
-                  key={l.id}
-                  href={`/courses/${course.slug}/lessons/${l.id}`}
+            <p className="muted">Lesson files are served through short-lived signed links. <span className="rating">Premium members get full-speed delivery.</span></p>
+            {course.sections.map((s, si) => (
+              <div key={s.id} style={{ marginTop: 12 }}>
+                {/* bulk download — whole module in one click (phonofilm "Season [Download]") */}
+                <div
                   className="dark-panel"
-                  style={{ padding: 14, display: "flex", alignItems: "center", gap: 10, marginTop: 9 }}
+                  style={{
+                    padding: "13px 16px",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    border: "1px dashed hsl(var(--primary) / .4)",
+                    background: "hsl(var(--primary) / .06)",
+                  }}
                 >
                   <Download size={15} className="rating" />
-                  <span style={{ flex: 1 }}>{l.title}</span>
-                  <span className="muted mono" style={{ fontSize: 10 }}>{formatSec(l.durationSec)}</span>
-                  <ChevronRight size={14} className="muted" />
-                </Link>
-              )),
-            )}
+                  <span style={{ flex: 1, fontWeight: 700, fontSize: 13 }}>
+                    Module {si + 1} — {s.title}
+                    <span className="muted" style={{ fontWeight: 400, marginLeft: 8, fontSize: 11 }}>
+                      {s.lessons.length} lessons
+                    </span>
+                  </span>
+                  <Link href={`/courses/${course.slug}/lessons/${s.lessons[0]?.id ?? ""}?bulk=1`} className="btn primary" style={{ padding: "7px 13px", fontSize: 11 }}>
+                    Download module
+                  </Link>
+                  <span className="badge" title="Fast, full-speed delivery requires Premium">
+                    <ZapInline /> Fast
+                  </span>
+                </div>
+                {/* individual lessons */}
+                {s.lessons.map((l) => (
+                  <Link
+                    key={l.id}
+                    href={`/courses/${course.slug}/lessons/${l.id}`}
+                    className="dark-panel"
+                    style={{ padding: 14, display: "flex", alignItems: "center", gap: 10, marginTop: 8 }}
+                  >
+                    <Download size={15} className="rating" />
+                    <span style={{ flex: 1 }}>{l.title}</span>
+                    <span className="muted mono" style={{ fontSize: 10 }}>{formatSec(l.durationSec)}</span>
+                    {/* speed-tier hint surfaced at course level (phonofilm: Premium fork visible here) */}
+                    {course.isPremium && <span className="badge" style={{ fontSize: 9 }}><ZapInline /> Fast</span>}
+                    <ChevronRight size={14} className="muted" />
+                  </Link>
+                ))}
+              </div>
+            ))}
           </div>
         </div>
       )}
@@ -561,6 +649,38 @@ function SparklesInline() {
   return (
     <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" style={{ display: "inline", verticalAlign: "middle" }}>
       <path d="M12 2l1.9 5.7L19.6 9.6l-5.7 1.9L12 17.2l-1.9-5.7L4.4 9.6l5.7-1.9L12 2z" />
+    </svg>
+  );
+}
+
+function ZapInline() {
+  return (
+    <svg width="10" height="10" viewBox="0 0 24 24" fill="currentColor" style={{ display: "inline", verticalAlign: "middle", marginRight: 3 }}>
+      <path d="M13 2 3 14h7l-1 8 10-12h-7l1-8z" />
+    </svg>
+  );
+}
+
+/** lightweight 14-day trend line — phonofilm sparkline under download stats */
+function Sparkline({ data }: { data: number[] }) {
+  const w = 220;
+  const h = 34;
+  if (!data || data.length < 2) {
+    return <div className="muted mono" style={{ fontSize: 9, height: h }}>No recent download activity.</div>;
+  }
+  const max = Math.max(...data, 1);
+  const pts = data.map((v, i) => `${(i / (data.length - 1)) * w},${h - (v / max) * (h - 4) - 2}`).join(" ");
+  return (
+    <svg width="100%" height={h} viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none" aria-hidden>
+      <polyline
+        points={pts}
+        fill="none"
+        stroke="hsl(var(--primary))"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+        strokeLinecap="round"
+      />
+      <polygon points={`0,${h} ${pts} ${w},${h}`} fill="hsl(var(--primary) / .12)" />
     </svg>
   );
 }
@@ -598,8 +718,19 @@ function DiscussionCard({ thread, onUpvote }: { thread: DiscussionThread; onUpvo
   );
 }
 
-function ReviewCard({ review }: { review: ReviewRow }) {
+function ReviewCard({
+  review,
+  onUpvote,
+  onReply,
+}: {
+  review: ReviewRow;
+  onUpvote: (id: string) => void;
+  onReply: (parentId: string, body: string) => void;
+}) {
   const [show, setShow] = useState(!review.containsSpoilers);
+  const [replying, setReplying] = useState(false);
+  const [replyText, setReplyText] = useState("");
+
   return (
     <div className="review">
       <div className="review-top">
@@ -611,16 +742,56 @@ function ReviewCard({ review }: { review: ReviewRow }) {
       </div>
       {review.containsSpoilers && !show ? (
         <button className="btn ghost" style={{ marginTop: 8 }} onClick={() => setShow(true)}>
-          This review may contain spoilers — Show review
+          This may contain spoilers — Show
         </button>
       ) : (
         <p>{review.body}</p>
       )}
-      {review.replyCount > 0 && (
-        <button className="btn ghost" style={{ padding: 0, fontSize: 10 }}>
-          {review.replyCount} replies — Join the thread
+
+      {/* phonofilm review actions: upvote/downvote counter + Reply */}
+      <div style={{ display: "flex", alignItems: "center", gap: 14, marginTop: 8 }}>
+        <button
+          onClick={() => onUpvote(review.id)}
+          className="rating"
+          style={{ background: "none", border: 0, fontSize: 11, display: "flex", alignItems: "center", gap: 5, cursor: "pointer" }}
+          title="Helpful"
+        >
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor"><path d="M12 4l8 10H4l8-10z" /></svg>
+          {review.upvotes ?? 0}
+          {review.upvoted ? " · upvoted" : ""}
         </button>
+        <button className="link-btn" style={{ fontSize: 11 }} onClick={() => setReplying((r) => !r)}>
+          Reply
+        </button>
+        {review.replyCount > 0 && (
+          <span className="muted mono" style={{ fontSize: 10 }}>{review.replyCount} repl{review.replyCount === 1 ? "y" : "ies"}</span>
+        )}
+      </div>
+
+      {replying && (
+        <div style={{ marginTop: 10, display: "flex", gap: 8 }}>
+          <input
+            className="form-input"
+            style={{ margin: 0, flex: 1, padding: "9px 12px" }}
+            placeholder="Write a reply…"
+            value={replyText}
+            onChange={(e) => setReplyText(e.target.value)}
+          />
+          <button
+            className="btn primary"
+            style={{ padding: "9px 14px" }}
+            disabled={!replyText.trim()}
+            onClick={() => {
+              onReply(review.id, replyText);
+              setReplyText("");
+              setReplying(false);
+            }}
+          >
+            Post
+          </button>
+        </div>
       )}
+
       {review.replies?.map((rep) => (
         <div key={rep.id} style={{ marginLeft: 16, borderLeft: "2px solid hsl(var(--border))", paddingLeft: 12 }}>
           <p className="muted" style={{ fontSize: 11 }}>

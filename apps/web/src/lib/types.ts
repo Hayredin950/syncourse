@@ -56,6 +56,8 @@ export interface ReviewRow {
   editedAt: string | null;
   createdAt: string;
   replyCount: number;
+  upvotes?: number;
+  upvoted?: boolean;
   replies?: ReviewRow[];
 }
 
@@ -73,7 +75,7 @@ export interface CourseDetail extends CourseSummary {
   sections: Section[];
   ratings: RatingBlock;
   reviews: ReviewRow[];
-  downloads: { total: number; last30: number; last7: number; today: number };
+  downloads: { total: number; last30: number; last7: number; today: number; sparkline?: number[] };
 }
 
 export interface LecturerDetail {
