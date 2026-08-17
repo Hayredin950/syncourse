@@ -25,7 +25,7 @@ import { MobileHeader } from "@/components/Nav";
 type Tab = "library" | "stats" | "subscription" | "settings";
 
 export default function MePage() {
-  const { user, token, isPremium, logout, refresh } = useAuth();
+  const { user, token, loading, isPremium, logout, refresh } = useAuth();
   const router = useRouter();
   const [tab, setTab] = useState<Tab>("library");
   const [telegram, setTelegram] = useState("");
@@ -39,8 +39,16 @@ export default function MePage() {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (!token) router.push("/auth?next=/me");
-  }, [token, router]);
+    if (!loading && !token) router.push("/auth?next=/me");
+  }, [loading, token, router]);
+
+  if (loading) {
+    return (
+      <main className="page" style={{ display: "grid", placeItems: "center", minHeight: 300 }}>
+        <div className="muted mono">Loading…</div>
+      </main>
+    );
+  }
 
   const openEdit = () => {
     if (!user) return;

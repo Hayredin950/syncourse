@@ -12,18 +12,19 @@ import { MobileHeader } from "@/components/Nav";
 type Tab = "inProgress" | "completed" | "watchlist" | "liked";
 
 export default function MyLearningPage() {
-  const { token } = useAuth();
+  const { token, loading } = useAuth();
   const router = useRouter();
   const [data, setData] = useState<LearningData | null>(null);
   const [tab, setTab] = useState<Tab>("inProgress");
 
   useEffect(() => {
+    if (loading) return;
     if (!token) {
       router.push("/auth?next=/my-learning");
       return;
     }
     get<LearningData>("/me/learning").then(setData).catch(() => {});
-  }, [token, router]);
+  }, [loading, token, router]);
 
   if (!token) return null;
   if (!data) return (
