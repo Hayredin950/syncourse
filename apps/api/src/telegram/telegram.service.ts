@@ -10,6 +10,9 @@ interface TelegramUpdate {
     from?: { id: number; username?: string; first_name?: string };
     text?: string;
     date: number;
+    document?: { file_id: string; file_name?: string; file_size?: number };
+    video?: { file_id: string; file_name?: string; file_size?: number };
+    audio?: { file_id: string; file_name?: string; file_size?: number };
     reply_to_message?: {
       message_id: number;
       message_thread_id?: number;
@@ -51,6 +54,12 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
   private lastPollAt: Date | null = null;
   private lastUpdateAt: Date | null = null;
   private pollErrors = 0;
+  private lastError: { at: string; message: string; stack?: string } | null = null;
+  /** Per-chat cache of the most recent file the user forwarded/sent to the bot. */
+  private lastFileByChat = new Map<
+    number,
+    { messageId: number; fileId: string; fileName: string | null; fileSize: number | null }
+  >();
 
   constructor(private readonly prisma: PrismaService) {}
 
@@ -122,7 +131,9 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
             await this.handleUpdate(update);
           } catch (err) {
             this.pollErrors++;
-            this.logger.error(`update ${update.update_id} failed: ${(err as Error).message}`);
+            const e = err as Error;
+            this.lastError = { at: new Date().toISOString(), message: e.message, stack: e.stack };
+            this.logger.error(`update ${update.update_id} failed: ${e.message}\n${e.stack ?? ''}`);
           }
         }
       } catch (err) {
@@ -148,9 +159,23 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       return;
     }
     const msg = update.message;
-    if (!msg?.text) return;
+    if (!msg) return;
     const chatId = msg.chat.id;
     const threadId = msg.message_thread_id ?? null;
+
+    // Cache the most recent file per chat so `/link <slug>` works as a plain
+    // message right after forwarding a ZIP to the bot (no reply gesture needed).
+    const msgDoc = msg.document ?? msg.video ?? msg.audio;
+    if (msgDoc) {
+      this.lastFileByChat.set(chatId, {
+        messageId: msg.message_id,
+        fileId: msgDoc.file_id,
+        fileName: msgDoc.file_name ?? null,
+        fileSize: msgDoc.file_size ?? null,
+      });
+    }
+
+    if (!msg.text) return;
     const fromId = msg.from?.id ?? chatId;
     const text = msg.text.trim();
     const [command, ...rest] = text.split(/\s+/);
@@ -261,28 +286,37 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       );
     }
 
-    // Mode 1: replied to a file message inside the group — no link needed.
+    // Mode 1: a file to attach — from a reply, or the last file forwarded to
+    // this chat (so `/link <slug>` works as a plain message right after
+    // forwarding the ZIP to the bot).
     const reply = msg?.reply_to_message;
+    const replyDoc = reply ? (reply.document ?? reply.video ?? reply.audio) : undefined;
+    const cached = this.lastFileByChat.get(chatId);
+    const doc = replyDoc
+      ? { file_id: replyDoc.file_id, file_name: replyDoc.file_name, file_size: replyDoc.file_size }
+      : cached && !reply
+        ? { file_id: cached.fileId, file_name: cached.fileName, file_size: cached.fileSize }
+        : null;
+    if (doc) {
+      const sourceName = replyDoc ? 'the file you replied to' : 'the last file you sent/forwarded to this chat';
+      await this.saveLink({
+        courseId: course.id,
+        chatId: BigInt(chatId),
+        chatUsername: msg?.chat.username ?? null,
+        messageThreadId: reply?.message_thread_id ? BigInt(reply.message_thread_id) : null,
+        fileMessageId: BigInt(reply?.message_id ?? msg?.message_id ?? 0),
+        fileId: doc.file_id,
+        fileName: doc.file_name ?? null,
+        fileSizeMb: doc.file_size ? Number((doc.file_size / 1024 / 1024).toFixed(1)) : null,
+        caption: null,
+      });
+      return this.sendText(
+        chatId,
+        `✅ Linked “${course.title}” to ${sourceName} (${doc.file_name ?? 'file'}${doc.file_size ? ` · ${(doc.file_size / 1024 / 1024).toFixed(1)} MB` : ''}).\n\nUsers can now get it with /download ${slug} or from the app.`,
+        threadId,
+      );
+    }
     if (reply) {
-      const doc = reply.document ?? reply.video ?? reply.audio;
-      if (doc) {
-        await this.saveLink({
-          courseId: course.id,
-          chatId: BigInt(chatId),
-          chatUsername: msg.chat.username ?? null,
-          messageThreadId: reply.message_thread_id ? BigInt(reply.message_thread_id) : null,
-          fileMessageId: BigInt(reply.message_id),
-          fileId: doc.file_id,
-          fileName: doc.file_name ?? null,
-          fileSizeMb: doc.file_size ? Number((doc.file_size / 1024 / 1024).toFixed(1)) : null,
-          caption: null,
-        });
-        return this.sendText(
-          chatId,
-          `✅ Linked “${course.title}” to the file you replied to (${doc.file_name ?? 'file'}${doc.file_size ? ` · ${(doc.file_size / 1024 / 1024).toFixed(1)} MB` : ''}).\n\nUsers can now get it with /download ${slug} or from the app.`,
-          threadId,
-        );
-      }
       return this.sendText(chatId, 'The message you replied to does not contain a file (ZIP/video/audio). Reply to the file message itself.', threadId);
     }
 
@@ -612,6 +646,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       lastPollAt: this.lastPollAt ? this.lastPollAt.toISOString() : null,
       lastUpdateAt: this.lastUpdateAt ? this.lastUpdateAt.toISOString() : null,
       pollErrors: this.pollErrors,
+      lastError: this.lastError,
       linkedCourses: links.map((l) => ({
         slug: l.course.slug,
         title: l.course.title,
