@@ -3,6 +3,7 @@
     "name": "SynCourse",
     "slug": "syncourse",
     "version": "1.0.0",
+    "runtimeVersion": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "syncourse",
@@ -11,8 +12,15 @@
     "newArchEnabled": true,
     "plugins": [
       "expo-router",
-      "expo-web-browser"
+      "expo-web-browser",
+      "expo-updates"
     ],
+    "updates": {
+      "url": "https://u.expo.dev/d47a1209-7356-4518-bb9c-1fa06648345e",
+      "enabled": true,
+      "checkAutomatically": "ON_LOAD",
+      "fallbackToCacheTimeout": 0
+    },
     "extra": {
       "eas": {
         "projectId": "d47a1209-7356-4518-bb9c-1fa06648345e"

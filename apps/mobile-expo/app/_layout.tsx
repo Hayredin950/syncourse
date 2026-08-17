@@ -3,6 +3,7 @@ import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import React from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
+import UpdateBanner from "../components/UpdateBanner";
 import { AuthProvider } from "../lib/auth";
 import { colors } from "../lib/tokens";
 
@@ -34,6 +35,7 @@ export default function RootLayout() {
             <Stack.Screen name="lists/[id]" options={{ title: "List" }} />
             <Stack.Screen name="circles" options={{ title: "Circles" }} />
           </Stack>
+          <UpdateBanner />
         </AuthProvider>
       </QueryClientProvider>
     </GestureHandlerRootView>

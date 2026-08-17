@@ -1,14 +1,23 @@
 import { useQuery } from "@tanstack/react-query";
-import React from "react";
-import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from "react-native";
+import React, { useState } from "react";
+import {
+  ActivityIndicator,
+  Pressable,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from "react-native";
 import * as api from "../lib/api";
 import { colors, radius } from "../lib/tokens";
+import { applyUpdate, compareVersions, getInstalledVersion } from "../lib/update";
 
 export default function ChangelogScreen() {
   const { data, isLoading } = useQuery({
     queryKey: ["app-versions"],
     queryFn: api.appVersions,
   });
+  const [updating, setUpdating] = useState(false);
 
   if (isLoading) {
     return (
@@ -19,13 +28,46 @@ export default function ChangelogScreen() {
   }
 
   const versions = data ?? [];
+  const installed = getInstalledVersion();
+  const latest = versions.length > 0 ? versions[0] : null;
+  const updateAvailable =
+    !!latest && compareVersions(latest.version, installed) > 0;
+
+  const onUpdate = async () => {
+    setUpdating(true);
+    try {
+      await applyUpdate();
+    } finally {
+      setUpdating(false);
+    }
+  };
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
       <Text style={styles.title}>What's new</Text>
       <Text style={styles.subtitle}>
-        You're on the latest build. Release notes for every version live here.
+        You're on v{installed}. Release notes for every version live here.
       </Text>
+
+      {updateAvailable && (
+        <View style={styles.ctaCard}>
+          <View style={styles.ctaCopy}>
+            <Text style={styles.ctaTitle}>
+              v{latest?.version} is available
+            </Text>
+            <Text style={styles.ctaSub}>
+              Update now to get the latest fixes and features.
+            </Text>
+          </View>
+          <Pressable style={styles.ctaBtn} onPress={onUpdate} disabled={updating}>
+            {updating ? (
+              <ActivityIndicator size="small" color="#000" />
+            ) : (
+              <Text style={styles.ctaBtnText}>Update</Text>
+            )}
+          </Pressable>
+        </View>
+      )}
 
       {versions.length === 0 && (
         <Text style={styles.muted}>No changelog published yet.</Text>
@@ -86,4 +128,27 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     marginTop: 8,
   },
+  ctaCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    backgroundColor: colors.accentSoft,
+    borderWidth: 1,
+    borderColor: colors.accent,
+    borderRadius: radius.md,
+    padding: 14,
+    marginBottom: 16,
+  },
+  ctaCopy: { flex: 1 },
+  ctaTitle: { color: colors.accent, fontSize: 15, fontWeight: "800" },
+  ctaSub: { color: colors.muted, fontSize: 12, marginTop: 2 },
+  ctaBtn: {
+    backgroundColor: colors.accent,
+    borderRadius: radius.pill,
+    paddingHorizontal: 18,
+    paddingVertical: 10,
+    minWidth: 84,
+    alignItems: "center",
+  },
+  ctaBtnText: { color: "#000", fontSize: 13, fontWeight: "800" },
 });

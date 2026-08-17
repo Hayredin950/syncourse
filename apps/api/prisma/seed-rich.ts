@@ -514,6 +514,45 @@ async function main() {
     console.log('  demo telegramId set');
   }
 
+  // ---------- 9. App versions (drives the in-app update banner) ----------
+  const APP_VERSIONS: { version: string; changelogMd: string; releasedAt: Date }[] = [
+    {
+      version: '1.1.0',
+      releasedAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
+      changelogMd:
+        '- Home: featured hero + category/instructor/best-of rails\n' +
+        '- Circles: create, join/leave and circle detail with members\n' +
+        '- Premium: in-app checkout (Telebirr steps, crypto & card)\n' +
+        '- Stats dashboard: ratings, rhythm, categories & tags\n' +
+        '- Profile: username, avatar upload, privacy controls\n' +
+        '- Downloads: whole-module bulk download + Telegram delivery\n' +
+        '- Settings: autoplay toggles, change password, support',
+    },
+    {
+      version: '1.0.0',
+      releasedAt: new Date(Date.now() - 21 * 24 * 60 * 60 * 1000),
+      changelogMd:
+        '- Course detail: curriculum, downloads, reviews with upvotes\n' +
+        '- Lesson player with signed-URL streaming\n' +
+        '- My Learning, lists with private/public visibility\n' +
+        '- Google sign-in + email auth\n' +
+        '- Learning paths & lecturer pages',
+    },
+    {
+      version: '0.9.0',
+      releasedAt: new Date(Date.now() - 60 * 24 * 60 * 60 * 1000),
+      changelogMd: '- Initial public build: home, browse, search, auth, notes, downloads',
+    },
+  ];
+  for (const v of APP_VERSIONS) {
+    await prisma.appVersion.upsert({
+      where: { version: v.version },
+      update: { changelogMd: v.changelogMd, releasedAt: v.releasedAt },
+      create: v,
+    });
+  }
+  console.log(`  ${APP_VERSIONS.length} app versions seeded (latest: ${APP_VERSIONS[0].version})`);
+
   console.log('Rich seed complete ✅');
 }
 
