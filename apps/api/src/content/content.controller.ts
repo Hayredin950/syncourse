@@ -30,6 +30,11 @@ export class ContentController {
     return this.content.getVideoUrl(id, user.id);
   }
 
+  @Get('lessons/:id/file-url')
+  fileUrl(@Param('id') id: string, @Query('attachmentId') attachmentId: string, @CurrentUser() user: AuthUser) {
+    return this.content.getFileUrl(id, user.id, attachmentId);
+  }
+
   @Post('lessons/:id/download')
   recordDownload(@Param('id') id: string, @CurrentUser() user: AuthUser, @Body() dto: DownloadDto) {
     return this.content.recordDownload(id, user.id, dto.quality, dto.method || 'app');

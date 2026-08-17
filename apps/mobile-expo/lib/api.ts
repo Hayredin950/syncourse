@@ -137,6 +137,10 @@ export const courseDetail = (slug: string) => get<CourseDetail>(`/courses/${slug
 export const lessonDetail = (lessonId: string) => get<LessonDetail>(`/lessons/${lessonId}`);
 export const videoUrl = (lessonId: string) =>
   get<{ url: string; expiresAt: string }>(`/lessons/${lessonId}/video-url`);
+export const fileUrl = (lessonId: string, attachmentId: string) =>
+  get<{ url: string; expiresAt: string; fileName: string; fileType: string; sizeMb: number }>(
+    `/lessons/${lessonId}/file-url?attachmentId=${attachmentId}`
+  );
 
 // --- learning ---
 export const enroll = (slug: string) => post(`/courses/${slug}/enroll`);

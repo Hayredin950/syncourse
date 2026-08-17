@@ -144,7 +144,7 @@ export default function SearchPage() {
                   {data.lecturers.map((l) => (
                     <button
                       key={l.id}
-                      onClick={() => router.push(`/browse?lecturer=${l.slug}`)}
+                      onClick={() => router.push(`/lecturers/${l.slug}`)}
                       className="flex w-full items-center gap-3 rounded-lg p-2 text-left hover:bg-surface-hover"
                     >
                       <span className="flex h-9 w-9 items-center justify-center rounded-full bg-surface-raised text-sm font-bold text-accent">
@@ -159,7 +159,7 @@ export default function SearchPage() {
               {data.organizations.map((o) => (
                 <button
                   key={o.id}
-                  onClick={() => router.push(`/browse?organization=${o.slug}`)}
+                  onClick={() => router.push(`/organizations/${o.slug}`)}
                   className="flex w-full items-center gap-3 rounded-lg p-2 text-left hover:bg-surface-hover"
                 >
                   <span className="flex h-9 w-9 items-center justify-center rounded-full bg-surface-raised text-sm font-bold text-accent">

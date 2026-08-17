@@ -1,6 +1,6 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
-import { signMediaUrl } from '../common/signed-url.util';
+import { signMediaUrl, fileNameFromUrl } from '../common/signed-url.util';
 
 @Injectable()
 export class ContentService {
@@ -66,6 +66,7 @@ export class ContentService {
         fileUrl: a.fileUrl,
         fileType: a.fileType,
         sizeMb: a.sizeMb,
+        fileName: fileNameFromUrl(a.fileUrl),
       })),
       watched,
       courseProgress,
@@ -104,6 +105,45 @@ export class ContentService {
       throw new NotFoundException('Video not available for this lesson yet');
     }
     return signMediaUrl(lesson.videoUrl, process.env.JWT_SECRET || 'dev-only-secret-change-me');
+  }
+
+  /**
+   * Signed download URL for a lesson attachment (ZIPs, PDFs, notes).
+   * Same entitlement model as video: previews open, enrolled required otherwise,
+   * premium courses require an active premium plan.
+   */
+  async getFileUrl(lessonId: string, userId: string | undefined, attachmentId: string) {
+    const lesson = await this.prisma.lesson.findUnique({
+      where: { id: lessonId },
+      include: { course: true, attachments: true },
+    });
+    if (!lesson) throw new NotFoundException('Lesson not found');
+
+    if (!lesson.isPreview) {
+      if (!userId) throw new ForbiddenException('Sign in to download this file');
+      const enrollment = await this.prisma.enrollment.findFirst({
+        where: { userId, courseId: lesson.courseId },
+      });
+      if (!enrollment) {
+        throw new ForbiddenException('Enroll in this course to download files');
+      }
+      if (lesson.course.isPremium) {
+        const user = await this.prisma.user.findUnique({ where: { id: userId } });
+        const premiumActive =
+          user?.planType === 'premium' && (!user.planExpiresAt || user.planExpiresAt > new Date());
+        if (!premiumActive) throw new ForbiddenException('This course requires Premium');
+      }
+    }
+
+    const attachment = lesson.attachments.find((a) => a.id === attachmentId);
+    if (!attachment) throw new NotFoundException('File not found on this lesson');
+    const signed = signMediaUrl(attachment.fileUrl, process.env.JWT_SECRET || 'dev-only-secret-change-me');
+    return {
+      ...signed,
+      fileName: fileNameFromUrl(attachment.fileUrl),
+      fileType: attachment.fileType,
+      sizeMb: attachment.sizeMb,
+    };
   }
 
   /** Record a download event + bump the course's download counter (web analytics widget). */

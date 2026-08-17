@@ -13,6 +13,17 @@ export interface SignedUrl {
   expiresAt: string; // ISO
 }
 
+/** Last path segment of a media URL — used as the download filename. */
+export function fileNameFromUrl(rawUrl: string): string {
+  try {
+    const path = new URL(rawUrl).pathname;
+    const name = decodeURIComponent(path.split('/').pop() ?? '').trim();
+    return name || 'download';
+  } catch {
+    return 'download';
+  }
+}
+
 export function signMediaUrl(rawUrl: string, secret: string, ttlSeconds = DEFAULT_TTL_SECONDS): SignedUrl {
   const expires = Math.floor(Date.now() / 1000) + ttlSeconds;
   const signature = createHmac('sha256', secret)

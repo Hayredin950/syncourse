@@ -39,6 +39,18 @@ class AdminLessonDto {
   @IsOptional()
   @IsBoolean()
   isPreview?: boolean;
+
+  @IsOptional()
+  @IsString()
+  fileUrl?: string;
+
+  @IsOptional()
+  @IsString()
+  fileLabel?: string;
+
+  @IsOptional()
+  @IsNumber()
+  fileSizeMb?: number;
 }
 
 class AdminSectionDto {

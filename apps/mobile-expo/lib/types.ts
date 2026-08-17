@@ -114,7 +114,7 @@ export interface LessonDetail {
   course: { id: string; title: string; slug: string };
   notes: Note[];
   files: LessonFile[];
-  attachments: { id: string; fileUrl: string; fileType: string; sizeMb: number }[];
+  attachments: { id: string; fileUrl: string; fileType: string; sizeMb: number; fileName: string }[];
   watched: boolean;
   courseProgress: number;
 }

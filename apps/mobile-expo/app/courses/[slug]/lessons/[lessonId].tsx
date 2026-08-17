@@ -1,9 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocalSearchParams } from "expo-router";
 import { useVideoPlayer, VideoView } from "expo-video";
+import * as Linking from "expo-linking";
 import React, { useState } from "react";
 import {
   ActivityIndicator,
+  Alert,
+  Pressable,
   ScrollView,
   StyleSheet,
   Text,
@@ -91,6 +94,39 @@ export default function LessonScreen() {
         </Text>
       </View>
 
+      {l.attachments.length > 0 && (
+        <>
+          <Text style={styles.heading}>Download course files</Text>
+          {l.attachments.map((a) => (
+            <Pressable
+              key={a.id}
+              style={styles.fileRow}
+              onPress={async () => {
+                try {
+                  const r = await api.fileUrl(l.id, a.id);
+                  void api.recordDownload(l.id, r.fileName);
+                  await Linking.openURL(r.url);
+                } catch (e) {
+                  Alert.alert("Download", e instanceof Error ? e.message : "Enroll in the course to download files");
+                }
+              }}
+            >
+              <Text style={{ color: colors.dim }}>📦</Text>
+              <View style={{ flex: 1 }}>
+                <Text numberOfLines={1} style={styles.fileLabel}>
+                  {a.fileName || "Course file"}
+                </Text>
+                <Text style={styles.muted}>
+                  {a.fileType}
+                  {a.sizeMb > 0 ? ` · ${a.sizeMb.toFixed(1)} MB` : ""}
+                </Text>
+              </View>
+              <Text style={styles.downloadBtn}>⬇</Text>
+            </Pressable>
+          ))}
+        </>
+      )}
+
       {l.files.length > 0 && (
         <>
           <Text style={styles.heading}>Available files</Text>
@@ -175,6 +211,7 @@ const styles = StyleSheet.create({
     marginBottom: 8,
   },
   fileLabel: { color: colors.text, fontSize: 13, fontWeight: "600" },
+  downloadBtn: { color: colors.accent, fontSize: 18, fontWeight: "800" },
   bestBadge: {
     backgroundColor: colors.accentSoft,
     borderRadius: 4,

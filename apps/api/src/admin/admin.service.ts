@@ -13,6 +13,10 @@ export interface AdminLessonInput {
   durationSec?: number;
   videoUrl?: string;
   isPreview?: boolean;
+  /** Downloadable file attached to this lesson (ZIPs, PDFs…). */
+  fileUrl?: string;
+  fileLabel?: string;
+  fileSizeMb?: number;
 }
 
 export interface AdminSectionInput {
@@ -95,7 +99,10 @@ export class AdminService {
         categories: { include: { category: true } },
         tags: true,
         audience: true,
-        sections: { orderBy: { orderIndex: 'asc' }, include: { lessons: { orderBy: { orderIndex: 'asc' } } } },
+        sections: {
+          orderBy: { orderIndex: 'asc' },
+          include: { lessons: { orderBy: { orderIndex: 'asc' }, include: { attachments: true } } },
+        },
       },
     });
     if (!course) throw new NotFoundException('Course not found');
@@ -130,6 +137,9 @@ export class AdminService {
           durationSec: l.durationSec,
           videoUrl: l.videoUrl,
           isPreview: l.isPreview,
+          fileUrl: l.attachments[0]?.fileUrl ?? null,
+          fileLabel: l.attachments[0] ? labelFromUrl(l.attachments[0].fileUrl) : null,
+          fileSizeMb: l.attachments[0]?.sizeMb ?? null,
         })),
       })),
     };
@@ -248,9 +258,20 @@ export class AdminService {
           videoUrl: l.videoUrl || null,
           isPreview: l.isPreview ?? false,
           orderIndex: li,
+          ...(l.fileUrl?.trim()
+            ? {
+                attachments: {
+                  create: {
+                    fileUrl: l.fileUrl.trim(),
+                    fileType: fileTypeOf(l.fileUrl.trim()),
+                    sizeMb: l.fileSizeMb ?? 0,
+                  },
+                },
+              }
+            : {}),
         }));
-      if (lessons.length) {
-        await tx.lesson.createMany({ data: lessons });
+      for (const data of lessons) {
+        await tx.lesson.create({ data });
       }
     }
   }
@@ -385,4 +406,27 @@ function slugify(title: string): string {
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 80) || 'course';
+}
+
+function fileTypeOf(url: string): string {
+  try {
+    const name = new URL(url).pathname.split('/').pop() ?? '';
+    const ext = name.split('.').pop()?.toLowerCase() ?? '';
+    if (ext === 'zip') return 'application/zip';
+    if (ext === 'pdf') return 'application/pdf';
+    if (['mp4', 'mkv', 'webm'].includes(ext)) return `video/${ext}`;
+    if (['mp3', 'm4a'].includes(ext)) return `audio/${ext}`;
+    return ext ? `application/${ext}` : 'application/octet-stream';
+  } catch {
+    return 'application/octet-stream';
+  }
+}
+
+function labelFromUrl(url: string): string {
+  try {
+    const name = decodeURIComponent(new URL(url).pathname.split('/').pop() ?? '').trim();
+    return name || 'Course file';
+  } catch {
+    return 'Course file';
+  }
 }

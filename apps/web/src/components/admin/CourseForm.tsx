@@ -7,6 +7,7 @@ import type { AdminCourseDetail, AdminSection } from "@/lib/types";
 
 const CONTENT_TYPES = ["course", "mini-course", "cheat-sheet", "roadmap"];
 const LESSON_TYPES = ["video", "article", "quiz", "notes"];
+const emptyLesson = { title: "", type: "video", durationSec: 0, videoUrl: "", isPreview: false, fileUrl: "" };
 
 interface Props {
   initial?: AdminCourseDetail;
@@ -43,7 +44,9 @@ export function CourseForm({ initial }: Props) {
   const [bannerUrl, setBannerUrl] = useState(initial?.bannerUrl ?? "");
   const [previewVideoUrl, setPreviewVideoUrl] = useState(initial?.previewVideoUrl ?? "");
   const [sections, setSections] = useState<AdminSection[]>(
-    initial?.sections?.length ? initial.sections : [{ title: "", lessons: [{ title: "", type: "video", durationSec: 0, videoUrl: "", isPreview: false }] }],
+    initial?.sections?.length
+      ? initial.sections.map((s) => ({ ...s, lessons: s.lessons.map((l) => ({ ...l, fileUrl: l.fileUrl ?? "" })) }))
+      : [{ title: "", lessons: [{ ...emptyLesson }] }],
   );
 
   const thumbRef = useRef<HTMLInputElement>(null);
@@ -132,6 +135,7 @@ export function CourseForm({ initial }: Props) {
               durationSec: Number(l.durationSec) || 0,
               videoUrl: l.videoUrl?.trim() || undefined,
               isPreview: l.isPreview,
+              fileUrl: l.fileUrl?.trim() || undefined,
             })),
         })),
     };
@@ -270,7 +274,7 @@ export function CourseForm({ initial }: Props) {
         <div className="mb-2 flex items-center justify-between">
           <span className="text-[11px] font-semibold uppercase tracking-wide text-dim">Curriculum</span>
           <button
-            onClick={() => setSections((p) => [...p, { title: "", lessons: [{ title: "", type: "video", durationSec: 0, videoUrl: "", isPreview: false }] }])}
+            onClick={() => setSections((p) => [...p, { title: "", lessons: [{ ...emptyLesson }] }])}
             className="rounded-full bg-accent px-3 py-1 text-xs font-bold text-black"
           >
             + Section
@@ -336,10 +340,21 @@ export function CourseForm({ initial }: Props) {
                         Preview
                       </label>
                     </div>
+                    <div className="mt-2 flex items-center gap-2">
+                      <input
+                        value={l.fileUrl ?? ""}
+                        onChange={(e) => updateLesson(si, li, { fileUrl: e.target.value })}
+                        placeholder="ZIP / file URL (optional — students can download this)"
+                        className={inputCls}
+                      />
+                      {l.fileUrl ? (
+                        <span className="shrink-0 rounded bg-accent-soft px-2 py-1 text-[10px] font-bold text-accent">FILE</span>
+                      ) : null}
+                    </div>
                   </div>
                 ))}
                 <button
-                  onClick={() => updateSection(si, { lessons: [...s.lessons, { title: "", type: "video", durationSec: 0, videoUrl: "", isPreview: false }] })}
+                  onClick={() => updateSection(si, { lessons: [...s.lessons, { ...emptyLesson }] })}
                   className="rounded-full border border-border px-3 py-1 text-xs text-muted hover:text-text"
                 >
                   + Lesson

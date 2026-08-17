@@ -36,7 +36,7 @@ function AuthInner() {
     setGoogleBusy(true);
     const current = window.location.origin + window.location.pathname;
     const redirect = `${current}${window.location.search || `?next=${encodeURIComponent(next)}`}`;
-    window.location.href = `${apiUrl()}/auth/google?redirect=${encodeURIComponent(redirect)}`;
+    window.location.href = `${apiUrl()}/api/auth/google?redirect=${encodeURIComponent(redirect)}`;
   };
 
   const submit = async () => {

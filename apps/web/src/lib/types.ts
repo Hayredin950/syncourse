@@ -74,6 +74,51 @@ export interface CourseDetail extends CourseSummary {
   downloads: { total: number; last30: number; last7: number; today: number };
 }
 
+export interface LecturerDetail {
+  id: string;
+  name: string;
+  slug: string;
+  photoUrl: string | null;
+  bio: string | null;
+  credentials: string | null;
+  socialLinks: Record<string, string>;
+  createdAt: string;
+  courses: {
+    id: string;
+    title: string;
+    slug: string;
+    description: string;
+    thumbnailUrl: string | null;
+    level: string;
+    durationMin: number;
+    ratingAvg: number;
+    ratingCount: number;
+    enrollmentCount: number;
+  }[];
+}
+
+export interface OrganizationDetail {
+  id: string;
+  name: string;
+  slug: string;
+  logoUrl: string | null;
+  description: string | null;
+  subscribers: number;
+  createdAt: string;
+  courses: {
+    id: string;
+    title: string;
+    slug: string;
+    description: string;
+    thumbnailUrl: string | null;
+    level: string;
+    durationMin: number;
+    ratingAvg: number;
+    ratingCount: number;
+    enrollmentCount: number;
+  }[];
+}
+
 export interface HomeData {
   trending: CourseSummary[];
   latest: CourseSummary[];
@@ -128,7 +173,7 @@ export interface LessonDetail {
     audio: string | null;
     isBest: boolean;
   }[];
-  attachments: { id: string; fileUrl: string; fileType: string; sizeMb: number }[];
+  attachments: { id: string; fileUrl: string; fileType: string; sizeMb: number; fileName: string }[];
   watched: boolean;
   courseProgress: number;
 }
@@ -178,6 +223,9 @@ export interface AdminLesson {
   durationSec: number;
   videoUrl: string | null;
   isPreview: boolean;
+  fileUrl?: string | null;
+  fileLabel?: string | null;
+  fileSizeMb?: number | null;
 }
 
 export interface AdminSection {

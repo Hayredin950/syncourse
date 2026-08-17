@@ -20,8 +20,8 @@ export function Nav() {
 
   return (
     <>
-      {/* top header */}
-      <header className="sticky top-0 z-20 border-b border-border bg-bg/90 backdrop-blur">
+      {/* top header — mobile only; desktop uses the left sidebar nav */}
+      <header className="sticky top-0 z-20 border-b border-border bg-bg/90 backdrop-blur lg:hidden">
         <div className="mx-auto flex max-w-7xl items-center gap-3 px-4 py-3 md:px-8">
           <Link href="/" className="text-lg font-bold tracking-tight text-text">
             Syncourse<span className="text-accent">.</span>

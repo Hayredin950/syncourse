@@ -44,12 +44,22 @@ export default function HomePage() {
 
   return (
     <div className="pb-6">
-      {/* type tabs */}
-      <div className="no-scrollbar flex gap-2 overflow-x-auto border-b border-border px-4 py-2.5">
-        {["All", "Courses", "Mini-courses", "Cheat-sheets", "Roadmaps"].map((t) => (
-          <span key={t} className="shrink-0 rounded-full bg-surface px-3 py-1 text-xs font-medium text-muted">
-            {t}
-          </span>
+      {/* type tabs — filter links into Browse; desktop gets these in the sidebar */}
+      <div className="no-scrollbar flex gap-2 overflow-x-auto border-b border-border px-4 py-2.5 lg:hidden">
+        {[
+          { label: "All", type: "" },
+          { label: "Courses", type: "course" },
+          { label: "Mini-courses", type: "mini-course" },
+          { label: "Cheat-sheets", type: "cheat-sheet" },
+          { label: "Roadmaps", type: "roadmap" },
+        ].map((t) => (
+          <Link
+            key={t.label}
+            href={t.type ? `/browse?type=${t.type}` : "/browse"}
+            className="shrink-0 rounded-full bg-surface px-3 py-1 text-xs font-medium text-muted transition-colors hover:text-text"
+          >
+            {t.label}
+          </Link>
         ))}
       </div>
 
@@ -101,7 +111,7 @@ export default function HomePage() {
       {home.bestOf.map(
         (org) =>
           org.courses.length > 0 && (
-            <Rail key={org.id} title={`Best of ${org.name}`} href={`/browse?organization=${org.slug}`}>
+            <Rail key={org.id} title={`Best of ${org.name}`} href={`/organizations/${org.slug}`}>
               {org.courses.map((c) => (
                 <CourseCard key={c.id} course={c} />
               ))}
@@ -148,7 +158,7 @@ export default function HomePage() {
         {home.lecturers.map((l) => (
           <Link
             key={l.id}
-            href={`/browse?lecturer=${l.slug}`}
+            href={`/lecturers/${l.slug}`}
             className="flex w-[110px] shrink-0 flex-col items-center gap-1 rounded-lg px-2 py-3 text-center md:w-auto"
           >
             <span className="flex h-12 w-12 items-center justify-center overflow-hidden rounded-full bg-surface-raised text-lg font-bold text-accent">
@@ -165,7 +175,7 @@ export default function HomePage() {
         {home.organizations.map((o) => (
           <Link
             key={o.id}
-            href={`/browse?organization=${o.slug}`}
+            href={`/organizations/${o.slug}`}
             className="flex w-[150px] shrink-0 items-center gap-2 rounded-lg border border-border bg-surface px-3 py-3 md:w-auto"
           >
             <span className="flex h-8 w-8 items-center justify-center overflow-hidden rounded-full bg-surface-raised text-sm font-bold text-accent">

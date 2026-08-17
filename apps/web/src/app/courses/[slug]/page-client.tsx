@@ -341,8 +341,8 @@ export default function CoursePage() {
               <div className="text-sm font-semibold text-text">{course.lecturer.name}</div>
               {course.lecturer.credentials && <div className="text-xs text-muted">{course.lecturer.credentials}</div>}
             </div>
-            <Link href={`/browse?lecturer=${course.lecturer.slug}`} className="ml-auto text-xs font-medium text-accent">
-              View courses
+            <Link href={`/lecturers/${course.lecturer.slug}`} className="ml-auto text-xs font-medium text-accent">
+              View profile
             </Link>
           </div>
         </div>
@@ -358,8 +358,8 @@ export default function CoursePage() {
               <div className="text-sm font-semibold text-text">{course.organization.name}</div>
               <div className="text-xs text-muted">{compact(course.organization.subscribers)} subscribers</div>
             </div>
-            <Link href={`/browse?organization=${course.organization.slug}`} className="ml-auto text-xs font-medium text-accent">
-              See all
+            <Link href={`/organizations/${course.organization.slug}`} className="ml-auto text-xs font-medium text-accent">
+              View channel
             </Link>
           </div>
         </div>
