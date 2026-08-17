@@ -15,6 +15,7 @@ import { PaymentsModule } from './payments/payments.module';
 import { SearchModule } from './search/search.module';
 import { DiscussionsModule } from './discussions/discussions.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { CirclesModule } from './circles/circles.module';
 import { EmailModule } from './email/email.module';
 import { CloudinaryModule } from './cloudinary/cloudinary.module';
 import { AdminModule } from './admin/admin.module';
@@ -35,6 +36,7 @@ import { AdminModule } from './admin/admin.module';
     SearchModule,
     DiscussionsModule,
     NotificationsModule,
+    CirclesModule,
     EmailModule,
     CloudinaryModule,
     AdminModule,

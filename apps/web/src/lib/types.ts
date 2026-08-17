@@ -203,6 +203,44 @@ export interface LearningData {
   counts: { inProgress: number; completed: number; watchlist: number; liked: number };
 }
 
+export interface CircleLite {
+  id: string;
+  name: string;
+  description: string | null;
+  owner: { name: string; avatarUrl: string | null; username: string };
+  memberCount: number;
+  joined: boolean;
+  createdAt: string;
+}
+
+export interface CircleDetail extends CircleLite {
+  members: { id: string; name: string; avatarUrl: string | null; username: string; role: string; joinedAt: string }[];
+  activity: {
+    type: "review" | "enrollment";
+    id: string;
+    userName: string;
+    userAvatar: string | null;
+    username: string;
+    course: { id: string; title: string; slug: string; thumbnailUrl: string | null };
+    body?: string;
+    createdAt: string;
+  }[];
+}
+
+export interface ActivityFeed {
+  followingCount: number;
+  items: {
+    type: "review" | "enrollment";
+    id: string;
+    userName: string;
+    userAvatar: string | null;
+    username: string;
+    course: { id: string; title: string; slug: string; thumbnailUrl: string | null };
+    body?: string;
+    createdAt: string;
+  }[];
+}
+
 export interface Plan {
   id: string;
   name: string;

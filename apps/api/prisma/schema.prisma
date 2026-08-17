@@ -258,6 +258,8 @@ model User {
   likedCourses    LikedCourse[]
   following       Follow[] @relation("following")
   followers       Follow[] @relation("followers")
+  ownedCircles    Circle[] @relation("circleOwner")
+  circleMembers   CircleMember[]
   sessions        Session[]
   taste           TasteProfile[]
   downloads       DownloadEvent[]
@@ -283,6 +285,29 @@ model TasteProfile {
   weight     Int    @default(1)
   user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
+}
+
+model Circle {
+  id          String   @id @default(cuid())
+  name        String
+  description String?
+  ownerId     String
+  owner       User     @relation("circleOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  members     CircleMember[]
+
+  @@index([ownerId])
+}
+
+model CircleMember {
+  circleId String
+  userId   String
+  role     String   @default("member") // owner | member
+  joinedAt DateTime @default(now())
+  circle   Circle   @relation(fields: [circleId], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@id([circleId, userId])
 }
 
 model Session {

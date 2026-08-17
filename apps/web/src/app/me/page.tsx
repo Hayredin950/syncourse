@@ -6,12 +6,14 @@ import { useRouter } from "next/navigation";
 import {
   ArrowRight,
   BarChart3,
+  BookOpen,
   Bookmark,
   Check,
   ChevronRight,
   CreditCard,
   Eye,
   Heart,
+  Layers,
   Library,
   LogOut,
   Mail,
@@ -19,6 +21,7 @@ import {
   Play,
   Save,
   Settings,
+  Share2,
   X,
   Zap,
 } from "lucide-react";
@@ -146,6 +149,15 @@ export default function MePage() {
   }
   if (!token || !user) return null;
 
+  const onShareProfile = () => {
+    if (navigator.share) {
+      void navigator.share({ title: `${user?.name} on Syncourse`, url: window.location.href });
+    } else {
+      void navigator.clipboard?.writeText(window.location.href);
+      setToast("Profile link copied");
+    }
+  };
+
   const openEdit = () => {
     setEditName(user.name);
     setEditGender(user.gender ?? "");
@@ -260,29 +272,37 @@ export default function MePage() {
     <main className="page">
       <MobileHeader title="Me" />
 
-      {/* profile head */}
-      <div className="profile-head">
-        <div className="profile-row">
-          <div className="avatar">
-            {user.avatarUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={user.avatarUrl} alt="" className="h-full w-full rounded-[20px] object-cover" />
-            ) : (
-              user.name.charAt(0).toUpperCase()
-            )}
+      {/* profile header card — amber gradient, persistent across tabs (phonofilm) */}
+      <div className="profile-card">
+        <div className="profile-head">
+          <div className="profile-row">
+            <div className="avatar">
+              {user.avatarUrl ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img src={user.avatarUrl} alt="" className="h-full w-full rounded-[20px] object-cover" />
+              ) : (
+                user.name.charAt(0).toUpperCase()
+              )}
+            </div>
+            <div>
+              <span className="eyebrow">Your profile</span>
+              <h1 className="display" style={{ fontSize: 32, margin: "7px 0" }}>
+                {user.name} {user.isVerified && <Check size={16} className="rating" style={{ display: "inline" }} />}
+              </h1>
+              <p className="muted mono" style={{ margin: 0, fontSize: 11 }}>
+                @{user.username} · Member since {formatDate(user.memberSince)}
+              </p>
+            </div>
           </div>
-          <div>
-            <h1 className="display" style={{ fontSize: 32, marginBottom: 7 }}>
-              {user.name} {user.isVerified && <Check size={16} className="rating" style={{ display: "inline" }} />}
-            </h1>
-            <p className="muted mono" style={{ margin: 0, fontSize: 11 }}>
-              @{user.username} · Member since {formatDate(user.memberSince)}
-            </p>
+          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+            <button className="btn" onClick={openEdit}>
+              <Settings size={14} style={{ display: "inline", verticalAlign: "middle" }} /> Edit profile
+            </button>
+            <button className="btn" onClick={onShareProfile}>
+              <Share2 size={14} style={{ display: "inline", verticalAlign: "middle" }} /> Share
+            </button>
           </div>
         </div>
-        <button className="btn" onClick={openEdit}>
-          <Settings size={14} style={{ display: "inline", verticalAlign: "middle" }} /> Edit profile
-        </button>
       </div>
 
       {/* stat grid */}
@@ -317,12 +337,12 @@ export default function MePage() {
             <div className="section-head"><h2>Your library</h2></div>
             <div className="dark-panel">
               <Link href="/my-learning" className="lesson">
-                <span>📚</span>
+                <span className="icon-badge icon-badge--amber"><BookOpen size={15} /></span>
                 <span>My Learning</span>
                 <span className="muted" style={{ marginLeft: "auto" }}>›</span>
               </Link>
               <Link href="/premium" className="lesson">
-                <span>⭐</span>
+                <span className="icon-badge icon-badge--purple"><CreditCard size={15} /></span>
                 <span>Premium plans</span>
                 <span className="muted" style={{ marginLeft: "auto" }}>›</span>
               </Link>
@@ -365,7 +385,7 @@ export default function MePage() {
             <div className="section-head"><h2>Created</h2></div>
             <div className="dark-panel">
               <Link href="/lists" className="lesson">
-                <span>🗂️</span>
+                <span className="icon-badge icon-badge--blue"><Layers size={15} /></span>
                 <span>My Lists</span>
                 <span className="muted" style={{ marginLeft: "auto" }}>{user.stats.lists} ›</span>
               </Link>

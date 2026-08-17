@@ -57,6 +57,16 @@ export class UsersController {
     return this.users.unlinkGoogle(user.id);
   }
 
+  @Post(':id/follow')
+  toggleFollow(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    return this.users.toggleFollow(user.id, id);
+  }
+
+  @Get('me/following')
+  following(@CurrentUser() user: AuthUser) {
+    return this.users.following(user.id);
+  }
+
   @Post('me/change-password')
   changePassword(@CurrentUser() user: AuthUser, @Body() dto: ChangePasswordDto) {
     return this.users.changePassword(user.id, dto.currentPassword, dto.newPassword);

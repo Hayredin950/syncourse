@@ -302,6 +302,31 @@ export class UsersService {
     return { changed: true };
   }
 
+  /** Toggle follow on another user — returns new state. */
+  async toggleFollow(followerId: string, followeeId: string) {
+    if (followerId === followeeId) throw new BadRequestException('You cannot follow yourself');
+    const target = await this.prisma.user.findUnique({ where: { id: followeeId } });
+    if (!target) throw new NotFoundException('User not found');
+    const existing = await this.prisma.follow.findUnique({
+      where: { followerId_followeeId: { followerId, followeeId } },
+    });
+    if (existing) {
+      await this.prisma.follow.delete({ where: { followerId_followeeId: { followerId, followeeId } } });
+      return { following: false };
+    }
+    await this.prisma.follow.create({ data: { followerId, followeeId } });
+    return { following: true };
+  }
+
+  async following(userId: string) {
+    const rows = await this.prisma.follow.findMany({
+      where: { followerId: userId },
+      orderBy: { createdAt: 'desc' },
+      include: { followee: { select: { id: true, name: true, username: true, avatarUrl: true } } },
+    });
+    return rows.map((r) => ({ id: r.followee.id, name: r.followee.name, username: r.followee.username, avatarUrl: r.followee.avatarUrl }));
+  }
+
   async terminateSession(userId: string, sessionId: string) {
     await this.prisma.session.updateMany({
       where: { id: sessionId, userId },
