@@ -98,6 +98,8 @@ export interface LecturerDetail {
     ratingAvg: number;
     ratingCount: number;
     enrollmentCount: number;
+    publishedAt: string;
+    contentType?: string;
   }[];
 }
 
@@ -107,6 +109,7 @@ export interface OrganizationDetail {
   slug: string;
   logoUrl: string | null;
   description: string | null;
+  orgType?: string; // university | company | publisher
   subscribers: number;
   createdAt: string;
   courses: {
@@ -120,6 +123,7 @@ export interface OrganizationDetail {
     ratingAvg: number;
     ratingCount: number;
     enrollmentCount: number;
+    publishedAt: string;
   }[];
 }
 

@@ -120,14 +120,14 @@ async function main() {
 
   // organizations (publisher channels)
   const orgDefs = [
-    { name: 'DevPack', subscribers: 12000, description: 'A packed collection of developer resources, courses and cheat-sheets shared across 36 Telegram chats.' },
-    { name: 'Zero To Mastery', subscribers: 144553, description: 'Download and watch programming courses — the reference channel behind this audit.' },
-    { name: 'Academind', subscribers: 210000, description: 'Learn web development and more with Max Schwarzmüller and team.' },
+    { name: 'DevPack', subscribers: 12000, orgType: 'publisher', description: 'A packed collection of developer resources, courses and cheat-sheets shared across 36 Telegram chats.' },
+    { name: 'Zero To Mastery', subscribers: 144553, orgType: 'company', description: 'Download and watch programming courses — the reference channel behind this audit.' },
+    { name: 'Academind', subscribers: 210000, orgType: 'company', description: 'Learn web development and more with Max Schwarzmüller and team.' },
   ];
   const orgs: Record<string, string> = {};
   for (const o of orgDefs) {
     const org = await prisma.organization.create({
-      data: { name: o.name, slug: slugify(o.name), subscribers: o.subscribers, description: o.description, logoUrl: null }, // initials avatar until a real logo is uploaded
+      data: { name: o.name, slug: slugify(o.name), subscribers: o.subscribers, description: o.description, orgType: o.orgType, logoUrl: null }, // initials avatar until a real logo is uploaded
     });
     orgs[o.name] = org.id;
   }

@@ -46,32 +46,32 @@ export default function CoursePage() {
   const [toast, setToast] = useState("");
   const [coverBusy, setCoverBusy] = useState(false);
   const coverInputRef = useRef<HTMLInputElement>(null);
-  const [catSlugs, setCatSlugs] = useState<Record<string, string>>({});
   const [downloadOpen, setDownloadOpen] = useState(false);
 
   useEffect(() => {
-    get<{ name: string; slug: string }[]>("/categories")
-      .then((cats) => setCatSlugs(Object.fromEntries(cats.map((c) => [c.name, c.slug]))))
-      .catch(() => {});
     get<CourseDetail>(`/courses/${slug}`)
       .then((d) => {
         setCourse(d);
         setOpenSection(d.sections[0]?.id ?? null);
         const cat = d.categoryNames[0];
         if (cat) {
-          get<{ results: CourseSummary[] }>(`/courses?category=${encodeURIComponent(cat)}&limit=8`)
+          // resolve category name -> slug (the list API filters by slug)
+          get<{ name: string; slug: string }[]>("/categories")
+            .then((cats) => {
+              const catSlug = cats.find((c) => c.name === cat)?.slug ?? cat;
+              return get<{ results: CourseSummary[] }>(`/courses?category=${encodeURIComponent(catSlug)}&limit=8`);
+            })
             .then((r) => {
               const filtered = r.results.filter((c) => c.id !== d.id);
               if (filtered.length >= 4) {
                 setSimilar(filtered);
               } else if (d.lecturer) {
                 // fallback: same instructor
-                get<{ results: CourseSummary[] }>(`/courses?lecturer=${encodeURIComponent(d.lecturer.slug)}&limit=8`)
+                return get<{ results: CourseSummary[] }>(`/courses?lecturer=${encodeURIComponent(d.lecturer.slug)}&limit=8`)
                   .then((r2) => setSimilar(r2.results.filter((c) => c.id !== d.id)))
                   .catch(() => setSimilar(filtered));
-              } else {
-                setSimilar(filtered);
               }
+              setSimilar(filtered);
             })
             .catch(() => {});
         }
@@ -363,27 +363,51 @@ export default function CoursePage() {
               ))}
               {course.tags.length === 0 && <span className="muted">—</span>}
             </span>
-            <b>LECTURER</b>
-            <span>
-              {course.lecturer ? (
-                <Link href={`/lecturers/${course.lecturer.slug}`}>
-                  {course.lecturer.name} <ChevronRight size={13} style={{ display: "inline", verticalAlign: "middle" }} />
-                </Link>
-              ) : (
-                <span className="muted">—</span>
-              )}
-            </span>
-            <b>PUBLISHER</b>
-            <span>
-              {course.organization ? (
-                <Link href={`/organizations/${course.organization.slug}`}>
-                  {course.organization.name} <ChevronRight size={13} style={{ display: "inline", verticalAlign: "middle" }} />
-                </Link>
-              ) : (
-                <span className="muted">—</span>
-              )}
-            </span>
           </div>
+
+          {/* instructors — avatar grid, every name clickable (phonofilm Actors) */}
+          {course.lecturer && (
+            <section className="rail">
+              <div className="section-head"><h2>Instructors</h2></div>
+              <div className="instructor-grid">
+                <Link href={`/lecturers/${course.lecturer.slug}`} className="instructor-card">
+                  <div className="instructor-card__avatar">
+                    {course.lecturer.photoUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={cloudinaryUrl(course.lecturer.photoUrl, { width: 120, height: 120 }) ?? undefined} alt={course.lecturer.name} />
+                    ) : (
+                      course.lecturer.name.charAt(0)
+                    )}
+                  </div>
+                  <span className="instructor-card__name">{course.lecturer.name}</span>
+                  <span className="instructor-card__role">Instructor</span>
+                </Link>
+              </div>
+            </section>
+          )}
+
+          {/* published by — logo grid (phonofilm Studios) */}
+          {course.organization && (
+            <section className="rail">
+              <div className="section-head"><h2>Published by</h2></div>
+              <div className="publisher-grid">
+                <Link href={`/publishers/${course.organization.slug}`} className="publisher-row">
+                  <span className="publisher-row__logo">
+                    {course.organization.logoUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img src={cloudinaryUrl(course.organization.logoUrl, { width: 64, height: 64 }) ?? undefined} alt={course.organization.name} />
+                    ) : (
+                      course.organization.name.charAt(0)
+                    )}
+                  </span>
+                  <span>
+                    <strong>{course.organization.name}</strong>
+                    <small className="muted">Publisher · {compact(course.organization.subscribers)} learners</small>
+                  </span>
+                </Link>
+              </div>
+            </section>
+          )}
 
           {/* curriculum */}
           <section className="rail">

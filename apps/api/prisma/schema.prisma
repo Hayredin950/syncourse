@@ -47,6 +47,7 @@ model Organization {
   slug        String   @unique
   logoUrl     String?
   description String?
+  orgType     String   @default("publisher") // university | company | publisher
   subscribers Int      @default(0)
   createdAt   DateTime @default(now())
 

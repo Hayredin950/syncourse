@@ -1,32 +1,34 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useParams } from "next/navigation";
-import { Plus } from "lucide-react";
+import { ArrowLeft, Plus } from "lucide-react";
 import { get } from "@/lib/api";
-import type { LecturerDetail } from "@/lib/types";
+import type { OrganizationDetail } from "@/lib/types";
 import { cloudinaryUrl } from "@/lib/cloudinary";
+import { compact } from "@/lib/format";
 import { CourseCard } from "@/components/CourseCard";
 import { MobileHeader } from "@/components/Nav";
 import { TitleRow, TitleToolbar, type EntityCourse, type SortMode, type ViewMode } from "@/components/TitleList";
 
-export default function LecturerPage() {
+export default function PublisherPage({ backHref = "/" }: { backHref?: string }) {
   const { slug } = useParams<{ slug: string }>();
-  const [l, setL] = useState<LecturerDetail | null>(null);
+  const [o, setO] = useState<OrganizationDetail | null>(null);
   const [error, setError] = useState(false);
   const [sort, setSort] = useState<SortMode>("top");
   const [view, setView] = useState<ViewMode>("list");
   const [filterQ, setFilterQ] = useState("");
 
   useEffect(() => {
-    get<LecturerDetail>(`/lecturers/${slug}`)
-      .then(setL)
+    get<OrganizationDetail>(`/organizations/${slug}`)
+      .then(setO)
       .catch(() => setError(true));
   }, [slug]);
 
   const courses = useMemo(() => {
-    if (!l) return [];
-    let list = [...l.courses] as EntityCourse[];
+    if (!o) return [];
+    let list = [...o.courses] as EntityCourse[];
     if (filterQ.trim()) {
       const q = filterQ.toLowerCase();
       list = list.filter((c) => c.title.toLowerCase().includes(q) || (c.description || "").toLowerCase().includes(q));
@@ -35,58 +37,54 @@ export default function LecturerPage() {
     if (sort === "newest") list.sort((a, b) => (b.publishedAt || "").localeCompare(a.publishedAt || ""));
     if (sort === "az") list.sort((a, b) => a.title.localeCompare(b.title));
     return list;
-  }, [l, sort, filterQ]);
+  }, [o, sort, filterQ]);
 
-  if (error || !l) {
+  if (error || !o) {
     return (
       <main className="page">
-        <MobileHeader title="Lecturer" />
+        <MobileHeader title="Publisher" />
         <div className="dark-panel" style={{ padding: 40, textAlign: "center" }}>
-          <p className="muted">{error ? "Lecturer not found" : "Loading…"}</p>
+          <p className="muted">{error ? "Publisher not found" : "Loading…"}</p>
         </div>
       </main>
     );
   }
 
+  const typeLabel = o.orgType === "university" ? "University" : o.orgType === "company" ? "Company" : "Publisher";
+
   return (
     <main className="page">
-      <MobileHeader title="Lecturer" />
+      <MobileHeader title={o.name} />
 
-      <div className="profile-head">
+      <Link href={backHref} className="back-btn">
+        <ArrowLeft size={14} /> Back
+      </Link>
+
+      <div className="profile-head" style={{ paddingTop: 18 }}>
         <div className="profile-row">
           <div className="avatar">
-            {l.photoUrl ? (
+            {o.logoUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img src={cloudinaryUrl(l.photoUrl, { width: 192, height: 192 }) ?? undefined} alt={l.name} className="h-full w-full rounded-[20px] object-cover" />
+              <img src={cloudinaryUrl(o.logoUrl, { width: 160, height: 160 }) ?? undefined} alt={o.name} className="h-full w-full rounded-[20px] object-cover" />
             ) : (
-              l.name.charAt(0)
+              o.name.charAt(0)
             )}
           </div>
           <div>
-            <span className="eyebrow">Lecturer</span>
-            <h1 className="display" style={{ fontSize: 39, margin: "8px 0" }}>{l.name}</h1>
+            <span className="eyebrow">Publisher</span>
+            <h1 className="display" style={{ fontSize: 39, margin: "8px 0 10px" }}>{o.name}</h1>
             <p className="muted" style={{ margin: 0 }}>
-              {l.credentials || "Practical teacher"} · {l.courses.length} courses taught
+              <span className="badge" style={{ textTransform: "uppercase", letterSpacing: ".08em" }}>{typeLabel}</span>
+              <span style={{ marginLeft: 10 }}>· {compact(o.subscribers)} learners · {o.courses.length} courses</span>
             </p>
           </div>
         </div>
         <button className="btn"><Plus size={14} style={{ display: "inline", verticalAlign: "middle" }} /> Follow</button>
       </div>
 
-      {l.bio && (
-        <p className="muted" style={{ maxWidth: 700, lineHeight: 1.7, marginTop: 24 }}>{l.bio}</p>
+      {o.description && (
+        <p className="muted" style={{ maxWidth: 700, lineHeight: 1.7, marginTop: 24 }}>{o.description}</p>
       )}
-
-      <section className="rail">
-        <div className="section-head">
-          <h2>Known for</h2>
-        </div>
-        <div className="rail-row">
-          {l.courses.slice(0, 6).map((c) => (
-            <CourseCard key={c.id} course={toSummary(c)} />
-          ))}
-        </div>
-      </section>
 
       <TitleToolbar total={courses.length} sort={sort} setSort={setSort} view={view} setView={setView} onFilter={setFilterQ} />
 
@@ -103,8 +101,8 @@ export default function LecturerPage() {
           ))}
           {courses.length === 0 && (
             <div className="empty-state">
-              <div className="empty-icon">🎓</div>
-              <p>No courses match — try a different filter.</p>
+              <div className="empty-icon">📚</div>
+              <p>No titles match — try a different filter.</p>
             </div>
           )}
         </div>
@@ -129,7 +127,7 @@ function toSummary(c: EntityCourse) {
     downloadCount: 0,
     isPremium: false,
     isFeatured: false,
-    contentType: "course",
+    contentType: c.contentType ?? "course",
     categoryNames: [],
     lecturerName: null,
     organizationName: null,

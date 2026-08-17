@@ -2,6 +2,6 @@
 
 import PublisherPage from "@/components/PublisherPage";
 
-export default function OrganizationPage() {
+export default function PublisherSlugPage() {
   return <PublisherPage />;
 }
