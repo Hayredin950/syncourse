@@ -151,6 +151,65 @@ export interface Plan {
   isBestValue: boolean;
 }
 
+// --- admin CMS ---
+export interface AdminCourseRow {
+  id: string;
+  title: string;
+  slug: string;
+  contentType: string;
+  thumbnailUrl: string | null;
+  isPremium: boolean;
+  isFeatured: boolean;
+  ratingAvg: number;
+  enrollmentCount: number;
+  deleted: boolean;
+  sectionCount: number;
+  createdAt: string;
+  updatedAt: string;
+  level: string | null;
+  lecturer: string | null;
+  organization: string | null;
+}
+
+export interface AdminLesson {
+  id?: string;
+  title: string;
+  type: string;
+  durationSec: number;
+  videoUrl: string | null;
+  isPreview: boolean;
+}
+
+export interface AdminSection {
+  id?: string;
+  title: string;
+  lessons: AdminLesson[];
+}
+
+export interface AdminCourseDetail {
+  id: string;
+  title: string;
+  slug: string;
+  description: string;
+  categoryNames: string[];
+  levelName: string | null;
+  lecturerName: string | null;
+  organizationName: string | null;
+  language: string;
+  originalPrice: number | null;
+  price: number | null;
+  isPremium: boolean;
+  isFeatured: boolean;
+  contentType: string;
+  tags: string[];
+  audience: string[];
+  prerequisites: string | null;
+  thumbnailUrl: string | null;
+  bannerUrl: string | null;
+  previewVideoUrl: string | null;
+  sections: AdminSection[];
+}
+
 export interface UserProfile {
   id: string;
   name: string;

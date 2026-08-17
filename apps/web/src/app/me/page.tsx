@@ -115,6 +115,13 @@ export default function MePage() {
             <span className="ml-auto text-dim">&gt;</span>
           </Link>
         ))}
+        {user.isStaff && (
+          <Link href="/admin" className="flex items-center gap-3 rounded-lg border border-accent/40 bg-accent/5 px-4 py-3 hover:bg-accent/10">
+            <span>🛠️</span>
+            <span className="text-sm text-text">Admin CMS</span>
+            <span className="ml-auto text-dim">&gt;</span>
+          </Link>
+        )}
       </div>
 
       {/* settings */}
