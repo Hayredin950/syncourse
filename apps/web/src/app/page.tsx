@@ -276,13 +276,13 @@ export default function HomePage() {
         <section className="rail">
           <div className="section-head">
             <h2>Featured learning paths</h2>
-            <Link href="/browse">See all <ChevronRight size={14} style={{ verticalAlign: "middle" }} /></Link>
+            <Link href="/paths">See all <ChevronRight size={14} style={{ verticalAlign: "middle" }} /></Link>
           </div>
           <div className="rail-row" style={{ gridAutoColumns: "minmax(260px, 1fr)" }}>
             {home.featuredPaths.map((p) => (
               <Link
                 key={p.id}
-                href="/browse"
+                href={`/paths/${p.id}`}
                 className="dark-panel"
                 style={{ padding: 18, background: "linear-gradient(135deg, hsl(196 40% 24%), #12100e 70%)", display: "block" }}
               >
@@ -337,7 +337,7 @@ export default function HomePage() {
       <section className="rail">
         <div className="section-head">
           <h2>Lecturers</h2>
-          <Link href="/browse">See all <ChevronRight size={14} style={{ verticalAlign: "middle" }} /></Link>
+          <Link href="/lecturers">See all <ChevronRight size={14} style={{ verticalAlign: "middle" }} /></Link>
         </div>
         <div className="rail-row">
           {home.lecturers.map((l) => (
@@ -364,7 +364,7 @@ export default function HomePage() {
       <section className="rail">
         <div className="section-head">
           <h2>Channels &amp; Schools</h2>
-          <Link href="/browse">See all <ChevronRight size={14} style={{ verticalAlign: "middle" }} /></Link>
+          <Link href="/organizations">See all <ChevronRight size={14} style={{ verticalAlign: "middle" }} /></Link>
         </div>
         <div className="rail-row">
           {home.organizations.map((o) => (
@@ -391,8 +391,8 @@ export default function HomePage() {
       </section>
 
       {/* Load More */}
-      <div style={{ marginTop: 42 }}>
-        <Link href="/browse" className="btn" style={{ display: "block", textAlign: "center", padding: "13px" }}>
+      <div style={{ marginTop: 42, display: "flex", justifyContent: "center" }}>
+        <Link href="/browse" className="btn" style={{ display: "inline-flex", alignItems: "center", padding: "12px 28px" }}>
           Load More
         </Link>
       </div>

@@ -91,6 +91,11 @@ export class CatalogController {
     return this.catalog.learningPaths();
   }
 
+  @Get('learning-paths/:id')
+  learningPath(@Param('id') id: string) {
+    return this.catalog.learningPathDetail(id);
+  }
+
   @Get('legal')
   legal(@Query('type') type?: string) {
     return this.catalog.legalDocuments(type);

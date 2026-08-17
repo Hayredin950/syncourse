@@ -45,6 +45,7 @@ export interface Lecturer {
   photoUrl: string | null;
   bio: string | null;
   credentials: string | null;
+  courseCount?: number;
 }
 
 export interface Organization {
@@ -52,6 +53,9 @@ export interface Organization {
   name: string;
   slug: string;
   logoUrl: string | null;
+  description?: string | null;
+  subscribers?: number;
+  courseCount?: number;
 }
 
 export interface Review {
@@ -307,7 +311,18 @@ export interface LearningPath {
   courseCount: number;
   ratingAvg: number;
   totalVotes: number;
-  courses: { id: string; title: string; slug: string; order: number }[];
+  courses: { id: string; title: string; slug: string; order: number; thumbnailUrl?: string | null }[];
+}
+
+export interface LearningPathDetail {
+  id: string;
+  title: string;
+  description: string | null;
+  coverUrl: string | null;
+  courseCount: number;
+  ratingAvg: number;
+  totalVotes: number;
+  courses: CourseSummary[];
 }
 
 export interface CircleMember {

@@ -13,11 +13,14 @@ import type {
   DiscussionThread,
   HomeFeed,
   LearningPath,
+  LearningPathDetail,
+  Lecturer,
   LecturerDetail,
+  Organization,
+  OrganizationDetail,
   LessonDetail,
   MyLearning,
   NotificationItem,
-  OrganizationDetail,
   Plan,
   Review,
   UserProfile,
@@ -231,9 +234,12 @@ export const downloadToTelegram = (lessonId: string) =>
 
 // --- catalog extras ---
 export const categories = () => get<Category[]>("/categories");
+export const lecturers = () => get<Lecturer[]>("/lecturers");
+export const organizations = () => get<Organization[]>("/organizations");
 export const lecturerDetail = (slug: string) => get<LecturerDetail>(`/lecturers/${slug}`);
 export const organizationDetail = (slug: string) => get<OrganizationDetail>(`/organizations/${slug}`);
 export const learningPaths = () => get<LearningPath[]>("/learning-paths");
+export const learningPath = (id: string) => get<LearningPathDetail>(`/learning-paths/${id}`);
 
 // --- ratings & reviews ---
 export const rateCourse = (slug: string, stars: number) =>

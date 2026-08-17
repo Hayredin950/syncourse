@@ -79,6 +79,37 @@ export interface CourseDetail extends CourseSummary {
   downloads: { total: number; last30: number; last7: number; today: number; sparkline?: number[] };
 }
 
+export interface LecturerRow {
+  id: string;
+  name: string;
+  slug: string;
+  photoUrl: string | null;
+  bio: string | null;
+  credentials: string | null;
+  courseCount: number;
+}
+
+export interface OrganizationRow {
+  id: string;
+  name: string;
+  slug: string;
+  logoUrl: string | null;
+  description: string | null;
+  subscribers: number;
+  courseCount: number;
+}
+
+export interface LearningPathRow {
+  id: string;
+  title: string;
+  description: string;
+  coverUrl: string | null;
+  courseCount: number;
+  ratingAvg: number;
+  totalVotes: number;
+  courses: { id: string; title: string; slug: string; thumbnailUrl: string | null }[];
+}
+
 export interface LecturerDetail {
   id: string;
   name: string;

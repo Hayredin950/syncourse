@@ -46,6 +46,16 @@ export async function organizationSlugs(): Promise<{ slug: string }[]> {
   }
 }
 
+export async function pathIds(): Promise<{ id: string }[]> {
+  try {
+    const d = (await fetchJson("/learning-paths")) as { id: string }[];
+    const ids = d.map((p) => ({ id: p.id }));
+    return ids.length ? ids : [{ id: "path" }];
+  } catch {
+    return [{ id: "path" }];
+  }
+}
+
 export async function listIds(): Promise<{ id: string }[]> {
   try {
     const d = (await fetchJson("/lists")) as { results?: { id: string }[] } | { id: string }[];

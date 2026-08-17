@@ -141,7 +141,7 @@ export default function HomeScreen() {
             data={feed.featuredPaths}
             keyExtractor={(p) => p.id}
             renderItem={({ item }) => (
-              <Link href={`/paths`} asChild>
+              <Link href={`/paths/${item.id}`} asChild>
                 <View style={styles.pathCard}>
                   <View style={styles.pathStrip}>
                     {item.courses.slice(0, 4).map((c, i) =>
@@ -192,10 +192,10 @@ export default function HomeScreen() {
 
       {/* Lecturers + Channels & Schools */}
       {feed.lecturers.length > 0 && (
-        <PersonRow title="Lecturers" people={feed.lecturers} href={(l) => `/lecturers/${l.slug}`} image={(l) => l.photoUrl} sub={(l) => `${l.courseCount} courses`} />
+        <PersonRow title="Lecturers" seeAllHref="/lecturers" people={feed.lecturers} href={(l) => `/lecturers/${l.slug}`} image={(l) => l.photoUrl} sub={(l) => `${l.courseCount} courses`} />
       )}
       {feed.organizations.length > 0 && (
-        <PersonRow title="Channels & Schools" people={feed.organizations} href={(o) => `/organizations/${o.slug}`} image={(o) => o.logoUrl} sub={(o) => `${o.courseCount} courses`} />
+        <PersonRow title="Channels & Schools" seeAllHref="/organizations" people={feed.organizations} href={(o) => `/organizations/${o.slug}`} image={(o) => o.logoUrl} sub={(o) => `${o.courseCount} courses`} />
       )}
     </ScrollView>
   );
@@ -272,12 +272,14 @@ function DropdownRow({
 
 function PersonRow({
   title,
+  seeAllHref,
   people,
   href,
   image,
   sub,
 }: {
   title: string;
+  seeAllHref: string;
   people: { id: string; name: string; slug: string }[];
   href: (p: any) => string;
   image: (p: any) => string | null;
@@ -287,7 +289,7 @@ function PersonRow({
     <View style={styles.wrap}>
       <View style={styles.header}>
         <Text style={styles.title}>{title}</Text>
-        <Link href={href(people[0])} style={styles.seeAll}>See all</Link>
+        <Link href={seeAllHref} style={styles.seeAll}>See all</Link>
       </View>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
         {people.map((p) => (

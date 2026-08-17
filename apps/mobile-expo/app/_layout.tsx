@@ -34,6 +34,10 @@ export default function RootLayout() {
             <Stack.Screen name="premium" options={{ title: "Premium" }} />
             <Stack.Screen name="lists/[id]" options={{ title: "List" }} />
             <Stack.Screen name="circles" options={{ title: "Circles" }} />
+            <Stack.Screen name="lecturers/index" options={{ title: "Lecturers" }} />
+            <Stack.Screen name="organizations/index" options={{ title: "Channels & Schools" }} />
+            <Stack.Screen name="paths/index" options={{ title: "Learning paths" }} />
+            <Stack.Screen name="paths/[id]" options={{ title: "Learning path" }} />
           </Stack>
           <UpdateBanner />
         </AuthProvider>

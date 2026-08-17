@@ -396,6 +396,28 @@ export class CatalogService {
     }));
   }
 
+  /** One learning path with full course summaries (franchise-style detail page). */
+  async learningPathDetail(id: string) {
+    const p = await this.prisma.learningPath.findUnique({
+      where: { id },
+      include: { courses: { include: { course: { include: courseInclude } } } },
+    });
+    if (!p) throw new NotFoundException('Learning path not found');
+    const ordered = [...p.courses].sort((a, b) => a.order - b.order);
+    return {
+      id: p.id,
+      title: p.title,
+      description: p.description,
+      coverUrl: p.coverUrl,
+      courseCount: ordered.length,
+      ratingAvg: ordered.length
+        ? +(ordered.reduce((s, pc) => s + pc.course.ratingAvg, 0) / ordered.length).toFixed(1)
+        : 0,
+      totalVotes: ordered.reduce((s, pc) => s + pc.course.ratingCount, 0),
+      courses: ordered.map((pc) => this.summary(pc.course)),
+    };
+  }
+
   async legalDocuments(type?: string) {
     const where = type ? { type } : undefined;
     return this.prisma.legalDocument.findMany({
