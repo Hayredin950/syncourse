@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useToast } from "@/lib/useToast";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
@@ -116,7 +117,7 @@ export default function MePage() {
   const [tab, setTab] = useState<Tab>("library");
   const [stats, setStats] = useState<UserStats | null>(null);
   const [telegram, setTelegram] = useState("");
-  const [toast, setToast] = useState("");
+  const { toast, setToast } = useToast();
   const [saving, setSaving] = useState(false);
 
   // edit-profile modal state

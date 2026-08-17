@@ -191,4 +191,20 @@ export class AdminController {
   updateCover(@CurrentUser() user: AuthUser, @Param('slug') slug: string, @Body() dto: UpdateCoverDto) {
     return this.admin.updateCourseCover(user.id, slug, dto);
   }
+
+  /** Staff-only. All users with admin/plan metadata — powers the Users tab. */
+  @Get('users')
+  listUsers(@CurrentUser() user: AuthUser) {
+    return this.admin.listUsers(user.id);
+  }
+
+  /** Staff-only. Promote or demote a user to/from staff (admins can't demote themselves). */
+  @Patch('users/:id/role')
+  setUserRole(
+    @CurrentUser() user: AuthUser,
+    @Param('id') id: string,
+    @Body() body: { isStaff: boolean },
+  ) {
+    return this.admin.setUserRole(user.id, id, body);
+  }
 }

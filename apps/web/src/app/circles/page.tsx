@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useToast } from "@/lib/useToast";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { MessageCircle, Plus, Search, Star, Users, X } from "lucide-react";
@@ -20,7 +21,7 @@ export default function CirclesPage() {
   const [selected, setSelected] = useState<CircleDetail | null>(null);
   const [feed, setFeed] = useState<ActivityFeed | null>(null);
   const [q, setQ] = useState("");
-  const [toast, setToast] = useState("");
+  const { toast, setToast } = useToast();
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
   const [newDesc, setNewDesc] = useState("");

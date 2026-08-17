@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useToast } from "@/lib/useToast";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { ListPlus, Plus, X } from "lucide-react";
@@ -33,7 +34,7 @@ export default function ListsPage() {
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [visibility, setVisibility] = useState<"private" | "public">("private");
-  const [toast, setToast] = useState("");
+  const { toast, setToast } = useToast();
 
   useEffect(() => {
     get<{ results: ListRow[] }>(`/lists?sort=${sort}&q=${encodeURIComponent(q)}`).then((d) => setLists(d.results)).catch(() => {});

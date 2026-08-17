@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useToast } from "@/lib/useToast";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { get, post } from "@/lib/api";
@@ -22,7 +23,7 @@ export default function LessonPage() {
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [tab, setTab] = useState<"watch" | "notes">("watch");
   const [watched, setWatched] = useState(false);
-  const [toast, setToast] = useState("");
+  const { toast, setToast } = useToast();
   const [videoError, setVideoError] = useState(false);
 
   useEffect(() => {

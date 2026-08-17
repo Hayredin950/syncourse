@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useToast } from "@/lib/useToast";
 import type React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -38,7 +39,7 @@ export default function PremiumPage() {
   const [home, setHome] = useState<HomeData | null>(null);
   const [checkout, setCheckout] = useState<CheckoutResult | null>(null);
   const [reference, setReference] = useState("");
-  const [toast, setToast] = useState("");
+  const { toast, setToast } = useToast();
   const [paid, setPaid] = useState(false);
 
   useEffect(() => {

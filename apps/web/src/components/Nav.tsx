@@ -2,26 +2,46 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { useState, type FormEvent, type ReactNode } from "react";
+import { useEffect, useState, type FormEvent, type ReactNode } from "react";
 import {
   Bookmark,
+  BookOpen,
   CircleUserRound,
+  Crown,
+  FileText,
   Home,
+  LayoutGrid,
   Layers3,
+  Map,
+  MessageCircle,
   Search,
   Zap,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 
-/* ---------- TopNav — desktop top bar (phonofilm-style) ---------- */
+/* ---------- TopNav — desktop top bar (phonofilm-style, two rows) ---------- */
+const CONTENT_TYPES = [
+  { value: "", label: "All", icon: LayoutGrid },
+  { value: "course", label: "Course", icon: BookOpen },
+  { value: "mini-course", label: "Mini-course", icon: Zap },
+  { value: "cheat-sheet", label: "Cheat-sheet", icon: FileText },
+  { value: "roadmap", label: "Roadmap", icon: Map },
+];
+
 export function TopNav() {
   const pathname = usePathname();
   const router = useRouter();
   const { user, isPremium } = useAuth();
   const [value, setValue] = useState("");
+  const [type, setType] = useState("");
 
   // phonofilm: auth screens have no site navbar
   if (pathname.startsWith("/auth")) return null;
+
+  // Row-2 active state reads ?type= from the URL (avoids useSearchParams/Suspense in the layout).
+  useEffect(() => {
+    setType(new URLSearchParams(window.location.search).get("type") ?? "");
+  }, [pathname]);
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -32,55 +52,69 @@ export function TopNav() {
 
   return (
     <header className="topbar desktop-only">
-      <Link href="/" className="brand">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src="/logo.png" alt="" className="brand-logo" />
-        sync<i />ourse
-      </Link>
-      <Link href="/browse" className={active("/browse") ? "active" : ""}>
-        Browse
-      </Link>
-      <form className="top-search" onSubmit={submit}>
-        <Search size={15} />
-        <input
-          aria-label="Search courses"
-          placeholder="Search courses"
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-        />
-      </form>
-      <nav className="nav-links">
-        <Link href="/circles" className={active("/circles") ? "active" : ""}>
-          circles
+      <div className="topbar-row topbar-row--main">
+        <Link href="/" className="brand">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/logo.png" alt="" className="brand-logo" />
+          <span className="brand-sync">sync</span>
+          <span className="brand-ourse">ourse</span>
         </Link>
-        <Link href="/lists" className={active("/lists") ? "active" : ""}>
-          Collections
-        </Link>
-        {isPremium ? (
-          <span className="badge primary">Premium</span>
-        ) : (
-          <Link href="/premium" className="upgrade">
-            Go Premium <Zap size={12} style={{ display: "inline", verticalAlign: "middle" }} />
+        <form className="top-search" onSubmit={submit}>
+          <Search size={15} />
+          <input
+            aria-label="Search courses"
+            placeholder="Search courses"
+            value={value}
+            onChange={(e) => setValue(e.target.value)}
+          />
+        </form>
+        <nav className="nav-links">
+          <Link href="/browse" className={`nav-pill ${active("/browse") ? "active" : ""}`}>
+            <LayoutGrid size={14} /> Browse
           </Link>
-        )}
-        {user ? (
-          <Link href="/me" className={`nav-me ${active("/me") ? "active" : ""}`} title={user.name}>
-            <span className="nav-me__avatar">
-              {user.avatarUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={user.avatarUrl} alt="" className="h-full w-full object-cover" />
-              ) : (
-                <span className="text-xs font-bold text-accent">{user.name.charAt(0).toUpperCase()}</span>
-              )}
-            </span>
-            Me
+          <Link href="/circles" className={`nav-pill ${active("/circles") ? "active" : ""}`}>
+            <MessageCircle size={14} /> Circles
           </Link>
-        ) : (
-          <Link href="/auth" className={active("/auth") ? "active" : ""}>
-            Sign in
+          <Link href="/lists" className={`nav-pill ${active("/lists") ? "active" : ""}`}>
+            <Bookmark size={14} /> Collections
           </Link>
-        )}
-      </nav>
+          {isPremium ? (
+            <span className="nav-pill nav-pill--premium">Premium</span>
+          ) : (
+            <Link href="/premium" className="nav-pill nav-pill--cta">
+              <Crown size={14} /> Go Premium
+            </Link>
+          )}
+          {user ? (
+            <Link href="/me" className={`nav-pill nav-pill--me ${active("/me") ? "active" : ""}`} title={user.name}>
+              <span className="nav-me__avatar">
+                {user.avatarUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={user.avatarUrl} alt="" className="h-full w-full object-cover" />
+                ) : (
+                  <span className="text-xs font-bold">{user.name.charAt(0).toUpperCase()}</span>
+                )}
+              </span>
+              Me
+            </Link>
+          ) : (
+            <Link href="/auth" className={`nav-pill ${active("/auth") ? "active" : ""}`}>
+              <CircleUserRound size={14} /> Sign in
+            </Link>
+          )}
+        </nav>
+      </div>
+      <div className="topbar-row topbar-row--types">
+        {CONTENT_TYPES.map((t) => (
+          <Link
+            key={t.value || "all"}
+            href={t.value ? `/browse?type=${t.value}` : "/browse"}
+            className={`type-pill ${type === t.value ? "active" : ""}`}
+          >
+            <t.icon size={13} /> {t.label}
+          </Link>
+        ))}
+      </div>
     </header>
   );
 }

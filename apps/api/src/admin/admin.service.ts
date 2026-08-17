@@ -285,6 +285,67 @@ export class AdminService {
     return { deleted: true, slug };
   }
 
+  /** All users for the admin Users tab (staff can promote/demote). */
+  async listUsers(userId: string) {
+    await this.assertStaff(userId);
+    const users = await this.prisma.user.findMany({
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        username: true,
+        avatarUrl: true,
+        isStaff: true,
+        isVerified: true,
+        planType: true,
+        createdAt: true,
+        _count: {
+          select: { enrollments: true, reviews: true, lists: true },
+        },
+      },
+    });
+    return users.map((u) => ({
+      id: u.id,
+      name: u.name,
+      email: u.email,
+      username: u.username,
+      avatarUrl: u.avatarUrl,
+      isStaff: u.isStaff,
+      isVerified: u.isVerified,
+      planType: u.planType,
+      createdAt: u.createdAt,
+      enrollments: u._count.enrollments,
+      reviews: u._count.reviews,
+      lists: u._count.lists,
+    }));
+  }
+
+  /** Promote/demote a user to/from staff. Staff can't demote themselves (no lockout). */
+  async setUserRole(userId: string, targetId: string, body: { isStaff?: boolean }) {
+    await this.assertStaff(userId);
+    if (targetId === userId) {
+      throw new BadRequestException('You cannot change your own admin role');
+    }
+    const target = await this.prisma.user.findUnique({
+      where: { id: targetId },
+      select: { id: true, email: true, isStaff: true },
+    });
+    if (!target) throw new NotFoundException('User not found');
+    const isStaff = body.isStaff ?? false;
+    const updated = await this.prisma.user.update({
+      where: { id: targetId },
+      data: { isStaff },
+      select: { id: true, email: true, isStaff: true },
+    });
+    return {
+      ...updated,
+      message: isStaff
+        ? `${target.email} is now an admin`
+        : `${target.email} is no longer an admin`,
+    };
+  }
+
   /** Cover update (kept from the earlier admin pass). */
   async updateCourseCover(
     userId: string,

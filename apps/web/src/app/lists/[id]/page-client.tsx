@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useToast } from "@/lib/useToast";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import { get, post } from "@/lib/api";
@@ -39,7 +40,7 @@ export default function ListDetailPage() {
   const { token } = useAuth();
   const [list, setList] = useState<ListDetail | null>(null);
   const [saved, setSaved] = useState(false);
-  const [toast, setToast] = useState("");
+  const { toast, setToast } = useToast();
 
   useEffect(() => {
     get<ListDetail>(`/lists/${id}`).then(setList).catch(() => setToast("List not found"));

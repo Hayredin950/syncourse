@@ -272,6 +272,21 @@ export interface AdminCourseRow {
   organization: string | null;
 }
 
+export interface AdminUserRow {
+  id: string;
+  name: string;
+  email: string;
+  username: string;
+  avatarUrl: string | null;
+  isStaff: boolean;
+  isVerified: boolean;
+  planType: string;
+  createdAt: string;
+  enrollments: number;
+  reviews: number;
+  lists: number;
+}
+
 export interface AdminLesson {
   id?: string;
   title: string;

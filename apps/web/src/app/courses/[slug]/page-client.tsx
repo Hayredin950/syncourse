@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { useToast } from "@/lib/useToast";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import {
@@ -41,7 +42,7 @@ export default function CoursePage() {
   const [myRating, setMyRating] = useState(0);
   const [reviewText, setReviewText] = useState("");
   const [containsSpoilers, setContainsSpoilers] = useState(false);
-  const [toast, setToast] = useState("");
+  const { toast, setToast } = useToast();
   const [coverBusy, setCoverBusy] = useState(false);
   const coverInputRef = useRef<HTMLInputElement>(null);
   const [downloadOpen, setDownloadOpen] = useState(false);
