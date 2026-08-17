@@ -19,6 +19,14 @@ export default function HomePage() {
   // Trending period tabs — Day / Week / Month (client-side slice of the rails)
   const [trendTab, setTrendTab] = useState<"day" | "week" | "month">("day");
 
+  // "Best of" — one row with a dropdown to switch organizations (PhonoFilm pattern)
+  const [bestOfOrgId, setBestOfOrgId] = useState("");
+  useEffect(() => {
+    if (bestOfOrgId || !home || home.bestOf.length === 0) return;
+    setBestOfOrgId(home.bestOf[0].id);
+  }, [home, bestOfOrgId]);
+  const activeOrg = home?.bestOf.find((o) => o.id === bestOfOrgId) ?? home?.bestOf[0];
+
   useEffect(() => {
     get<HomeData>("/home")
       .then(setHome)
@@ -168,16 +176,34 @@ export default function HomePage() {
         categories={catOptions}
       />
 
-      {/* Best of {org} */}
-      {home.bestOf.map(
-        (org) =>
-          org.courses.length > 0 && (
-            <Rail key={org.id} title={`Best of ${org.name}`} href={`/organizations/${org.slug}`}>
-              {org.courses.map((c) => (
-                <CourseCard key={c.id} course={c} />
-              ))}
-            </Rail>
-          ),
+      {/* Best of — one row, dropdown to switch organization */}
+      {activeOrg && activeOrg.courses.length > 0 && (
+        <section className="mt-6">
+          <div className="mb-2 flex items-center gap-2 px-4">
+            <h2 className="text-base font-semibold text-text">Best of</h2>
+            <select
+              value={activeOrg.id}
+              onChange={(e) => setBestOfOrgId(e.target.value)}
+              className="h-6 cursor-pointer rounded-full border border-border bg-surface px-2 text-[11px] font-medium text-muted outline-none focus:border-accent"
+            >
+              {home.bestOf
+                .filter((o) => o.courses.length > 0)
+                .map((o) => (
+                  <option key={o.id} value={o.id}>
+                    {o.name}
+                  </option>
+                ))}
+            </select>
+            <Link href={`/organizations/${activeOrg.slug}`} className="ml-auto shrink-0 text-sm font-medium text-muted hover:text-text">
+              See all &gt;
+            </Link>
+          </div>
+          <div className="no-scrollbar flex snap-x gap-3 overflow-x-auto px-4 pb-1 md:flex-wrap md:gap-4 md:overflow-visible md:px-4 md:pb-2">
+            {activeOrg.courses.map((c) => (
+              <CourseCard key={c.id} course={c} />
+            ))}
+          </div>
+        </section>
       )}
 
       {/* Featured Learning Paths — franchise-style wide cards */}
