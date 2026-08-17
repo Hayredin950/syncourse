@@ -390,11 +390,9 @@ export default function MePage() {
                 ))}
               </div>
             ) : (
-              <div className="dark-panel" style={{ padding: 26, textAlign: "center" }}>
-                <div style={{ fontSize: 30, marginBottom: 6 }}>🗺️</div>
-                <p className="muted" style={{ fontSize: 12, margin: 0 }}>
-                  Paths you save will show up here — curated multi-course tracks that take you from zero to job-ready.
-                </p>
+              <div className="empty-state">
+                <div className="empty-icon">🗺️</div>
+                <p>Paths you save will show up here — curated multi-course tracks that take you from zero to job-ready.</p>
               </div>
             )}
           </div>
@@ -420,10 +418,9 @@ export default function MePage() {
                     ))}
                   </div>
                 ) : (
-                  <div className="dark-panel" style={{ padding: 26, textAlign: "center" }}>
-                    <p className="muted" style={{ fontSize: 12, margin: 0 }}>
-                      Progress against curated learning paths fills in as you complete courses inside them.
-                    </p>
+                  <div className="empty-state">
+                    <div className="empty-icon">🔄</div>
+                    <p>Progress against curated learning paths fills in as you complete courses inside them.</p>
                   </div>
                 )}
               </div>

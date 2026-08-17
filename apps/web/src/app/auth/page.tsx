@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Eye, EyeOff, X } from "lucide-react";
+import { Eye, EyeOff, Lock, Mail, User, UserRound, X } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { apiUrl, post, setToken } from "@/lib/api";
 
@@ -74,9 +74,6 @@ function AuthInner() {
     }
   };
 
-  const inputClass =
-    "w-full rounded-full border border-border bg-surface px-4 py-2.5 text-sm text-text placeholder:text-dim focus:border-accent focus:outline-none";
-
   return (
     <main className="auth-screen">
       {/* left — hero image + headline (desktop) */}
@@ -107,20 +104,29 @@ function AuthInner() {
           <div className="space-y-3">
             {mode === "register" && (
               <>
-                <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Name" className={inputClass} />
-                <input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="Username" className={inputClass} />
+                <div className="auth-input">
+                  <User size={15} />
+                  <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Name" />
+                </div>
+                <div className="auth-input">
+                  <UserRound size={15} />
+                  <input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="Username" />
+                </div>
               </>
             )}
-            <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" placeholder="Email" className={inputClass} />
+            <div className="auth-input">
+              <Mail size={15} />
+              <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" placeholder="Email" />
+            </div>
 
             {/* password with visibility toggle */}
-            <div style={{ position: "relative" }}>
+            <div className="auth-input" style={{ position: "relative" }}>
+              <Lock size={15} />
               <input
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 type={showPassword ? "text" : "password"}
                 placeholder="Password (min 8 characters)"
-                className={inputClass}
                 style={{ paddingRight: 42 }}
               />
               <button
