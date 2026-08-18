@@ -28,6 +28,21 @@ export default function HomeScreen() {
   const [lecturerSlug, setLecturerSlug] = useState<string>("");
   const [orgSlug, setOrgSlug] = useState<string>("");
 
+  // ALL hooks first, unconditionally — React requires the same hooks on every
+  // render, so nothing may be called after the early returns below.
+  const catCoursesQ = useQuery({
+    queryKey: ["category-courses", catSlug],
+    queryFn: () => api.browse({ category: catSlug, limit: 8 }).then((r) => r.results),
+    enabled: !!catSlug,
+  });
+  const activeLecturer =
+    (data?.lecturers ?? []).find((l) => l.slug === lecturerSlug) ?? data?.lecturers?.[0];
+  const lecturerCoursesQ = useQuery({
+    queryKey: ["lecturer-courses", activeLecturer?.slug],
+    queryFn: () => api.browse({ lecturer: activeLecturer?.slug, limit: 8 }).then((r) => r.results),
+    enabled: !!activeLecturer?.slug,
+  });
+
   if (isLoading) {
     return (
       <View style={styles.center}>
@@ -50,21 +65,9 @@ export default function HomeScreen() {
   const feed: HomeFeed = data;
 
   // dropdown rows — same data the web uses, swapped client-side per selection
-  // (the API no longer returns per-category "rails"; fetch by category instead)
-  const catCoursesQ = useQuery({
-    queryKey: ["category-courses", catSlug],
-    queryFn: () => api.browse({ category: catSlug, limit: 8 }).then((r) => r.results),
-    enabled: !!catSlug,
-  });
   const catCourses = catSlug ? (catCoursesQ.data ?? []) : feed.trending.slice(0, 8);
   const activeOrg = (feed.bestOf ?? []).find((o) => o.slug === orgSlug) ?? feed.bestOf?.[0];
   const hero = feed.trending[0];
-  const activeLecturer = (feed.lecturers ?? []).find((l) => l.slug === lecturerSlug) ?? feed.lecturers?.[0];
-  const lecturerCoursesQ = useQuery({
-    queryKey: ["lecturer-courses", activeLecturer?.slug],
-    queryFn: () => api.browse({ lecturer: activeLecturer?.slug, limit: 8 }).then((r) => r.results),
-    enabled: !!activeLecturer?.slug,
-  });
 
   return (
     <ScrollView
