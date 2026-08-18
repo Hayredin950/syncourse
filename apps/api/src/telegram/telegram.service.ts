@@ -2736,7 +2736,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       const res = await this.api('sendMessage', body);
       const json = (await res.json()) as { ok: boolean; description?: string; result?: { message_id?: number } };
       if (!json.ok) {
-        this.logger.error(`sendRich rejected (${chatId}): ${json.description} — text: ${html.slice(0, 200)}`);
+        this.logger.error(`sendRich rejected (${chatId}): ${json.description} — text: ${html.slice(0, 200)} — keyboard: ${JSON.stringify(keyboard ?? []).slice(0, 300)}`);
         // Fall back to plain text so the user always gets an answer
         const plain = html
           .replace(/<b>(.*?)<\/b>/g, '$1')
