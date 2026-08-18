@@ -61,9 +61,9 @@ export default function HomeScreen() {
         <Text style={[styles.errorText, { fontSize: 10, color: "#777", marginTop: 2, textAlign: "center" }]}>
           {(((error as any)?.cause as any)?.message || String((error as any)?.cause || ""))?.slice(0, 160)}
         </Text>
-        <Link href="/auth" style={styles.retry}>
-          Retry
-        </Link>
+        <Pressable onPress={() => refetch()} style={styles.retry}>
+          <Text style={styles.retryText}>Retry</Text>
+        </Pressable>
       </View>
     );
   }
@@ -331,7 +331,15 @@ const styles = StyleSheet.create({
   content: { paddingTop: 12, paddingBottom: 32 },
   center: { flex: 1, backgroundColor: colors.bg, alignItems: "center", justifyContent: "center", gap: 10 },
   errorText: { color: colors.muted, fontSize: 14 },
-  retry: { color: colors.accent, fontWeight: "700" },
+  retry: {
+    borderWidth: 1,
+    borderColor: colors.accent,
+    borderRadius: radius.pill,
+    paddingHorizontal: 18,
+    paddingVertical: 8,
+    marginTop: 6,
+  },
+  retryText: { color: colors.accent, fontWeight: "700" },
   wrap: { marginBottom: 22 },
   header: {
     flexDirection: "row",

@@ -118,6 +118,7 @@ export default function BrowseScreen() {
         </View>
       ) : view === "grid" ? (
         <FlatList
+          key="browse-grid"
           data={data!.results}
           keyExtractor={(c) => c.id}
           numColumns={3}
@@ -127,6 +128,7 @@ export default function BrowseScreen() {
         />
       ) : (
         <FlatList
+          key="browse-list"
           data={data!.results}
           keyExtractor={(c) => c.id}
           contentContainerStyle={styles.list}
