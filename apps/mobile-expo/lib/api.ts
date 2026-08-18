@@ -85,6 +85,24 @@ async function request<T>(
       ((e as { cause?: { message?: string } })?.cause?.message as string) ||
       ((e as { cause?: unknown })?.cause as string) ||
       "";
+    // Deep diagnostic: log the full error so we can read it from logcat.
+    try {
+      const err = e as Error & { cause?: unknown };
+      console.log(
+        "[net-diag] fetch failed",
+        path,
+        "url=", `${API_URL}/api${path}`,
+        "message=", err?.message,
+        "name=", err?.name,
+        "cause=",
+        typeof err?.cause === "string"
+          ? err.cause
+          : JSON.stringify(err?.cause ?? null),
+        "stack=", err?.stack?.slice(0, 500),
+      );
+    } catch {
+      /* logging must never break the app */
+    }
     throw new ApiError(
       0,
       aborted
