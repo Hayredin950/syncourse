@@ -806,7 +806,14 @@ export default function MePage() {
           )}
 
           <div className="rail">
-            <button className="btn" style={{ width: "100%", color: "hsl(var(--destructive))" }} onClick={logout}>
+            <button
+              className="btn"
+              style={{ width: "100%", color: "hsl(var(--destructive))" }}
+              onClick={() => {
+                logout();
+                router.push("/");
+              }}
+            >
               <LogOut size={14} style={{ display: "inline", verticalAlign: "middle" }} /> Log out
             </button>
           </div>

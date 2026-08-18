@@ -12,8 +12,11 @@ echo "→ Building static export (clean — env vars like NEXT_PUBLIC_* are inli
 rm -rf .next out
 npx next build
 
-echo "→ Setting SPA fallback (serve the app shell for unmatched routes)…"
-cp out/index.html out/404.html
+# The static export already generates out/404.html from app/not-found.tsx —
+# a "smart 404" that renders course pages for /courses/<slug> URLs created
+# after the last build (e.g. via the Telegram bot). Do NOT overwrite it with
+# the app shell, or every new course 404s until the next deploy.
+echo "→ Keeping smart 404 (out/404.html from app/not-found.tsx)…"
 
 echo "→ Deploying to Cloudflare Pages (project: syncourse)…"
 npx --yes wrangler@latest pages deploy out --project-name=syncourse --branch=main --commit-dirty=true

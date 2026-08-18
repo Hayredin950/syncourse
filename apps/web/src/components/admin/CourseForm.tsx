@@ -249,7 +249,19 @@ export function CourseForm({ initial }: Props) {
           <button onClick={() => thumbRef.current?.click()} disabled={busyField !== null} className="rounded-full border border-border px-3 py-1.5 text-xs text-muted hover:text-text disabled:opacity-40">
             {busyField === "thumb" ? "Uploading…" : "Upload image"}
           </button>
-          {thumbnailUrl && <img src={thumbnailUrl} alt="thumb" className="h-10 w-8 rounded object-cover" />}
+          {thumbnailUrl && (
+            <span className="relative inline-flex">
+              <img src={thumbnailUrl} alt="thumb" className="h-10 w-8 rounded object-cover" />
+              <button
+                type="button"
+                title="Remove cover"
+                onClick={() => setThumbnailUrl("")}
+                className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-danger text-[10px] leading-none text-white"
+              >
+                ✕
+              </button>
+            </span>
+          )}
         </div>
         <input ref={thumbRef} type="file" accept="image/*" className="hidden" onChange={(e) => e.target.files?.[0] && uploadImage(e.target.files[0], "thumb")} />
 
@@ -259,7 +271,19 @@ export function CourseForm({ initial }: Props) {
           <button onClick={() => bannerRef.current?.click()} disabled={busyField !== null} className="rounded-full border border-border px-3 py-1.5 text-xs text-muted hover:text-text disabled:opacity-40">
             {busyField === "banner" ? "Uploading…" : "Upload banner"}
           </button>
-          {bannerUrl && <img src={bannerUrl} alt="banner" className="h-8 w-14 rounded object-cover" />}
+          {bannerUrl && (
+            <span className="relative inline-flex">
+              <img src={bannerUrl} alt="banner" className="h-8 w-14 rounded object-cover" />
+              <button
+                type="button"
+                title="Remove banner"
+                onClick={() => setBannerUrl("")}
+                className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-danger text-[10px] leading-none text-white"
+              >
+                ✕
+              </button>
+            </span>
+          )}
         </div>
         <input ref={bannerRef} type="file" accept="image/*" className="hidden" onChange={(e) => e.target.files?.[0] && uploadImage(e.target.files[0], "banner")} />
       </div>
