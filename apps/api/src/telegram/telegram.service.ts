@@ -661,7 +661,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     const msgId = isPhotoBubble ? undefined : messageId;
     if (data.startsWith('dl:')) {
       // sending a file is a new message by nature (can't edit into a document)
-      await this.sendCourseFile(chatId, data.slice(3));
+      await this.sendCourseFile(chatId, await this.slugFromPayload(data.slice(3)));
       // a download tap completes the interactive download picker
       await this.clearWizard(uid);
     } else if (data === 'nav:back') {
@@ -692,11 +692,11 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
         await this.sendCoursePicker(chatId, undefined, page, msgId, uid);
       }
     } else if (data.startsWith('course:')) {
-      const slug = data.slice(7);
+      const slug = await this.slugFromPayload(data.slice(7));
       await this.pushNav(uid, { key: 'course', arg: slug });
       await this.sendCourseCard(chatId, slug, undefined, msgId, uid);
     } else if (data.startsWith('edit:')) {
-      const slug = data.slice(5);
+      const slug = await this.slugFromPayload(data.slice(5));
       await this.startEditWizard(chatId, uid, slug);
     } else if (data.startsWith('epg:')) {
       const page = Number(data.slice(4));
@@ -704,7 +704,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
         await this.pickerFor(chatId, uid, 'edit', page, msgId);
       }
     } else if (data.startsWith('ul:')) {
-      await this.unlinkCourse(chatId, data.slice(3));
+      await this.unlinkCourse(chatId, await this.slugFromPayload(data.slice(3)));
     } else if (data === 'noop') {
       /* the "Page X/Y" label is not clickable */
     } else if (data === 'courses') {
@@ -722,7 +722,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     } else if (data.startsWith('wz:')) {
       await this.handleWizardCallback(chatId, cb.from.id, data, messageId);
     } else if (data.startsWith('link:')) {
-      const slug = data.slice(5);
+      const slug = await this.slugFromPayload(data.slice(5));
       await this.sendRich(
         chatId,
         `${this.brandHeader('Link a File')}\n\n` +
@@ -817,11 +817,14 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
   /** Page size for the /courses catalog. */
   private static readonly CATALOG_PAGE = 8;
 
+  /** Telegram's hard limit on inline-button callback_data (Bot API). */
+  private static readonly MAX_CALLBACK_BYTES = 64;
+
   /**
-   * Paginated course buttons (8/page). Used by the /courselist picker and the
-   * /course-detail lookup wizard. `kind` selects the callback prefix.
+   * Paginated course buttons (8/page) for the /courselist picker. Each button
+   * opens that course's details card.
    */
-  private async pickerButtonsFor(kind: 'course' | 'coursefind', page = 0): Promise<KbButton[][]> {
+  private async pickerButtonsFor(page = 0): Promise<KbButton[][]> {
     const total = await this.prisma.course.count({ where: { deletedAt: null } });
     if (total === 0) return [];
     const pages = Math.ceil(total / TelegramService.CATALOG_PAGE);
@@ -831,10 +834,12 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       orderBy: [{ createdAt: 'desc' }, { title: 'asc' }],
       skip: safePage * TelegramService.CATALOG_PAGE,
       take: TelegramService.CATALOG_PAGE,
-      select: { title: true, slug: true },
+      select: { id: true, title: true, slug: true },
     });
     const kb: KbButton[][] = courses.map((c) => [
-      { text: `🎴 ${c.title.slice(0, 44)}`, callback_data: `course:${c.slug}` },
+      // id, not slug: a long slug would push callback_data past Telegram's
+      // 64-byte cap and make it reject the whole message (buttons and all)
+      { text: `🎴 ${c.title.slice(0, 44)}`, callback_data: `course:${c.id}` },
     ]);
     const navRow: KbButton[] = [];
     if (safePage > 0) navRow.push({ text: '◀️ Prev', callback_data: `clp:${safePage - 1}` });
@@ -863,22 +868,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     }
     const pages = Math.ceil(total / TelegramService.CATALOG_PAGE);
     const safePage = Math.min(Math.max(page, 0), pages - 1);
-    const courses = await this.prisma.course.findMany({
-      where: { deletedAt: null },
-      orderBy: [{ createdAt: 'desc' }, { title: 'asc' }],
-      skip: safePage * TelegramService.CATALOG_PAGE,
-      take: TelegramService.CATALOG_PAGE,
-      select: { title: true, slug: true },
-    });
-    // Build keyboard inline — same proven pattern as sendCourseList
-    const kb: KbButton[][] = courses.map((c) => [
-      { text: `🎴 ${c.title.slice(0, 44)}`, callback_data: `course:${c.slug}` },
-    ]);
-    const navRow: KbButton[] = [];
-    if (safePage > 0) navRow.push({ text: '◀️ Prev', callback_data: `clp:${safePage - 1}` });
-    navRow.push({ text: `📄 ${safePage + 1}/${pages}`, callback_data: 'noop' });
-    if (safePage < pages - 1) navRow.push({ text: 'Next ▶️', callback_data: `clp:${safePage + 1}` });
-    kb.push(navRow);
+    const kb = await this.pickerButtonsFor(safePage);
     kb.push([
       { text: '📚 Catalog', callback_data: 'courses' },
       { text: '🏠 Home', callback_data: 'home' },
@@ -1028,7 +1018,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       (course.description ? `${esc(course.description.slice(0, 220))}\n\n` : '') +
       `🔗 <a href="${APP_URL}/courses/${course.slug}">View on the web →</a>`;
     const kb: KbButton[][] = [];
-    if (link) kb.push([{ text: '📥 Download now', callback_data: `dl:${course.slug}` }]);
+    if (link) kb.push([{ text: '📥 Download now', callback_data: `dl:${course.id}` }]);
     kb.push([
       { text: '📚 All courses', callback_data: 'courses' },
       { text: '🏠 Home', callback_data: 'home' },
@@ -1471,7 +1461,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
           `🔗 <a href="${APP_URL}/courses/${course.slug}">Open the course →</a>\n\n` +
           `<b>Next:</b> attach the file — forward the ZIP to this bot, then send:\n<code>/link ${course.slug}</code>`,
         undefined,
-        [[{ text: '🔗 Link a file', callback_data: `link:${course.slug}` }], [{ text: '📊 Stats', callback_data: 'stats' }]],
+        [[{ text: '🔗 Link a file', callback_data: `link:${course.id}` }], [{ text: '📊 Stats', callback_data: 'stats' }]],
       );
     } catch (err) {
       this.logger.error(`createCourseFromWizard failed: ${(err as Error).message}`);
@@ -1513,7 +1503,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     });
     if (links.length === 0) return [];
     return links.map((l) => [
-      { text: `📥 ${l.course.title.slice(0, 40)}`, callback_data: `dl:${l.course.slug}` },
+      { text: `📥 ${l.course.title.slice(0, 40)}`, callback_data: `dl:${l.courseId}` },
     ]);
   }
 
@@ -1570,7 +1560,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     const courses = await this.prisma.course.findMany({
       where: { deletedAt: null },
       orderBy: { title: 'asc' },
-      select: { title: true, slug: true },
+      select: { id: true, title: true, slug: true },
       take: 20,
     });
     if (courses.length === 0) {
@@ -1582,7 +1572,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       );
     }
     const kb: KbButton[][] = courses.map((c) => [
-      { text: `🔗 ${c.title.slice(0, 42)}`, callback_data: `link:${c.slug}` },
+      { text: `🔗 ${c.title.slice(0, 42)}`, callback_data: `link:${c.id}` },
     ]);
     kb.push([{ text: '🏠 Home', callback_data: 'home' }]);
     await this.sendRich(
@@ -1613,7 +1603,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       );
     }
     const kb: KbButton[][] = links.map((l) => [
-      { text: `🗑️ ${l.course.title.slice(0, 42)}`, callback_data: `ul:${l.course.slug}` },
+      { text: `🗑️ ${l.course.title.slice(0, 42)}`, callback_data: `ul:${l.courseId}` },
     ]);
     kb.push([{ text: '🏠 Home', callback_data: 'home' }]);
     await this.sendRich(
@@ -1676,10 +1666,10 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       orderBy: { title: 'asc' },
       skip: safePage * PAGE,
       take: PAGE,
-      select: { title: true, slug: true },
+      select: { id: true, title: true, slug: true },
     });
     const kb: KbButton[][] = courses.map((c) => [
-      { text: `✏️ ${c.title.slice(0, 44)}`, callback_data: `edit:${c.slug}` },
+      { text: `✏️ ${c.title.slice(0, 44)}`, callback_data: `edit:${c.id}` },
     ]);
     const navRow: KbButton[] = [];
     if (safePage > 0) navRow.push({ text: '◀️ Prev', callback_data: `epg:${safePage - 1}` });
@@ -1994,7 +1984,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       `✅ <b>“${esc(course.title)}”</b> — ${esc(this.editFieldLabel(field))} saved\n\n` +
       `${valueLabel}\n\n` +
       `${DIV}\nChanges are live on the site and in the bot instantly.`;
-    const kb = [[{ text: '🎴 View updated card', callback_data: `course:${course.slug}` }], [{ text: '🏠 Home', callback_data: 'home' }]];
+    const kb = [[{ text: '🎴 View updated card', callback_data: `course:${course.id}` }], [{ text: '🏠 Home', callback_data: 'home' }]];
     if (mid) await this.editRich(chatId, mid, updated, kb);
     else await this.sendRich(chatId, updated, threadId, kb);
   }
@@ -2040,7 +2030,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       `✅ <b>“${esc(course.title)}”</b> — ${esc(this.editFieldLabel(field))} saved\n\n` +
       `${valueLabel}\n\n` +
       `${DIV}\nChanges are live on the site and in the bot instantly.`;
-    const kb = [[{ text: '🎴 View updated card', callback_data: `course:${course.slug}` }], [{ text: '🏠 Home', callback_data: 'home' }]];
+    const kb = [[{ text: '🎴 View updated card', callback_data: `course:${course.id}` }], [{ text: '🏠 Home', callback_data: 'home' }]];
     if (mid) await this.editRich(chatId, mid, updated, kb);
     else await this.sendRich(chatId, updated, threadId, kb);
   }
@@ -2131,7 +2121,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       });
       await this.logActivity(fromId ?? null, chatId, 'link', `✅ linked ${course.slug} -> ${doc.file_name ?? 'file'}`);
       const kb: KbButton[][] = [
-        [{ text: '📥 Test download', callback_data: `dl:${course.slug}` }],
+        [{ text: '📥 Test download', callback_data: `dl:${course.id}` }],
         [{ text: '📚 Catalog', callback_data: 'courses' }, { text: '📊 Stats', callback_data: 'stats' }],
       ];
       return this.sendRich(
@@ -2211,7 +2201,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
           `🔑 <code>/download ${course.slug}</code>\n\n` +
           `Users can grab it from the bot or the <a href="${APP_URL}/courses/${course.slug}">app</a>.`,
         threadId,
-        [[{ text: '📥 Test download', callback_data: `dl:${course.slug}` }]],
+        [[{ text: '📥 Test download', callback_data: `dl:${course.id}` }]],
       );
     } catch (err) {
       this.logger.error(`link failed: ${(err as Error).message}`);
@@ -2297,7 +2287,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
           `🔗 <a href="${APP_URL}/courses/${course.slug}">Open the course →</a>\n\n` +
           `<b>Next:</b> attach the file — reply to the ZIP with:\n<code>/link ${course.slug}</code>`,
         threadId,
-        [[{ text: '🔗 Link a file', callback_data: `link:${course.slug}` }], [{ text: '📊 Stats', callback_data: 'stats' }]],
+        [[{ text: '🔗 Link a file', callback_data: `link:${course.id}` }], [{ text: '📊 Stats', callback_data: 'stats' }]],
       );
     } catch (err) {
       this.logger.error(`newCourse failed: ${(err as Error).message}`);
@@ -2536,6 +2526,28 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     return course?.slug ?? null;
   }
 
+  /**
+   * Convert a callback payload back into a course slug.
+   *
+   * Inline buttons carry the course **id** rather than the slug: Telegram caps
+   * callback_data at 64 bytes, and a long slug blows past it (e.g.
+   * `course:mastering-reasoning-models-algorithms-optimization-and-appli` is
+   * 67 bytes). An over-limit button makes Telegram reject the *entire*
+   * message, so the whole keyboard silently disappears. A cuid is a fixed
+   * 25 chars, which keeps every payload comfortably inside the cap.
+   *
+   * Buttons already sitting in users' chats still carry slugs, so accept both
+   * forms — a cuid never contains a dash, so the two can't be confused.
+   */
+  private async slugFromPayload(payload: string): Promise<string> {
+    if (!/^c[a-z0-9]{24}$/.test(payload)) return payload; // legacy slug button
+    const course = await this.prisma.course.findUnique({
+      where: { id: payload },
+      select: { slug: true },
+    });
+    return course?.slug ?? payload;
+  }
+
   /** Up to 5 matching course titles + slugs, for "did you mean" suggestions. */
   private async titleSuggestions(arg: string): Promise<string> {
     const firstToken = arg.split(/\s+/)[0] ?? '';
@@ -2705,6 +2717,30 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * Telegram rejects a whole message — keyboard *and* text — if any button's
+   * callback_data exceeds 64 bytes. Losing one button beats losing the entire
+   * keyboard, so drop the offenders here and log loudly instead of letting the
+   * send fail and silently fall back to a keyboard-less plain-text message.
+   */
+  private safeKeyboard(keyboard?: KbButton[][]): KbButton[][] | undefined {
+    if (!keyboard) return undefined;
+    const safe = keyboard
+      .map((row) =>
+        row.filter((btn) => {
+          const bytes = btn.callback_data ? Buffer.byteLength(btn.callback_data, 'utf8') : 0;
+          if (bytes <= TelegramService.MAX_CALLBACK_BYTES) return true;
+          this.logger.error(
+            `Dropping button “${btn.text}”: callback_data is ${bytes} bytes ` +
+              `(max ${TelegramService.MAX_CALLBACK_BYTES}) — “${btn.callback_data}”`,
+          );
+          return false;
+        }),
+      )
+      .filter((row) => row.length > 0);
+    return safe.length ? safe : undefined;
+  }
+
+  /**
    * Premium rich-text sender: parse_mode HTML + optional inline keyboard.
    * All dynamic content MUST be passed through esc() before reaching here —
    * raw <angle brackets> in user data would otherwise break the message.
@@ -2730,8 +2766,9 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
         disable_web_page_preview: true,
       };
       if (threadId) body.message_thread_id = threadId;
-      if (keyboard && keyboard.length) {
-        body.reply_markup = { inline_keyboard: keyboard };
+      const safeKb = this.safeKeyboard(keyboard);
+      if (safeKb) {
+        body.reply_markup = { inline_keyboard: safeKb };
       }
       const res = await this.api('sendMessage', body);
       const json = (await res.json()) as { ok: boolean; description?: string; result?: { message_id?: number } };
@@ -2772,7 +2809,8 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
         parse_mode: 'HTML',
       };
       if (threadId) body.message_thread_id = threadId;
-      if (keyboard && keyboard.length) body.reply_markup = { inline_keyboard: keyboard };
+      const safeKb = this.safeKeyboard(keyboard);
+      if (safeKb) body.reply_markup = { inline_keyboard: safeKb };
       const res = await this.api('sendPhoto', body);
       const json = (await res.json()) as { ok: boolean; description?: string; result?: { message_id?: number } };
       if (!json.ok) {
@@ -2800,7 +2838,8 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
         parse_mode: 'HTML',
         disable_web_page_preview: true,
       };
-      if (keyboard && keyboard.length) body.reply_markup = { inline_keyboard: keyboard };
+      const safeKb = this.safeKeyboard(keyboard);
+      if (safeKb) body.reply_markup = { inline_keyboard: safeKb };
       const res = await this.api('editMessageText', body);
       const json = (await res.json()) as { ok: boolean; description?: string };
       if (!json.ok) {
