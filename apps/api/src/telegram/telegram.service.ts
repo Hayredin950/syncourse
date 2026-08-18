@@ -11,14 +11,14 @@ interface TelegramUpdate {
     from?: { id: number; username?: string; first_name?: string };
     text?: string;
     date: number;
-    document?: { file_id: string; file_name?: string; file_size?: number };
+    document?: { file_id: string; file_name?: string; file_size?: number; mime_type?: string };
     video?: { file_id: string; file_name?: string; file_size?: number };
     audio?: { file_id: string; file_name?: string; file_size?: number };
     photo?: { file_id: string }[];
     reply_to_message?: {
       message_id: number;
       message_thread_id?: number;
-      document?: { file_id: string; file_name?: string; file_size?: number };
+      document?: { file_id: string; file_name?: string; file_size?: number; mime_type?: string };
       video?: { file_id: string; file_name?: string; file_size?: number };
       audio?: { file_id: string; file_name?: string; file_size?: number };
     };
@@ -423,7 +423,15 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     if (photo) {
       this.lastPhotoByUser.set(fromId, { fileId: photo.file_id, updatedAt: Date.now() });
     }
-    if (msgDoc) {
+    // Telegram Desktop sends a dragged-in image as a DOCUMENT, so a cover
+    // upload used to overwrite this cache and get attached as the course
+    // download (a 0.2 MB jpg standing in for a 133 MB ZIP). Covers are never
+    // the course file, so keep them out of the cache — an admin who really
+    // wants to ship an image or PDF can still reply to it with /link <slug>.
+    if (msgDoc && isCoverImage(msgDoc)) {
+      this.lastPhotoByUser.set(fromId, { fileId: msgDoc.file_id, updatedAt: Date.now() });
+      this.logger.log(`Ignoring image document as course file: ${msgDoc.file_name ?? 'unnamed'} (treated as a cover)`);
+    } else if (msgDoc) {
       this.lastFileByUser.set(fromId, {
         messageId: msg.message_id,
         fileId: msgDoc.file_id,
@@ -2145,10 +2153,14 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       return this.sendRich(
         chatId,
         `${this.brandHeader('Link a File')}\n\n` +
-          `📭 I don't have a file for <code>${esc(slug)}</code> yet. Two easy ways:\n\n` +
-          `1️⃣ <b>Forward the course ZIP</b> to this bot (any chat), then send <code>/link ${slug}</code> again\n` +
-          `2️⃣ <b>Reply to the ZIP message</b> in the group with <code>/link ${slug}</code>\n\n` +
-          `Example: forward the ZIP → then send <code>/link ${slug}</code>`,
+          `📭 I don't have a file for <code>${esc(slug)}</code> yet.\n\n` +
+          `${DIV}\n<b>✅ No membership needed</b>\n` +
+          `1️⃣ <b>Forward the course ZIP to me here</b>\n` +
+          `2️⃣ Send <code>/link ${slug}</code>\n\n` +
+          `<b>Or point me at a message</b> — I must be in that chat:\n` +
+          `• <b>Reply</b> to the ZIP in the group with <code>/link ${slug}</code>\n` +
+          `• <code>/link &lt;t.me link&gt; ${slug}</code> — needs <b>@${BOT_USERNAME}</b> in that group (admin if it's a channel)\n\n` +
+          `⚠️ Send the <b>ZIP</b>, not a cover image — I ignore images here so a banner can't become the download.`,
         threadId,
       );
     }
@@ -2164,19 +2176,39 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       if (!chatJson.ok) return this.sendText(chatId, `Could not resolve the group: ${chatJson.description}`, threadId);
       const groupChatId = chatJson.result!.id;
 
-      const msgRes = await this.api('getMessage', {
-        chat_id: groupChatId,
+      // The Bot API has no "read a message by id" method — getMessage does not
+      // exist and 404s exactly like a misspelled method would. The only way for
+      // a bot to inspect an existing message is to forward it to a chat it can
+      // post in, read the file off the copy, then delete the copy. This needs
+      // the bot to be a MEMBER of the source chat (admin for channels);
+      // otherwise Telegram answers "message to forward not found".
+      const fwdRes = await this.api('forwardMessage', {
+        chat_id: chatId,
+        from_chat_id: groupChatId,
         message_id: parsed.messageId,
+        disable_notification: true,
       });
-      const msgJson = (await msgRes.json()) as TelegramMessage;
+      const msgJson = (await fwdRes.json()) as TelegramMessage;
       if (!msgJson.ok || !msgJson.result) {
-        return this.sendText(
+        return this.sendRich(
           chatId,
-          `Could not read message ${parsed.messageId} in that group (${msgJson.description ?? 'not found'}).\n\nThe link must point at the actual file message — open the ZIP in the group topic → tap it → Copy link. That link looks like t.me/syncourse/<topic-id>/<message-id> with the real numbers, not the example 2/41.`,
+          `${this.brandHeader('Link a File')}\n\n` +
+            `❌ I can't read message <b>${parsed.messageId}</b> in that chat.\n` +
+            `<i>${esc(msgJson.description ?? 'not found')}</i>\n\n` +
+            `${DIV}\n` +
+            `<b>Linking by t.me link needs me to be in that chat.</b>\n` +
+            `• Group → add <b>@${BOT_USERNAME}</b> as a member\n` +
+            `• Channel → add <b>@${BOT_USERNAME}</b> as an <b>admin</b>\n\n` +
+            `<b>No membership needed — do this instead:</b>\n` +
+            `1️⃣ Forward the ZIP straight to me here\n` +
+            `2️⃣ Send <code>/link ${esc(course.slug)}</code>\n\n` +
+            `That works for any file you can open, wherever it lives.`,
           threadId,
         );
       }
       const m = msgJson.result;
+      // clean up the temporary copy — the admin doesn't need to see it
+      if (m.message_id) await this.deleteMessage(chatId, m.message_id);
       const doc = m.document ?? m.video ?? m.audio;
       if (!doc) {
         return this.sendText(chatId, 'That message does not contain a file (document/video/audio). Attach a ZIP or video and try again.', threadId);
@@ -2915,6 +2947,16 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       })),
     };
   }
+}
+
+/**
+ * True when a document is really a cover image rather than a course file.
+ * Telegram Desktop sends dragged-in images as documents, so this is what keeps
+ * a banner upload from being cached and attached as the course download.
+ */
+function isCoverImage(doc: { file_name?: string; mime_type?: string }): boolean {
+  if (doc.mime_type?.startsWith('image/')) return true;
+  return /\.(jpe?g|png|gif|webp|bmp|heic|heif|avif|tiff?)$/i.test(doc.file_name ?? '');
 }
 
 function slugify(s: string): string {
