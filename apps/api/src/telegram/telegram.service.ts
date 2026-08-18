@@ -54,7 +54,7 @@ interface KbButton {
 /** Interactive wizard state, keyed by Telegram user id — persisted to Postgres
  *  so a Render restart/redeploy mid-flow never loses the user's progress. */
 interface CourseWizard {
-  kind: 'course' | 'search' | 'download';
+  kind: 'course' | 'search' | 'download' | 'broadcast';
   step:
     | 'title'
     | 'instructor'
@@ -65,7 +65,8 @@ interface CourseWizard {
     | 'image'
     | 'confirm'
     | 'keyword'
-    | 'pick';
+    | 'pick'
+    | 'text';
   data: {
     title?: string;
     instructor?: string;
@@ -332,7 +333,12 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
         await this.sendCourseList(chatId, threadId);
         break;
       case '/course':
-        await this.sendCourseCard(chatId, arg, threadId);
+        if (arg) {
+          await this.sendCourseCard(chatId, arg, threadId);
+        } else {
+          // interactive: pick a course from buttons
+          await this.startCoursePicker(chatId, fromId, threadId);
+        }
         break;
       case '/search':
         if (arg) {
@@ -367,12 +373,20 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       }
       case '/link':
         await this.logActivity(fromId, chatId, 'command', `/link ${arg}`);
-        if (await this.isAdmin(fromId)) await this.linkCourse(chatId, arg, msg, threadId, fromId);
-        else await this.sendText(chatId, '⛔ This command is for admins only.', threadId);
+        if (await this.isAdmin(fromId)) {
+          if (arg) await this.linkCourse(chatId, arg, msg, threadId, fromId);
+          else await this.startLinkWizard(chatId, fromId, threadId);
+        } else {
+          await this.sendText(chatId, '⛔ This command is for admins only.', threadId);
+        }
         break;
       case '/unlink':
-        if (await this.isAdmin(fromId)) await this.unlinkCourse(chatId, arg, threadId);
-        else await this.sendText(chatId, '⛔ This command is for admins only.', threadId);
+        if (await this.isAdmin(fromId)) {
+          if (arg) await this.unlinkCourse(chatId, arg, threadId);
+          else await this.startUnlinkWizard(chatId, fromId, threadId);
+        } else {
+          await this.sendText(chatId, '⛔ This command is for admins only.', threadId);
+        }
         break;
       case '/newcourse':
         if (await this.isAdmin(fromId)) {
@@ -401,8 +415,12 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
         }
         break;
       case '/broadcast':
-        if (await this.isAdmin(fromId)) await this.broadcast(chatId, arg, threadId);
-        else await this.sendText(chatId, '⛔ This command is for admins only.', threadId);
+        if (await this.isAdmin(fromId)) {
+          if (arg) await this.broadcast(chatId, arg, threadId);
+          else await this.startBroadcastWizard(chatId, fromId, threadId);
+        } else {
+          await this.sendText(chatId, '⛔ This command is for admins only.', threadId);
+        }
         break;
       case '/stats':
         if (await this.isAdmin(fromId)) await this.sendStats(chatId, threadId);
@@ -432,6 +450,10 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     } else if (data.startsWith('pg:')) {
       const page = Number(data.slice(3));
       if (!Number.isNaN(page)) await this.sendCourseList(chatId, undefined, page, messageId);
+    } else if (data.startsWith('course:')) {
+      await this.sendCourseCard(chatId, data.slice(7));
+    } else if (data.startsWith('ul:')) {
+      await this.unlinkCourse(chatId, data.slice(3));
     } else if (data === 'noop') {
       /* the "Page X/Y" label is not clickable */
     } else if (data === 'courses') {
@@ -499,11 +521,11 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       `<b>👤 For everyone</b>\n` +
       `${DIV}\n` +
       `<code>/start</code> — welcome & quick actions\n` +
-      `<code>/courses</code> — browse courses with files 📚\n` +
-      `<code>/search &lt;keyword&gt;</code> — find a course 🔍\n` +
-      `<code>/course &lt;title&gt;</code> — course details card 🎴\n` +
-      `<code>/download &lt;title&gt;</code> — get a course file ⚡\n\n` +
-      `<i>💡 /course and /download accept the course <b>name</b> — no slug needed:</i>\n` +
+      `<code>/courses</code> — browse courses (tap a title to download) 📚\n` +
+      `<code>/search</code> — find a course by keyword 🔍\n` +
+      `<code>/course</code> — course details card 🎴\n` +
+      `<code>/download</code> — get a course file ⚡\n\n` +
+      `<i>💡 No args needed — <b>/course</b>, <b>/search</b> and <b>/download</b> are interactive: they ask you what you want. You can also type a course <b>name</b> after them:</i>\n` +
       `<code>/download Complete Machine Learning</code>\n\n` +
       (isAdmin
         ? `<b>🛡️ Admin tools</b>\n${DIV}\n` +
@@ -802,6 +824,11 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       await this.clearWizard(userId);
       return;
     }
+    if (wizard.kind === 'broadcast' && wizard.step === 'text') {
+      await this.broadcast(chatId, text, threadId);
+      await this.clearWizard(userId);
+      return;
+    }
     if (wizard.kind === 'download' && wizard.step === 'pick') {
       const slug = await this.resolveSlugByArg(text);
       if (slug) {
@@ -1097,6 +1124,124 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     );
   }
 
+  // ----- course picker (/course) -----
+
+  /** /course with no args — pick a course from buttons. */
+  private async startCoursePicker(chatId: number, userId: number, threadId?: number | null) {
+    const courses = await this.prisma.course.findMany({
+      where: { deletedAt: null },
+      orderBy: { title: 'asc' },
+      select: { title: true, slug: true },
+      take: 20,
+    });
+    if (courses.length === 0) {
+      return this.sendRich(
+        chatId,
+        `${this.brandHeader('Course Card')}\n\n` +
+          `📭 <b>No courses in the catalog yet.</b>\n\n` +
+          `Admins can add one with <code>/newcourse</code>.`,
+        threadId,
+      );
+    }
+    const kb: KbButton[][] = courses.map((c) => [
+      { text: `🎴 ${c.title.slice(0, 42)}`, callback_data: `course:${c.slug}` },
+    ]);
+    kb.push([{ text: '🏠 Home', callback_data: 'home' }]);
+    await this.sendRich(
+      chatId,
+      `${this.brandHeader('Course Card')}\n\n` +
+        `🎴 Which course's details do you want?\n` +
+        `Tap a button below, or type a <b>title</b>.`,
+      threadId,
+      kb,
+    );
+  }
+
+  // ----- link wizard (/link) -----
+
+  /** /link with no args — pick the course, then guide the file attach. */
+  private async startLinkWizard(chatId: number, userId: number, threadId?: number | null) {
+    const courses = await this.prisma.course.findMany({
+      where: { deletedAt: null },
+      orderBy: { title: 'asc' },
+      select: { title: true, slug: true },
+      take: 20,
+    });
+    if (courses.length === 0) {
+      return this.sendRich(
+        chatId,
+        `${this.brandHeader('Link a File')}\n\n` +
+          `📭 <b>No courses yet.</b> Create one with <code>/newcourse</code> first.`,
+        threadId,
+      );
+    }
+    const kb: KbButton[][] = courses.map((c) => [
+      { text: `🔗 ${c.title.slice(0, 42)}`, callback_data: `link:${c.slug}` },
+    ]);
+    kb.push([{ text: '🏠 Home', callback_data: 'home' }]);
+    await this.sendRich(
+      chatId,
+      `${this.brandHeader('Link a File')}\n\n` +
+        `🔗 Which course should get the file?\n` +
+        `Tap a course below, then forward the ZIP / reply to it.`,
+      threadId,
+      kb,
+    );
+  }
+
+  // ----- unlink wizard (/unlink) -----
+
+  /** /unlink with no args — pick a linked course to detach. */
+  private async startUnlinkWizard(chatId: number, userId: number, threadId?: number | null) {
+    const links = await this.prisma.telegramCourseLink.findMany({
+      include: { course: { select: { title: true, slug: true } } },
+      orderBy: { createdAt: 'desc' },
+      take: 20,
+    });
+    if (links.length === 0) {
+      return this.sendRich(
+        chatId,
+        `${this.brandHeader('Unlink')}\n\n` +
+          `📭 <b>No linked files.</b> Link one first with <code>/link</code>.`,
+        threadId,
+      );
+    }
+    const kb: KbButton[][] = links.map((l) => [
+      { text: `🗑️ ${l.course.title.slice(0, 42)}`, callback_data: `ul:${l.course.slug}` },
+    ]);
+    kb.push([{ text: '🏠 Home', callback_data: 'home' }]);
+    await this.sendRich(
+      chatId,
+      `${this.brandHeader('Unlink')}\n\n` +
+        `🗑️ Which course should have its file <b>detached</b>?`,
+      threadId,
+      kb,
+    );
+  }
+
+  // ----- broadcast wizard (/broadcast) -----
+
+  /** /broadcast with no args — ask for the message text. */
+  private async startBroadcastWizard(chatId: number, userId: number, threadId?: number | null) {
+    await this.clearWizard(userId);
+    const wizard: CourseWizard = {
+      kind: 'broadcast',
+      step: 'text',
+      data: {},
+      expiresAt: Date.now() + WIZARD_TTL_MS,
+    };
+    await this.saveWizard(userId, wizard);
+    await this.sendWizardStep(
+      chatId,
+      userId,
+      `${this.brandHeader('Broadcast')}\n\n` +
+        `📢 What message should I send to <b>all linked users</b>?\n` +
+        `Type it below — it goes out to everyone instantly.`,
+      undefined,
+      threadId,
+    );
+  }
+
   /**
    * /link <course-slug> [t.me link]
    * Easiest: in the group, REPLY to the ZIP message with /link <course-slug> —
@@ -1110,15 +1255,27 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     threadId?: number | null,
     fromId?: number,
   ) {
-    const slug = arg.split(/\s+/)[0] ?? '';
+    // Accept both argument orders:
+    //   /link <slug> <t.me link>          (classic)
+    //   /link <t.me link> <slug>          (link first — easier to paste)
+    const tokens = arg.split(/\s+/).filter(Boolean);
+    let slug = tokens[0] ?? '';
+    let url = tokens[1] ?? '';
+    const looksLikeLink = (t: string) =>
+      t.startsWith('http://') || t.startsWith('https://') || t.startsWith('t.me/');
+    if (tokens[0] && looksLikeLink(tokens[0])) {
+      url = tokens[0];
+      slug = tokens[1] ?? '';
+    }
     if (!slug || slug.includes('<') || slug.includes('>')) {
       return this.sendRich(
         chatId,
         `${this.brandHeader('Link a File')}\n\n` +
           `<b>Easiest way:</b> in the group, <b>REPLY to the ZIP message</b> with:\n` +
           `<code>/link &lt;course-slug&gt;</code>\n\n` +
-          `<b>Or in the DM:</b>\n` +
-          `<code>/link &lt;course-slug&gt; &lt;t.me/group/TOPIC/MESSAGE&gt;</code>\n\n` +
+          `<b>Or in the DM (either order):</b>\n` +
+          `<code>/link &lt;slug&gt; &lt;t.me/group/TOPIC/MESSAGE&gt;</code>\n` +
+          `<code>/link &lt;t.me/group/TOPIC/MESSAGE&gt; &lt;slug&gt;</code>\n\n` +
           `Pick a real slug from this list:\n\n${await this.courseSlugList()}`,
         threadId,
       );
@@ -1187,7 +1344,6 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     }
 
     // Mode 2: no file cached yet — guide the admin clearly.
-    const url = arg.split(/\s+/)[1] ?? '';
     if (!url) {
       await this.logActivity(fromId ?? null, chatId, 'link', `no file for ${slug} — guided admin`);
       return this.sendRich(
