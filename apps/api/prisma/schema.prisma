@@ -566,6 +566,18 @@ model TelegramActivity {
   detail    String
 }
 
+// Persisted interactive wizard state (e.g. /newcourse) so a Render
+// restart/redeploy mid-flow doesn't lose the user's progress.
+model TelegramWizard {
+  userId    BigInt   @id
+  kind      String // course | search | download
+  step      String
+  data      Json
+  messageId BigInt? // the bot's wizard bubble — edited in place each step
+  expiresAt DateTime
+  updatedAt DateTime @updatedAt
+}
+
 model LegalDocument {
   id          String   @id @default(cuid())
   type        String   @unique // terms | privacy | refund

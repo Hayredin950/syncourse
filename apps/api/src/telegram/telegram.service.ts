@@ -51,8 +51,10 @@ interface KbButton {
   url?: string;
 }
 
-/** Interactive /newcourse wizard state, keyed by Telegram user id. */
+/** Interactive wizard state, keyed by Telegram user id — persisted to Postgres
+ *  so a Render restart/redeploy mid-flow never loses the user's progress. */
 interface CourseWizard {
+  kind: 'course' | 'search' | 'download';
   step:
     | 'title'
     | 'instructor'
@@ -61,7 +63,9 @@ interface CourseWizard {
     | 'type'
     | 'price'
     | 'image'
-    | 'confirm';
+    | 'confirm'
+    | 'keyword'
+    | 'pick';
   data: {
     title?: string;
     instructor?: string;
@@ -70,7 +74,10 @@ interface CourseWizard {
     contentType?: string;
     price?: number | null;
     imageUrl?: string | null;
+    keyword?: string;
   };
+  /** the bot's wizard bubble — edited in place on every step (Argo-style) */
+  messageId?: number;
   expiresAt: number;
 }
 
@@ -103,8 +110,61 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     { messageId: number; fileId: string; fileName: string | null; fileSize: number | null }
   >();
 
-  /** Active /newcourse wizards, keyed by Telegram user id. */
+  /** Active wizards, keyed by Telegram user id (memory cache over Postgres). */
   private courseWizards = new Map<number, CourseWizard>();
+
+  private async loadWizard(userId: number): Promise<CourseWizard | null> {
+    const mem = this.courseWizards.get(userId);
+    if (mem) return mem;
+    const row = await this.prisma.telegramWizard
+      .findUnique({ where: { userId: BigInt(userId) } })
+      .catch(() => null);
+    if (!row) return null;
+    const wizard: CourseWizard = {
+      kind: row.kind as CourseWizard['kind'],
+      step: row.step as CourseWizard['step'],
+      data: (row.data as Record<string, unknown>) ?? {},
+      messageId: row.messageId ? Number(row.messageId) : undefined,
+      expiresAt: row.expiresAt.getTime(),
+    };
+    if (wizard.expiresAt < Date.now()) {
+      await this.clearWizard(userId);
+      return null;
+    }
+    this.courseWizards.set(userId, wizard);
+    return wizard;
+  }
+
+  private async saveWizard(userId: number, wizard: CourseWizard) {
+    this.courseWizards.set(userId, wizard);
+    await this.prisma.telegramWizard
+      .upsert({
+        where: { userId: BigInt(userId) },
+        create: {
+          userId: BigInt(userId),
+          kind: wizard.kind,
+          step: wizard.step,
+          data: (wizard.data as unknown) as object,
+          messageId: wizard.messageId ? BigInt(wizard.messageId) : null,
+          expiresAt: new Date(wizard.expiresAt),
+        },
+        update: {
+          kind: wizard.kind,
+          step: wizard.step,
+          data: (wizard.data as unknown) as object,
+          messageId: wizard.messageId ? BigInt(wizard.messageId) : null,
+          expiresAt: new Date(wizard.expiresAt),
+        },
+      })
+      .catch((e) => this.logger.error(`saveWizard failed: ${(e as Error).message}`));
+  }
+
+  private async clearWizard(userId: number) {
+    this.courseWizards.delete(userId);
+    await this.prisma.telegramWizard
+      .deleteMany({ where: { userId: BigInt(userId) } })
+      .catch(() => undefined);
+  }
 
   constructor(private readonly prisma: PrismaService) {}
 
@@ -245,8 +305,9 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     const arg = rest.join(' ').trim();
 
     // If an interactive wizard is in progress, plain text feeds it — unless
-    // the user explicitly sends /cancel (handled below).
-    const wizard = this.courseWizards.get(fromId);
+    // the user explicitly sends /cancel (handled below). Loaded from Postgres
+    // so a deploy mid-flow doesn't lose the wizard.
+    const wizard = await this.loadWizard(fromId);
     if (wizard && !text.startsWith('/') && !command.startsWith('wz:')) {
       await this.handleWizardText(chatId, fromId, text, threadId, wizard);
       return;
@@ -274,12 +335,22 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
         await this.sendCourseCard(chatId, arg, threadId);
         break;
       case '/search':
-        await this.searchCourses(chatId, arg, threadId);
+        if (arg) {
+          await this.searchCourses(chatId, arg, threadId);
+        } else {
+          // interactive: ask for a keyword
+          await this.startSearchWizard(chatId, fromId, threadId);
+        }
         break;
       case '/download': {
         // Accept a slug OR a title (case-insensitive):
         //   /download complete-machine-learning-and-data-science-2021
         //   /download Complete Machine Learning and Data Science 2021
+        if (!arg) {
+          // interactive: ask which course
+          await this.startDownloadWizard(chatId, fromId, threadId);
+          break;
+        }
         const slug = await this.resolveSlugByArg(arg);
         if (!slug) {
           await this.sendRich(
@@ -317,11 +388,12 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
         }
         break;
       case '/cancel':
-        if (this.courseWizards.delete(fromId)) {
+        if (await this.loadWizard(fromId)) {
+          await this.clearWizard(fromId);
           await this.sendRich(
             chatId,
             `${this.brandHeader('Cancelled')}\n\n` +
-              `❌ Course creation wizard cancelled. No changes were made.`,
+              `❌ Wizard cancelled. No changes were made.`,
             threadId,
           );
         } else {
@@ -355,6 +427,8 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     if (data.startsWith('dl:')) {
       // sending a file is a new message by nature (can't edit into a document)
       await this.sendCourseFile(chatId, data.slice(3));
+      // a download tap completes the interactive download picker
+      await this.clearWizard(cb.from.id);
     } else if (data.startsWith('pg:')) {
       const page = Number(data.slice(3));
       if (!Number.isNaN(page)) await this.sendCourseList(chatId, undefined, page, messageId);
@@ -485,12 +559,18 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       select: { courseId: true, fileName: true, fileSizeMb: true },
     });
     const linkByCourse = new Map(links.map((l) => [l.courseId, l]));
+    const deepLinkBase = `https://t.me/${BOT_USERNAME}?start=dl_`;
     const rows = courses
       .map((c, i) => {
         const l = linkByCourse.get(c.id);
         const startIdx = safePage * TelegramService.CATALOG_PAGE;
+        // title itself is a t.me deep-link when the file is ready — tap it
+        // anywhere to receive the file; no per-course buttons needed
+        const title = l
+          ? `<a href="${deepLinkBase}${c.slug}">${esc(c.title)}</a>`
+          : `<b>${esc(c.title)}</b>`;
         return (
-          `${startIdx + i + 1}. <b>${esc(c.title)}</b>\n` +
+          `${startIdx + i + 1}. ${title}\n` +
           `   🔑 <code>${esc(c.slug)}</code>\n` +
           (l
             ? `   📦 ${esc(l.fileName ?? 'file')}${l.fileSizeMb ? ` · ${l.fileSizeMb} MB` : ''} · ⭐ ${c.ratingAvg.toFixed(1)}`
@@ -501,12 +581,6 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       .join('\n\n');
 
     const kb: KbButton[][] = [];
-    // Download buttons — only for courses that have a linked file
-    for (const c of courses) {
-      if (linkByCourse.has(c.id)) {
-        kb.push([{ text: `📥 Download — ${c.slug.slice(0, 24)}`, callback_data: `dl:${c.slug}` }]);
-      }
-    }
     // Pagination row: ◀️ Prev · Page X/Y · Next ▶️
     const navRow: KbButton[] = [];
     if (safePage > 0) navRow.push({ text: '◀️ Prev', callback_data: `pg:${safePage - 1}` });
@@ -522,7 +596,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     const html =
       `${this.brandHeader('Course Catalog')}\n\n${rows}\n\n${DIV}\n` +
       `<i>${total} courses · page ${safePage + 1}/${pages}</i>` +
-      `\n<i>📥 buttons appear for courses with files ready — tap to download instantly</i>`;
+      `\n<i>Tap a course title to download it instantly ⚡</i>`;
     if (editMessageId) {
       await this.editRich(chatId, editMessageId, html, kb);
     } else {
@@ -595,46 +669,48 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     data: string,
     messageId?: number,
   ) {
-    const wizard = this.courseWizards.get(userId);
+    const wizard = await this.loadWizard(userId);
     if (!wizard) {
       await this.sendText(chatId, 'No wizard in progress — send /newcourse to start one.');
       return;
     }
     if (Date.now() > wizard.expiresAt) {
-      this.courseWizards.delete(userId);
+      await this.clearWizard(userId);
       await this.sendText(chatId, '⏳ The wizard expired (30 min). Send /newcourse to start over.');
       return;
     }
+    // the tapped message IS the wizard bubble — remember it for in-place edits
+    if (messageId) wizard.messageId = messageId;
+    await this.saveWizard(userId, wizard);
     if (data.startsWith('wz:cat:')) {
       wizard.data.categoryId = data.slice(7);
       wizard.step = 'level';
-      await this.askWizardLevel(chatId);
+      await this.askWizardLevel(chatId, userId);
     } else if (data.startsWith('wz:lvl:')) {
       wizard.data.levelName = data.slice(7);
       wizard.step = 'type';
-      await this.askWizardType(chatId);
+      await this.askWizardType(chatId, userId);
     } else if (data.startsWith('wz:type:')) {
       wizard.data.contentType = data.slice(8);
       wizard.step = 'price';
-      await this.sendRich(
+      await this.sendWizardStep(
         chatId,
+        userId,
         `${this.brandHeader('New Course Wizard')}\n\n` +
           `<b>Step 6/7 · Price</b>\n\n` +
           `💵 What's the <b>price in USD</b>?\n` +
           `Type a number like <code>49.99</code>, or <code>free</code>.`,
       );
     } else if (data === 'wz:create') {
-      await this.createCourseFromWizard(chatId, userId, wizard);
+      await this.createCourseFromWizard(chatId, userId);
     } else if (data === 'wz:cancel') {
-      this.courseWizards.delete(userId);
+      await this.clearWizard(userId);
       await this.sendRich(
         chatId,
         `${this.brandHeader('Cancelled')}\n\n` +
           `❌ Course creation cancelled. No changes were made.`,
       );
     }
-    // best-effort: dismiss the tapped button (spinner) — ignore failures
-    void messageId;
   }
 
   // ---------------------------------------------------------------
@@ -656,24 +732,54 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
   }
 
   // ---------------------------------------------------------------
-  // Interactive course creation wizard (/newcourse)
+  // Interactive wizards (course creation / search / download)
   // ---------------------------------------------------------------
+
+  /**
+   * Show the next wizard step. If the wizard already has a bubble, EDIT it in
+   * place (Argo-style, no message spam); otherwise send a new one. Always
+   * persists so a restart can't lose the flow.
+   */
+  private async sendWizardStep(
+    chatId: number,
+    userId: number,
+    html: string,
+    keyboard?: KbButton[][],
+    threadId?: number | null,
+  ) {
+    const wizard = await this.loadWizard(userId);
+    if (!wizard) return;
+    if (wizard.messageId) {
+      await this.editRich(chatId, wizard.messageId, html, keyboard);
+    } else {
+      const mid = await this.sendRich(chatId, html, threadId, keyboard);
+      if (mid) wizard.messageId = mid;
+      await this.saveWizard(userId, wizard);
+    }
+  }
+
+  // ----- course creation wizard -----
 
   /** Begin the guided course creation flow. */
   private async startCourseWizard(chatId: number, userId: number, threadId?: number | null) {
-    this.courseWizards.set(userId, {
+    await this.clearWizard(userId);
+    const wizard: CourseWizard = {
+      kind: 'course',
       step: 'title',
       data: {},
       expiresAt: Date.now() + WIZARD_TTL_MS,
-    });
-    await this.sendRich(
+    };
+    await this.saveWizard(userId, wizard);
+    await this.sendWizardStep(
       chatId,
+      userId,
       `${this.brandHeader('New Course Wizard')}\n\n` +
         `Let's create a course together — 7 quick steps, no command syntax needed. ✨\n\n` +
         `<b>Step 1/7 · Title</b>\n\n` +
         `📝 What is the course <b>title</b>?\n` +
         `Just type it, e.g. <i>Hands-On AI: Building Your First LLM-Powered App</i>\n\n` +
         `Send <code>/cancel</code> anytime to abort.`,
+      undefined,
       threadId,
     );
   }
@@ -687,28 +793,54 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     wizard: CourseWizard,
   ) {
     if (Date.now() > wizard.expiresAt) {
-      this.courseWizards.delete(userId);
-      await this.sendText(chatId, '⏳ The wizard expired (30 min). Send /newcourse to start over.', threadId);
+      await this.clearWizard(userId);
+      await this.sendText(chatId, '⏳ The wizard expired (30 min). Start over with /newcourse.', threadId);
+      return;
+    }
+    if (wizard.kind === 'search' && wizard.step === 'keyword') {
+      await this.searchCourses(chatId, text, threadId, wizard.messageId);
+      await this.clearWizard(userId);
+      return;
+    }
+    if (wizard.kind === 'download' && wizard.step === 'pick') {
+      const slug = await this.resolveSlugByArg(text);
+      if (slug) {
+        await this.clearWizard(userId);
+        await this.sendCourseFile(chatId, slug, threadId);
+      } else {
+        await this.sendWizardStep(
+          chatId,
+          userId,
+          `${this.brandHeader('Download')}\n\n` +
+            `❌ Couldn't find <code>${esc(text)}</code>. Type a course <b>title</b>, or tap a button below 👇`,
+          await this.downloadPickerButtons(),
+          threadId,
+        );
+      }
       return;
     }
     switch (wizard.step) {
       case 'title':
         wizard.data.title = text;
         wizard.step = 'instructor';
-        await this.sendRich(
+        await this.saveWizard(userId, wizard);
+        await this.sendWizardStep(
           chatId,
+          userId,
           `${this.brandHeader('New Course Wizard')}\n\n` +
             `✅ Title: <b>“${esc(text)}”</b>\n\n` +
             `<b>Step 2/7 · Instructor</b>\n\n` +
             `👨‍🏫 Who is the <b>instructor</b>? (name)\n` +
             `e.g. <i>Han-chung Lee</i>`,
+          undefined,
           threadId,
         );
         break;
       case 'instructor':
         wizard.data.instructor = text;
         wizard.step = 'category';
-        await this.askWizardCategory(chatId, threadId);
+        await this.saveWizard(userId, wizard);
+        await this.askWizardCategory(chatId, userId, threadId);
         break;
       case 'price': {
         const cleaned = text.replace(/[$,]/g, '').trim();
@@ -718,11 +850,13 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
         } else {
           const num = Number(cleaned);
           if (Number.isNaN(num) || num < 0) {
-            await this.sendRich(
+            await this.sendWizardStep(
               chatId,
+              userId,
               `${this.brandHeader('New Course Wizard')}\n\n` +
                 `⚠️ <b>Step 6/7 · Price</b>\n\n` +
                 `That doesn't look like a price. Send a number like <code>49.99</code>, or <code>free</code>.`,
+              undefined,
               threadId,
             );
             return;
@@ -730,12 +864,15 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
           wizard.data.price = num;
         }
         wizard.step = 'image';
-        await this.sendRich(
+        await this.saveWizard(userId, wizard);
+        await this.sendWizardStep(
           chatId,
+          userId,
           `${this.brandHeader('New Course Wizard')}\n\n` +
             `✅ Price: <b>${wizard.data.price == null ? 'Free' : `$${wizard.data.price}`}</b>\n\n` +
             `<b>Step 7/7 · Cover image</b> (optional)\n\n` +
             `🖼️ Paste an <b>image URL</b> for the course cover, or send <code>skip</code> to continue without one.`,
+          undefined,
           threadId,
         );
         break;
@@ -743,7 +880,8 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       case 'image':
         wizard.data.imageUrl = text.toLowerCase() === 'skip' ? null : text;
         wizard.step = 'confirm';
-        await this.showWizardConfirm(chatId, threadId, wizard);
+        await this.saveWizard(userId, wizard);
+        await this.showWizardConfirm(chatId, userId, threadId);
         break;
       default:
         await this.sendText(chatId, 'Please use the buttons below.', threadId);
@@ -751,7 +889,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** Step 3 — pick a category from the catalog (button list). */
-  private async askWizardCategory(chatId: number, threadId?: number | null) {
+  private async askWizardCategory(chatId: number, userId: number, threadId?: number | null) {
     const cats = await this.prisma.category.findMany({ orderBy: { name: 'asc' } });
     const kb: KbButton[][] = [];
     for (let i = 0; i < cats.length; i += 2) {
@@ -760,33 +898,35 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       if (cats[i + 1]) row.push({ text: `🏷️ ${cats[i + 1].name}`, callback_data: `wz:cat:${cats[i + 1].id}` });
       kb.push(row);
     }
-    await this.sendRich(
+    await this.sendWizardStep(
       chatId,
+      userId,
       `${this.brandHeader('New Course Wizard')}\n\n` +
         `<b>Step 3/7 · Category</b>\n\n` +
         `🏷️ Pick a <b>category</b> from the buttons below 👇`,
-      threadId,
       kb,
+      threadId,
     );
   }
 
   /** Step 4 — pick a level (button list). */
-  private async askWizardLevel(chatId: number, threadId?: number | null) {
+  private async askWizardLevel(chatId: number, userId: number, threadId?: number | null) {
     const levels = ['Beginner', 'Intermediate', 'Advanced', 'All Levels'];
     const kb: KbButton[][] = [levels.slice(0, 2).map((l) => ({ text: `🔰 ${l}`, callback_data: `wz:lvl:${l}` }))];
     kb.push(levels.slice(2).map((l) => ({ text: `🔰 ${l}`, callback_data: `wz:lvl:${l}` })));
-    await this.sendRich(
+    await this.sendWizardStep(
       chatId,
+      userId,
       `${this.brandHeader('New Course Wizard')}\n\n` +
         `<b>Step 4/7 · Level</b>\n\n` +
         `🔰 What <b>level</b> is this course?`,
-      threadId,
       kb,
+      threadId,
     );
   }
 
   /** Step 5 — pick content type (button list). */
-  private async askWizardType(chatId: number, threadId?: number | null) {
+  private async askWizardType(chatId: number, userId: number, threadId?: number | null) {
     const kb: KbButton[][] = [
       [
         { text: '📘 Course', callback_data: 'wz:type:course' },
@@ -797,25 +937,29 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
         { text: '🗺️ Roadmap', callback_data: 'wz:type:roadmap' },
       ],
     ];
-    await this.sendRich(
+    await this.sendWizardStep(
       chatId,
+      userId,
       `${this.brandHeader('New Course Wizard')}\n\n` +
         `<b>Step 5/7 · Content type</b>\n\n` +
         `📦 What kind of content is this?`,
-      threadId,
       kb,
+      threadId,
     );
   }
 
   /** Final review — show everything and let the admin confirm. */
-  private async showWizardConfirm(chatId: number, threadId: number | null | undefined, wizard: CourseWizard) {
+  private async showWizardConfirm(chatId: number, userId: number, threadId?: number | null) {
+    const wizard = await this.loadWizard(userId);
+    if (!wizard) return;
     const d = wizard.data;
     const cat = d.categoryId
       ? await this.prisma.category.findUnique({ where: { id: d.categoryId }, select: { name: true } })
       : null;
     const typeMap: Record<string, string> = { course: '📘 Course', 'mini-course': '📗 Mini-course', 'cheat-sheet': '📋 Cheat-sheet', roadmap: '🗺️ Roadmap' };
-    await this.sendRich(
+    await this.sendWizardStep(
       chatId,
+      userId,
       `${this.brandHeader('New Course Wizard')}\n\n` +
         `📋 <b>Review your course</b> — everything correct?\n\n` +
         `${DIV}\n` +
@@ -828,20 +972,22 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
         (d.imageUrl ? `🖼️ <a href="${esc(d.imageUrl)}">cover</a>\n` : '') +
         `${DIV}\n\n` +
         `Tap <b>✅ Create course</b> to publish it instantly — it will appear on the site and in <code>/courses</code>.`,
-      threadId,
       [
         [{ text: '✅ Create course', callback_data: 'wz:create' }],
         [{ text: '❌ Cancel', callback_data: 'wz:cancel' }],
       ],
+      threadId,
     );
   }
 
   /** Actually create the course from wizard data. */
-  private async createCourseFromWizard(chatId: number, userId: number, wizard: CourseWizard, threadId?: number | null) {
+  private async createCourseFromWizard(chatId: number, userId: number) {
+    const wizard = await this.loadWizard(userId);
+    if (!wizard) return;
     const d = wizard.data;
     if (!d.title || !d.instructor) {
-      await this.sendText(chatId, 'Wizard data is incomplete — start over with /newcourse.', threadId);
-      this.courseWizards.delete(userId);
+      await this.sendText(chatId, 'Wizard data is incomplete — start over with /newcourse.');
+      await this.clearWizard(userId);
       return;
     }
     try {
@@ -870,22 +1016,85 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
             : {}),
         },
       });
-      this.courseWizards.delete(userId);
+      const catName = d.categoryId
+        ? (await this.prisma.category.findUnique({ where: { id: d.categoryId }, select: { name: true } }))?.name
+        : null;
+      await this.clearWizard(userId);
       await this.logActivity(userId, chatId, 'course', `created ${slug}`);
       await this.sendRich(
         chatId,
         `${this.brandHeader('Course Created')}\n\n` +
           `✅ <b>“${esc(course.title)}”</b> is live on the site!\n\n` +
-          `👨‍🏫 ${esc(d.instructor)}${d.categoryId && (await this.prisma.category.findUnique({ where: { id: d.categoryId }, select: { name: true } })) ? ` · 🏷️ ${esc((await this.prisma.category.findUnique({ where: { id: d.categoryId }, select: { name: true } }))!.name)}` : ''}${d.price != null ? ` · 💵 $${d.price}` : ' · 💵 Free'}\n` +
+          `👨‍🏫 ${esc(d.instructor)}${catName ? ` · 🏷️ ${esc(catName)}` : ''}${d.price != null ? ` · 💵 $${d.price}` : ' · 💵 Free'}\n` +
           `🔗 <a href="${APP_URL}/courses/${course.slug}">Open the course →</a>\n\n` +
           `<b>Next:</b> attach the file — forward the ZIP to this bot, then send:\n<code>/link ${course.slug}</code>`,
-        threadId,
+        undefined,
         [[{ text: '🔗 Link a file', callback_data: `link:${course.slug}` }], [{ text: '📊 Stats', callback_data: 'stats' }]],
       );
     } catch (err) {
       this.logger.error(`createCourseFromWizard failed: ${(err as Error).message}`);
-      await this.sendText(chatId, 'Could not create the course — something went wrong. Try again with /newcourse.', threadId);
+      await this.sendText(chatId, 'Could not create the course — something went wrong. Try again with /newcourse.');
     }
+  }
+
+  // ----- search wizard -----
+
+  /** /search with no args — ask for a keyword (single bubble, edited in place). */
+  private async startSearchWizard(chatId: number, userId: number, threadId?: number | null) {
+    await this.clearWizard(userId);
+    const wizard: CourseWizard = {
+      kind: 'search',
+      step: 'keyword',
+      data: {},
+      expiresAt: Date.now() + WIZARD_TTL_MS,
+    };
+    await this.saveWizard(userId, wizard);
+    await this.sendWizardStep(
+      chatId,
+      userId,
+      `${this.brandHeader('Search')}\n\n` +
+        `🔍 What would you like to <b>search</b> for?\n` +
+        `Type a keyword, e.g. <i>machine learning</i> — or just send <code>/courses</code> to browse.`,
+      undefined,
+      threadId,
+    );
+  }
+
+  // ----- download wizard -----
+
+  /** Buttons for the interactive download picker (only courses with files). */
+  private async downloadPickerButtons(): Promise<KbButton[][]> {
+    const links = await this.prisma.telegramCourseLink.findMany({
+      include: { course: { select: { title: true, slug: true } } },
+      orderBy: { createdAt: 'desc' },
+      take: 20,
+    });
+    if (links.length === 0) return [];
+    return links.map((l) => [
+      { text: `📥 ${l.course.title.slice(0, 40)}`, callback_data: `dl:${l.course.slug}` },
+    ]);
+  }
+
+  /** /download with no args — ask which course (single bubble, edited in place). */
+  private async startDownloadWizard(chatId: number, userId: number, threadId?: number | null) {
+    await this.clearWizard(userId);
+    const wizard: CourseWizard = {
+      kind: 'download',
+      step: 'pick',
+      data: {},
+      expiresAt: Date.now() + WIZARD_TTL_MS,
+    };
+    await this.saveWizard(userId, wizard);
+    const buttons = await this.downloadPickerButtons();
+    await this.sendWizardStep(
+      chatId,
+      userId,
+      `${this.brandHeader('Download')}\n\n` +
+        `📥 Which course would you like?\n` +
+        `Tap a button below, or type a course <b>title</b>.`,
+      buttons,
+      threadId,
+    );
   }
 
   /**
@@ -1373,8 +1582,14 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** /search <keyword> — find courses by title keyword across the catalog. */
-  private async searchCourses(chatId: number, arg: string, threadId?: number | null) {
-    if (!arg) {
+  private async searchCourses(
+    chatId: number,
+    arg: string,
+    threadId?: number | null,
+    editMessageId?: number,
+  ) {
+    const words = arg.split(/\s+/).filter(Boolean);
+    if (!arg || words.length === 0) {
       return this.sendRich(
         chatId,
         `${this.brandHeader('Search')}\n\n` +
@@ -1383,7 +1598,6 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
         threadId,
       );
     }
-    const words = arg.split(/\s+/).filter(Boolean);
     const matches = await this.prisma.course.findMany({
       where: {
         deletedAt: null,
@@ -1393,43 +1607,40 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       take: 10,
     });
     if (matches.length === 0) {
-      return this.sendRich(
-        chatId,
+      const html =
         `${this.brandHeader('Search')}\n\n` +
-          `🔍 No results for <code>${esc(arg)}</code>.\n\n` +
-          `Try fewer words, or browse <code>/courses</code>.`,
-        threadId,
-      );
+        `🔍 No results for <code>${esc(arg)}</code>.\n\n` +
+        `Try fewer words, or browse <code>/courses</code>.`;
+      if (editMessageId) await this.editRich(chatId, editMessageId, html);
+      else await this.sendRich(chatId, html, threadId);
+      return;
     }
     const links = await this.prisma.telegramCourseLink.findMany({
       where: { courseId: { in: matches.map((m) => m.id) } },
       select: { courseId: true, fileName: true, fileSizeMb: true },
     });
     const linkByCourse = new Map(links.map((l) => [l.courseId, l]));
+    const deepLinkBase = `https://t.me/${BOT_USERNAME}?start=dl_`;
     const rows = matches
       .map((c, i) => {
         const l = linkByCourse.get(c.id);
+        const title = l
+          ? `<a href="${deepLinkBase}${c.slug}">${esc(c.title)}</a>`
+          : `<b>${esc(c.title)}</b>`;
         return (
-          `${i + 1}. <b>${esc(c.title)}</b>\n` +
+          `${i + 1}. ${title}\n` +
           `   🔑 <code>${esc(c.slug)}</code>${l ? ` · 📦 ${esc(l.fileName ?? 'file')}${l.fileSizeMb ? ` · ${l.fileSizeMb} MB` : ''}` : ' · 📭 no file yet'}` +
           (c.lecturer ? ` · 👨‍🏫 ${esc(c.lecturer.name)}` : '') +
           ` · ⭐ ${c.ratingAvg.toFixed(1)}`
         );
       })
       .join('\n\n');
-    const kb: KbButton[][] = matches
-      .filter((m) => linkByCourse.has(m.id))
-      .map((m) => [{ text: `📥 Download — ${m.slug.slice(0, 24)}`, callback_data: `dl:${m.slug}` }]);
-    kb.push([
-      { text: '🏠 Home', callback_data: 'home' },
-      { text: '❓ Help', callback_data: 'help' },
-    ]);
-    await this.sendRich(
-      chatId,
-      `${this.brandHeader('Search Results')}\n\n${rows}\n\n${DIV}\n<i>🔍 Results for “${esc(arg)}”</i>`,
-      threadId,
-      kb,
-    );
+    const kb: KbButton[][] = [
+      [{ text: '🏠 Home', callback_data: 'home' }, { text: '❓ Help', callback_data: 'help' }],
+    ];
+    const html = `${this.brandHeader('Search Results')}\n\n${rows}\n\n${DIV}\n<i>🔍 Results for “${esc(arg)}”</i>`;
+    if (editMessageId) await this.editRich(chatId, editMessageId, html, kb);
+    else await this.sendRich(chatId, html, threadId, kb);
   }
 
   /** Numbered list of every course slug — shown when /link can't find one. */
@@ -1501,13 +1712,19 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
    * All dynamic content MUST be passed through esc() before reaching here —
    * raw <angle brackets> in user data would otherwise break the message.
    */
+  /**
+   * Premium rich-text sender: parse_mode HTML + optional inline keyboard.
+   * All dynamic content MUST be passed through esc() before reaching here —
+   * raw <angle brackets> in user data would otherwise break the message.
+   * Returns the sent message id (used by the wizard to edit in place), or null.
+   */
   private async sendRich(
     chatId: number,
     html: string,
     threadId?: number | null,
     keyboard?: KbButton[][],
-  ) {
-    if (!this.enabled) return;
+  ): Promise<number | null> {
+    if (!this.enabled) return null;
     try {
       const body: Record<string, unknown> = {
         chat_id: chatId,
@@ -1520,7 +1737,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
         body.reply_markup = { inline_keyboard: keyboard };
       }
       const res = await this.api('sendMessage', body);
-      const json = (await res.json()) as { ok: boolean; description?: string };
+      const json = (await res.json()) as { ok: boolean; description?: string; result?: { message_id?: number } };
       if (!json.ok) {
         this.logger.error(`sendRich rejected (${chatId}): ${json.description} — text: ${html.slice(0, 200)}`);
         // Fall back to plain text so the user always gets an answer
@@ -1531,9 +1748,12 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
           .replace(/<code>(.*?)<\/code>/g, '$1')
           .replace(/<a href="[^"]*">(.*?)<\/a>/g, '$1');
         await this.sendText(chatId, plain, threadId);
+        return null;
       }
+      return json.result?.message_id ?? null;
     } catch (err) {
       this.logger.error(`sendRich failed: ${(err as Error).message}`);
+      return null;
     }
   }
 
