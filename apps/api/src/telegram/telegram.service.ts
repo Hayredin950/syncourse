@@ -1,5 +1,6 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
+import { CloudinaryService } from '../cloudinary/cloudinary.service';
 
 interface TelegramUpdate {
   update_id: number;
@@ -13,6 +14,7 @@ interface TelegramUpdate {
     document?: { file_id: string; file_name?: string; file_size?: number };
     video?: { file_id: string; file_name?: string; file_size?: number };
     audio?: { file_id: string; file_name?: string; file_size?: number };
+    photo?: { file_id: string }[];
     reply_to_message?: {
       message_id: number;
       message_thread_id?: number;
@@ -75,6 +77,7 @@ interface CourseWizard {
     contentType?: string;
     price?: number | null;
     imageUrl?: string | null;
+    imageIsTelegram?: boolean; // imageUrl is a Telegram file_id, not an http URL
     keyword?: string;
   };
   /** the bot's wizard bubble — edited in place on every step (Argo-style) */
@@ -123,6 +126,10 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     number,
     { messageId: number; fileId: string; fileName: string | null; fileSize: number | null }
   >();
+
+  /** Per-user cache of the most recent PHOTO the user sent — used to set a
+   *  course cover/banner directly from an image instead of a URL. */
+  private lastPhotoByUser = new Map<number, { fileId: string; updatedAt: number }>();
 
   /** Active wizards, keyed by Telegram user id (memory cache over Postgres). */
   private courseWizards = new Map<number, CourseWizard>();
@@ -276,7 +283,10 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       .catch(() => undefined);
   }
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly cloudinary: CloudinaryService,
+  ) {}
 
   private get token(): string {
     return process.env.TELEGRAM_BOT_TOKEN || '';
@@ -383,6 +393,11 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     // Persisted to Postgres so API restarts (Render free tier) don't lose it.
     const msgDoc = msg.document ?? msg.video ?? msg.audio;
     const fromId = msg.from?.id ?? chatId;
+    // remember the most recent photo — used by the wizard to set a cover
+    const photo = msg.photo && msg.photo.length > 0 ? msg.photo[msg.photo.length - 1] : undefined;
+    if (photo) {
+      this.lastPhotoByUser.set(fromId, { fileId: photo.file_id, updatedAt: Date.now() });
+    }
     if (msgDoc) {
       this.lastFileByUser.set(fromId, {
         messageId: msg.message_id,
@@ -418,6 +433,15 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     // the user explicitly sends /cancel (handled below). Loaded from Postgres
     // so a deploy mid-flow doesn't lose the wizard.
     const wizard = await this.loadWizard(fromId);
+    // A photo at the cover-image step sets the banner directly (no URL needed)
+    if (wizard && wizard.kind === 'course' && wizard.step === 'image' && photo && !msg.text) {
+      wizard.data.imageUrl = photo.file_id;
+      wizard.data.imageIsTelegram = true;
+      wizard.step = 'confirm';
+      await this.saveWizard(fromId, wizard);
+      await this.showWizardConfirm(chatId, fromId, threadId);
+      return;
+    }
     if (wizard && !text.startsWith('/') && !command.startsWith('wz:')) {
       await this.handleWizardText(chatId, fromId, text, threadId, wizard);
       return;
@@ -1053,7 +1077,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
           `${this.brandHeader('New Course Wizard')}\n\n` +
             `✅ Price: <b>${wizard.data.price == null ? 'Free' : `$${wizard.data.price}`}</b>\n\n` +
             `<b>Step 7/7 · Cover image</b> (optional)\n\n` +
-            `🖼️ Paste an <b>image URL</b> for the course cover, or send <code>skip</code> to continue without one.`,
+            `🖼️ <b>Send a photo</b> directly here, paste an <b>image URL</b>, or send <code>skip</code>.`,
           undefined,
           threadId,
         );
@@ -1061,6 +1085,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       }
       case 'image':
         wizard.data.imageUrl = text.toLowerCase() === 'skip' ? null : text;
+        wizard.data.imageIsTelegram = false;
         wizard.step = 'confirm';
         await this.saveWizard(userId, wizard);
         await this.showWizardConfirm(chatId, userId, threadId);
@@ -1182,6 +1207,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
         ? await this.prisma.level.findFirst({ where: { name: d.levelName } })
         : null;
       const slug = await this.uniqueCourseSlug(slugify(d.title));
+      const coverUrl = d.imageUrl ? await this.resolveImageUrl(d.imageUrl, Boolean(d.imageIsTelegram)) : null;
       const course = await this.prisma.course.create({
         data: {
           title: d.title,
@@ -1192,7 +1218,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
           contentType: ['mini-course', 'cheat-sheet', 'roadmap'].includes(d.contentType ?? '') ? d.contentType! : 'course',
           price: d.price ?? null,
           originalPrice: d.price ?? null,
-          thumbnailUrl: d.imageUrl || null,
+          thumbnailUrl: coverUrl,
           ...(d.categoryId
             ? { categories: { create: [{ categoryId: d.categoryId }] } }
             : {}),
@@ -1973,6 +1999,31 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     });
     if (courses.length === 0) return 'No courses yet — create one with /newcourse.\n';
     return courses.map((c) => `• <code>${esc(c.slug)}</code>`).join('\n') + '\n';
+  }
+
+  /**
+   * A Telegram file_id is only usable by the bot — download the image bytes
+   * and mirror them to Cloudinary so the web app can serve it as a cover.
+   */
+  private async resolveImageUrl(raw: string, isTelegram: boolean): Promise<string> {
+    if (!isTelegram) return raw; // already an http(s) URL
+    try {
+      const res = await this.api('getFile', { file_id: raw });
+      const json = (await res.json()) as { ok: boolean; result?: { file_path?: string }; description?: string };
+      if (!json.ok || !json.result?.file_path) {
+        this.logger.warn(`getFile failed for cover: ${json.description ?? 'no path'}`);
+        return raw;
+      }
+      const bytes = await fetch(`https://api.telegram.org/file/bot${this.token}/${json.result.file_path}`);
+      if (!bytes.ok) return raw;
+      const buffer = Buffer.from(new Uint8Array(await bytes.arrayBuffer()));
+      const mime = bytes.headers.get('content-type') ?? 'image/jpeg';
+      const upload = await this.cloudinary.uploadBuffer(buffer, mime, 'covers');
+      return upload.url;
+    } catch (err) {
+      this.logger.error(`resolveImageUrl failed: ${(err as Error).message}`);
+      return raw;
+    }
   }
 
   /** Upsert a course↔Telegram-file mapping. */

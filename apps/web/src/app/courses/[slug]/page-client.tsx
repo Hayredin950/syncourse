@@ -29,6 +29,15 @@ import { MobileHeader } from "@/components/Nav";
 
 export default function CoursePage() {
   const { slug } = useParams<{ slug: string }>();
+  return <CourseDetailView slug={slug ?? ""} />;
+}
+
+/**
+ * Full course detail, driven by a slug prop so it can be rendered both by the
+ * static route (via useParams) AND by the smart 404 fallback for courses that
+ * were created after the last build (no redeploy needed).
+ */
+export function CourseDetailView({ slug }: { slug: string }) {
   const router = useRouter();
   const { user, token } = useAuth();
 
