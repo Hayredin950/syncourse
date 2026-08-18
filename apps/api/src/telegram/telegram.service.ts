@@ -84,6 +84,19 @@ interface CourseWizard {
 
 const WIZARD_TTL_MS = 30 * 60 * 1000; // wizard expires after 30 min
 
+/** One entry in the user's navigation history (browser-style back/forward). */
+interface NavEntry {
+  key: 'home' | 'courses' | 'help' | 'stats' | 'course' | 'search';
+  arg?: string; // course slug / search keyword
+  page?: number; // catalog page for 'courses'
+}
+
+/** Per-user nav stack, keyed by Telegram user id. */
+interface NavState {
+  history: NavEntry[];
+  index: number;
+}
+
 const BOT_USERNAME = process.env.TELEGRAM_BOT_USERNAME || 'syncourse_bot';
 const APP_URL = process.env.PUBLIC_APP_URL || 'https://syncourse.pages.dev';
 
@@ -113,6 +126,102 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
 
   /** Active wizards, keyed by Telegram user id (memory cache over Postgres). */
   private courseWizards = new Map<number, CourseWizard>();
+
+  /** Per-user nav stacks (memory cache over Postgres). */
+  private navStates = new Map<number, NavState>();
+
+  private async loadNav(userId: number): Promise<NavState | null> {
+    const mem = this.navStates.get(userId);
+    if (mem) return mem;
+    const row = await this.prisma.telegramNav
+      .findUnique({ where: { userId: BigInt(userId) } })
+      .catch(() => null);
+    if (!row) return null;
+    const state: NavState = {
+      history: (row.history as unknown as NavEntry[]) ?? [],
+      index: row.index ?? 0,
+    };
+    this.navStates.set(userId, state);
+    return state;
+  }
+
+  private async saveNav(userId: number, state: NavState) {
+    this.navStates.set(userId, state);
+    await this.prisma.telegramNav
+      .upsert({
+        where: { userId: BigInt(userId) },
+        create: { userId: BigInt(userId), history: (state.history as unknown) as object, index: state.index },
+        update: { history: (state.history as unknown) as object, index: state.index },
+      })
+      .catch((e) => this.logger.error(`saveNav failed: ${(e as Error).message}`));
+  }
+
+  /** Push a new view onto the stack (truncating any forward history). */
+  private async pushNav(userId: number, entry: NavEntry) {
+    const state = (await this.loadNav(userId)) ?? { history: [], index: -1 };
+    state.history = state.history.slice(0, state.index + 1);
+    state.history.push(entry);
+    state.index = state.history.length - 1;
+    await this.saveNav(userId, state);
+  }
+
+  /**
+   * Browser-style back/forward row for a given user. ◀️ Back appears when
+   * history exists behind, ▶️ Forward appears when there's history ahead
+   * (i.e. after the user went back). Both edit the tapped message in place.
+   */
+  private async navRowFor(userId: number): Promise<KbButton[]> {
+    const state = await this.loadNav(userId);
+    if (!state || state.history.length === 0) return [];
+    const row: KbButton[] = [];
+    if (state.index > 0) row.push({ text: '◀️ Back', callback_data: 'nav:back' });
+    if (state.index < state.history.length - 1) row.push({ text: 'Forward ▶️', callback_data: 'nav:fwd' });
+    return row;
+  }
+
+  /** Go back one view — re-render the previous entry into the tapped message. */
+  private async navBack(chatId: number, userId: number, messageId?: number) {
+    const state = await this.loadNav(userId);
+    if (!state || state.index <= 0) return;
+    state.index--;
+    await this.saveNav(userId, state);
+    const entry = state.history[state.index];
+    if (entry) await this.renderNavEntry(chatId, userId, entry, messageId);
+  }
+
+  /** Go forward one view (redo) — re-render the next entry into the message. */
+  private async navFwd(chatId: number, userId: number, messageId?: number) {
+    const state = await this.loadNav(userId);
+    if (!state || state.index >= state.history.length - 1) return;
+    state.index++;
+    await this.saveNav(userId, state);
+    const entry = state.history[state.index];
+    if (entry) await this.renderNavEntry(chatId, userId, entry, messageId);
+  }
+
+  /** Re-render a nav entry (used by back/forward). */
+  private async renderNavEntry(chatId: number, userId: number, entry: NavEntry, messageId?: number) {
+    switch (entry.key) {
+      case 'home':
+        await this.sendWelcome(chatId, undefined, messageId, userId);
+        break;
+      case 'courses':
+        await this.sendCourseList(chatId, undefined, entry.page ?? 0, messageId, userId);
+        break;
+      case 'help':
+        await this.sendHelp(chatId, undefined, false, messageId, userId);
+        break;
+      case 'stats':
+        await this.sendStats(chatId, undefined, messageId, userId);
+        break;
+      case 'course':
+        await this.sendCourseCard(chatId, entry.arg ?? '', undefined, messageId, userId);
+        break;
+      case 'search':
+        await this.searchCourses(chatId, entry.arg ?? '', undefined, messageId, userId);
+        break;
+    }
+  }
 
   private async loadWizard(userId: number): Promise<CourseWizard | null> {
     const mem = this.courseWizards.get(userId);
@@ -322,19 +431,23 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
         } else if (payload.startsWith('download_')) {
           await this.sendLessonLink(chatId, payload.slice(9));
         } else {
-          await this.sendWelcome(chatId, threadId);
+          await this.pushNav(fromId, { key: 'home' });
+          await this.sendWelcome(chatId, threadId, undefined, fromId);
         }
         break;
       }
       case '/help':
-        await this.sendHelp(chatId, threadId);
+        await this.pushNav(fromId, { key: 'help' });
+        await this.sendHelp(chatId, threadId, undefined, undefined, fromId);
         break;
       case '/courses':
-        await this.sendCourseList(chatId, threadId);
+        await this.pushNav(fromId, { key: 'courses', page: 0 });
+        await this.sendCourseList(chatId, threadId, 0, undefined, fromId);
         break;
       case '/course':
         if (arg) {
-          await this.sendCourseCard(chatId, arg, threadId);
+          await this.pushNav(fromId, { key: 'course', arg });
+          await this.sendCourseCard(chatId, arg, threadId, undefined, fromId);
         } else {
           // interactive: pick a course from buttons
           await this.startCoursePicker(chatId, fromId, threadId);
@@ -342,7 +455,8 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
         break;
       case '/search':
         if (arg) {
-          await this.searchCourses(chatId, arg, threadId);
+          await this.pushNav(fromId, { key: 'search', arg });
+          await this.searchCourses(chatId, arg, threadId, undefined, fromId);
         } else {
           // interactive: ask for a keyword
           await this.startSearchWizard(chatId, fromId, threadId);
@@ -423,8 +537,12 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
         }
         break;
       case '/stats':
-        if (await this.isAdmin(fromId)) await this.sendStats(chatId, threadId);
-        else await this.sendText(chatId, '⛔ This command is for admins only.', threadId);
+        if (await this.isAdmin(fromId)) {
+          await this.pushNav(fromId, { key: 'stats' });
+          await this.sendStats(chatId, threadId, undefined, fromId);
+        } else {
+          await this.sendText(chatId, '⛔ This command is for admins only.', threadId);
+        }
         break;
       default:
         if (text.startsWith('/')) {
@@ -442,28 +560,48 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     } catch {
       /* ignore */
     }
+    const uid = cb.from.id;
     if (data.startsWith('dl:')) {
       // sending a file is a new message by nature (can't edit into a document)
       await this.sendCourseFile(chatId, data.slice(3));
       // a download tap completes the interactive download picker
-      await this.clearWizard(cb.from.id);
+      await this.clearWizard(uid);
+    } else if (data === 'nav:back') {
+      await this.navBack(chatId, uid, messageId);
+    } else if (data === 'nav:fwd') {
+      await this.navFwd(chatId, uid, messageId);
     } else if (data.startsWith('pg:')) {
       const page = Number(data.slice(3));
-      if (!Number.isNaN(page)) await this.sendCourseList(chatId, undefined, page, messageId);
+      if (!Number.isNaN(page)) {
+        // update the top nav entry's page instead of stacking a new one
+        const state = await this.loadNav(uid);
+        if (state && state.history.length) {
+          const top = state.history[state.index];
+          if (top && top.key === 'courses') top.page = page;
+          await this.saveNav(uid, state);
+        }
+        await this.sendCourseList(chatId, undefined, page, messageId, uid);
+      }
     } else if (data.startsWith('course:')) {
-      await this.sendCourseCard(chatId, data.slice(7));
+      const slug = data.slice(7);
+      await this.pushNav(uid, { key: 'course', arg: slug });
+      await this.sendCourseCard(chatId, slug, undefined, messageId, uid);
     } else if (data.startsWith('ul:')) {
       await this.unlinkCourse(chatId, data.slice(3));
     } else if (data === 'noop') {
       /* the "Page X/Y" label is not clickable */
     } else if (data === 'courses') {
-      await this.sendCourseList(chatId, undefined, 0, messageId);
+      await this.pushNav(uid, { key: 'courses', page: 0 });
+      await this.sendCourseList(chatId, undefined, 0, messageId, uid);
     } else if (data === 'help') {
-      await this.sendHelp(chatId, undefined, false, messageId);
+      await this.pushNav(uid, { key: 'help' });
+      await this.sendHelp(chatId, undefined, false, messageId, uid);
     } else if (data === 'home' || data === 'start') {
-      await this.sendWelcome(chatId, undefined, messageId);
+      await this.pushNav(uid, { key: 'home' });
+      await this.sendWelcome(chatId, undefined, messageId, uid);
     } else if (data === 'stats') {
-      await this.sendStats(chatId, undefined, messageId);
+      await this.pushNav(uid, { key: 'stats' });
+      await this.sendStats(chatId, undefined, messageId, uid);
     } else if (data.startsWith('wz:')) {
       await this.handleWizardCallback(chatId, cb.from.id, data, messageId);
     } else if (data.startsWith('link:')) {
@@ -488,7 +626,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     return `${DIV}\n🎓 <b>SYNCOURSE</b> <i>· ${title}</i>\n${DIV}`;
   }
 
-  private async sendWelcome(chatId: number, threadId?: number | null, editMessageId?: number) {
+  private async sendWelcome(chatId: number, threadId?: number | null, editMessageId?: number, userId?: number) {
     const [courseCount, linkedCount] = await Promise.all([
       this.prisma.course.count({ where: { deletedAt: null } }),
       this.prisma.telegramCourseLink.count(),
@@ -511,11 +649,15 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       [{ text: '📚 Browse courses', callback_data: 'courses' }],
       [{ text: '❓ Help', callback_data: 'help' }, { text: '🌐 Web app', url: APP_URL }],
     ];
+    if (userId) {
+      const nav = await this.navRowFor(userId);
+      if (nav.length) kb.push(nav);
+    }
     if (editMessageId) await this.editRich(chatId, editMessageId, html, kb);
     else await this.sendRich(chatId, html, threadId, kb);
   }
 
-  private async sendHelp(chatId: number, threadId?: number | null, isAdmin = false, editMessageId?: number) {
+  private async sendHelp(chatId: number, threadId?: number | null, isAdmin = false, editMessageId?: number, userId?: number) {
     const html =
       `${this.brandHeader('Command Center')}\n\n` +
       `<b>👤 For everyone</b>\n` +
@@ -541,6 +683,10 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       [{ text: '📚 Browse courses', callback_data: 'courses' }],
       [{ text: '🏠 Home', callback_data: 'home' }, { text: '🌐 Web app', url: APP_URL }],
     ];
+    if (userId) {
+      const nav = await this.navRowFor(userId);
+      if (nav.length) kb.push(nav);
+    }
     if (editMessageId) await this.editRich(chatId, editMessageId, html, kb);
     else await this.sendRich(chatId, html, threadId, kb);
   }
@@ -555,7 +701,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
    * (editMessageId set) it EDITs the tapped message in place — no message
    * spam, just like Argo Search's pagination.
    */
-  private async sendCourseList(chatId: number, threadId?: number | null, page = 0, editMessageId?: number) {
+  private async sendCourseList(chatId: number, threadId?: number | null, page = 0, editMessageId?: number, userId?: number) {
     const total = await this.prisma.course.count({ where: { deletedAt: null } });
     if (total === 0) {
       return this.sendRich(
@@ -614,6 +760,10 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       { text: '❓ Help', callback_data: 'help' },
       { text: '🌐 Web app', url: APP_URL },
     ]);
+    if (userId) {
+      const nav = await this.navRowFor(userId);
+      if (nav.length) kb.push(nav);
+    }
 
     const html =
       `${this.brandHeader('Course Catalog')}\n\n${rows}\n\n${DIV}\n` +
@@ -627,7 +777,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** /course <title-or-slug> — premium course details card with one-tap actions. */
-  private async sendCourseCard(chatId: number, arg: string, threadId?: number | null) {
+  private async sendCourseCard(chatId: number, arg: string, threadId?: number | null, editMessageId?: number, userId?: number) {
     if (!arg) {
       return this.sendRich(
         chatId,
@@ -681,7 +831,12 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       { text: '📚 All courses', callback_data: 'courses' },
       { text: '🏠 Home', callback_data: 'home' },
     ]);
-    await this.sendRich(chatId, html, threadId, kb);
+    if (userId) {
+      const nav = await this.navRowFor(userId);
+      if (nav.length) kb.push(nav);
+    }
+    if (editMessageId) await this.editRich(chatId, editMessageId, html, kb);
+    else await this.sendRich(chatId, html, threadId, kb);
   }
 
   /** Route wizard button presses (category / level / type / confirm / cancel). */
@@ -1536,7 +1691,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** /stats — admin platform dashboard. */
-  private async sendStats(chatId: number, threadId?: number | null, editMessageId?: number) {
+  private async sendStats(chatId: number, threadId?: number | null, editMessageId?: number, userId?: number) {
     const [courses, users, links, downloads, lessons, reviews] = await Promise.all([
       this.prisma.course.count({ where: { deletedAt: null } }),
       this.prisma.user.count(),
@@ -1568,6 +1723,10 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     const kb: KbButton[][] = [
       [{ text: '📚 Catalog', callback_data: 'courses' }, { text: '🏠 Home', callback_data: 'home' }],
     ];
+    if (userId) {
+      const nav = await this.navRowFor(userId);
+      if (nav.length) kb.push(nav);
+    }
     if (editMessageId) await this.editRich(chatId, editMessageId, html, kb);
     else await this.sendRich(chatId, html, threadId, kb);
   }
@@ -1743,6 +1902,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     arg: string,
     threadId?: number | null,
     editMessageId?: number,
+    userId?: number,
   ) {
     const words = arg.split(/\s+/).filter(Boolean);
     if (!arg || words.length === 0) {
@@ -1794,6 +1954,10 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     const kb: KbButton[][] = [
       [{ text: '🏠 Home', callback_data: 'home' }, { text: '❓ Help', callback_data: 'help' }],
     ];
+    if (userId) {
+      const nav = await this.navRowFor(userId);
+      if (nav.length) kb.push(nav);
+    }
     const html = `${this.brandHeader('Search Results')}\n\n${rows}\n\n${DIV}\n<i>🔍 Results for “${esc(arg)}”</i>`;
     if (editMessageId) await this.editRich(chatId, editMessageId, html, kb);
     else await this.sendRich(chatId, html, threadId, kb);

@@ -578,6 +578,15 @@ model TelegramWizard {
   updatedAt DateTime @updatedAt
 }
 
+// Per-user navigation history (browser-style back/forward) so in-place
+// edits never trap the user on a view they can't leave.
+model TelegramNav {
+  userId    BigInt   @id
+  history   Json // [{ key, arg?, page? }]
+  index     Int      @default(0)
+  updatedAt DateTime @updatedAt
+}
+
 model LegalDocument {
   id          String   @id @default(cuid())
   type        String   @unique // terms | privacy | refund
