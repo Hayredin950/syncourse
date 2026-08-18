@@ -237,12 +237,22 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       case '/course':
         await this.sendCourseCard(chatId, arg, threadId);
         break;
+      case '/search':
+        await this.searchCourses(chatId, arg, threadId);
+        break;
       case '/download': {
-        // tolerate extra text after the slug, e.g. the "(file name)" the user
-        // may paste from /courses — only the first token is the slug
-        const slug = arg.split(/\s+/)[0];
+        // Accept a slug OR a title (case-insensitive):
+        //   /download complete-machine-learning-and-data-science-2021
+        //   /download Complete Machine Learning and Data Science 2021
+        const slug = await this.resolveSlugByArg(arg);
         if (!slug) {
-          await this.sendText(chatId, 'Usage: /download <course-slug>\n\nSee /courses for the list of available courses.', threadId);
+          await this.sendRich(
+            chatId,
+            `${this.brandHeader('Download')}\n\n` +
+              `❌ Couldn't find a course matching <code>${esc(arg)}</code>.\n\n` +
+              `Try <code>/search &lt;keyword&gt;</code> or see all with <code>/courses</code>.`,
+            threadId,
+          );
         } else {
           await this.sendCourseFile(chatId, slug, threadId);
         }
@@ -348,8 +358,11 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       `${DIV}\n` +
       `<code>/start</code> — welcome & quick actions\n` +
       `<code>/courses</code> — browse courses with files 📚\n` +
-      `<code>/course &lt;slug&gt;</code> — course details card 🎴\n` +
-      `<code>/download &lt;slug&gt;</code> — get a course file ⚡\n\n` +
+      `<code>/search &lt;keyword&gt;</code> — find a course 🔍\n` +
+      `<code>/course &lt;title&gt;</code> — course details card 🎴\n` +
+      `<code>/download &lt;title&gt;</code> — get a course file ⚡\n\n` +
+      `<i>💡 /course and /download accept the course <b>name</b> — no slug needed:</i>\n` +
+      `<code>/download Complete Machine Learning</code>\n\n` +
       (isAdmin
         ? `<b>🛡️ Admin tools</b>\n${DIV}\n` +
           `<code>/link &lt;slug&gt;</code> — attach a file to a course (reply to the ZIP, or forward it first)\n` +
@@ -388,6 +401,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
         const c = l.course;
         return (
           `${i + 1}. <b>${esc(c.title)}</b>\n` +
+          `   🔑 <code>${esc(c.slug)}</code>\n` +
           `   📦 ${esc(l.fileName ?? 'file')}${l.fileSizeMb ? ` · ${l.fileSizeMb} MB` : ''} · ⭐ ${c.ratingAvg.toFixed(1)}` +
           (c.lecturer ? ` · 👨‍🏫 ${esc(c.lecturer.name)}` : '')
         );
@@ -410,42 +424,29 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     );
   }
 
-  /** /course <slug> — premium course details card with one-tap actions. */
+  /** /course <title-or-slug> — premium course details card with one-tap actions. */
   private async sendCourseCard(chatId: number, arg: string, threadId?: number | null) {
-    const slug = arg.split(/\s+/)[0];
-    if (!slug) {
+    if (!arg) {
       return this.sendRich(
         chatId,
         `${this.brandHeader('Course Card')}\n\n` +
-          `Usage: <code>/course &lt;course-slug&gt;</code>\n\n` +
-          `Get the slug from <code>/courses</code> or the <a href="${APP_URL}">web app</a>.`,
+          `Usage: <code>/course &lt;title or slug&gt;</code>\n\n` +
+          `Example: <code>/course Complete Machine Learning</code>\n` +
+          `Or browse with <code>/courses</code>.`,
         threadId,
       );
     }
-    const course = await this.prisma.course.findUnique({
-      where: { slug },
-      select: {
-        id: true,
-        title: true,
-        slug: true,
-        description: true,
-        ratingAvg: true,
-        price: true,
-        originalPrice: true,
-        contentType: true,
-        thumbnailUrl: true,
-        lecturer: { select: { name: true } },
-        level: { select: { name: true } },
-        categories: { include: { category: { select: { name: true } } } },
-        _count: { select: { lessons: true } },
-      },
-    });
+    const course = await this.resolveCourseByArg(arg);
     if (!course) {
+      const suggestions = await this.titleSuggestions(arg);
       return this.sendRich(
         chatId,
-        `${this.brandHeader('Course Card')}\n\n` +
-          `❌ Course <code>${esc(slug)}</code> not found.\n\n` +
-          `Try <code>/courses</code> to see what's available.`,
+          `${this.brandHeader('Course Card')}\n\n` +
+          `❌ No course matches <code>${esc(arg)}</code>.\n\n` +
+          (suggestions.length
+            ? `Did you mean:\n${suggestions}\n\n`
+            : '') +
+          `Try <code>/search &lt;keyword&gt;</code> or <code>/courses</code>.`,
         threadId,
       );
     }
@@ -917,6 +918,128 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     if (!lesson) return this.sendText(chatId, 'Lesson not found.', threadId);
     const text = `📚 Syncourse\n\n${lesson.course.title}\n${lesson.title}\n\n${APP_URL}/courses/${lesson.course.slug}/lessons/${lesson.id}`;
     await this.sendText(chatId, text, threadId);
+  }
+
+  /**
+   * Resolve a course from a user-friendly query: exact slug → exact title →
+   * title contains (case-insensitive). Lets users type the course name.
+   */
+  private async resolveCourseByArg(arg: string) {
+    const select = {
+      id: true,
+      title: true,
+      slug: true,
+      description: true,
+      ratingAvg: true,
+      price: true,
+      originalPrice: true,
+      contentType: true,
+      thumbnailUrl: true,
+      lecturer: { select: { name: true } },
+      level: { select: { name: true } },
+      categories: { include: { category: { select: { name: true } } } },
+      _count: { select: { lessons: true } },
+    } as const;
+    const firstToken = arg.split(/\s+/)[0] ?? '';
+    // 1) exact slug
+    const bySlug = await this.prisma.course.findUnique({ where: { slug: firstToken }, select });
+    if (bySlug) return bySlug;
+    // 2) exact title (case-insensitive)
+    const byTitle = await this.prisma.course.findFirst({
+      where: { deletedAt: null, title: { equals: arg, mode: 'insensitive' } },
+      select,
+    });
+    if (byTitle) return byTitle;
+    // 3) title contains (case-insensitive)
+    const byContains = await this.prisma.course.findFirst({
+      where: { deletedAt: null, title: { contains: arg, mode: 'insensitive' } },
+      select,
+    });
+    if (byContains) return byContains;
+    // 4) tolerate trailing junk like "(file name)" — match on the first token
+    const byFirstToken = await this.prisma.course.findFirst({
+      where: { deletedAt: null, title: { contains: firstToken, mode: 'insensitive' } },
+      select,
+    });
+    return byFirstToken ?? null;
+  }
+
+  /** Resolve just the slug from a title-or-slug query (for /download). */
+  private async resolveSlugByArg(arg: string): Promise<string | null> {
+    const course = await this.resolveCourseByArg(arg);
+    return course?.slug ?? null;
+  }
+
+  /** Up to 5 matching course titles + slugs, for "did you mean" suggestions. */
+  private async titleSuggestions(arg: string): Promise<string> {
+    const firstToken = arg.split(/\s+/)[0] ?? '';
+    if (!firstToken) return '';
+    const matches = await this.prisma.course.findMany({
+      where: { deletedAt: null, title: { contains: firstToken, mode: 'insensitive' } },
+      select: { title: true, slug: true },
+      take: 5,
+    });
+    return matches.map((m) => `• <code>${esc(m.slug)}</code> — ${esc(m.title)}`).join('\n');
+  }
+
+  /** /search <keyword> — find courses by title keyword across the catalog. */
+  private async searchCourses(chatId: number, arg: string, threadId?: number | null) {
+    if (!arg) {
+      return this.sendRich(
+        chatId,
+        `${this.brandHeader('Search')}\n\n` +
+          `Usage: <code>/search &lt;keyword&gt;</code>\n\n` +
+          `Example: <code>/search machine learning</code>`,
+        threadId,
+      );
+    }
+    const words = arg.split(/\s+/).filter(Boolean);
+    const matches = await this.prisma.course.findMany({
+      where: {
+        deletedAt: null,
+        AND: words.map((w) => ({ title: { contains: w, mode: 'insensitive' } })),
+      },
+      select: { id: true, title: true, slug: true, ratingAvg: true, lecturer: { select: { name: true } } },
+      take: 10,
+    });
+    if (matches.length === 0) {
+      return this.sendRich(
+        chatId,
+        `${this.brandHeader('Search')}\n\n` +
+          `🔍 No results for <code>${esc(arg)}</code>.\n\n` +
+          `Try fewer words, or browse <code>/courses</code>.`,
+        threadId,
+      );
+    }
+    const links = await this.prisma.telegramCourseLink.findMany({
+      where: { courseId: { in: matches.map((m) => m.id) } },
+      select: { courseId: true, fileName: true, fileSizeMb: true },
+    });
+    const linkByCourse = new Map(links.map((l) => [l.courseId, l]));
+    const rows = matches
+      .map((c, i) => {
+        const l = linkByCourse.get(c.id);
+        return (
+          `${i + 1}. <b>${esc(c.title)}</b>\n` +
+          `   🔑 <code>${esc(c.slug)}</code>${l ? ` · 📦 ${esc(l.fileName ?? 'file')}${l.fileSizeMb ? ` · ${l.fileSizeMb} MB` : ''}` : ' · 📭 no file yet'}` +
+          (c.lecturer ? ` · 👨‍🏫 ${esc(c.lecturer.name)}` : '') +
+          ` · ⭐ ${c.ratingAvg.toFixed(1)}`
+        );
+      })
+      .join('\n\n');
+    const kb: KbButton[][] = matches
+      .filter((m) => linkByCourse.has(m.id))
+      .map((m) => [{ text: `📥 Download — ${m.slug.slice(0, 24)}`, callback_data: `dl:${m.slug}` }]);
+    kb.push([
+      { text: '🏠 Home', callback_data: 'home' },
+      { text: '❓ Help', callback_data: 'help' },
+    ]);
+    await this.sendRich(
+      chatId,
+      `${this.brandHeader('Search Results')}\n\n${rows}\n\n${DIV}\n<i>🔍 Results for “${esc(arg)}”</i>`,
+      threadId,
+      kb,
+    );
   }
 
   /** Numbered list of every course slug — shown when /link can't find one. */
