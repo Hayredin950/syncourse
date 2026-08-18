@@ -166,19 +166,36 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
 
     // Cache the most recent file per USER so `/link <slug>` works as a plain
     // message right after forwarding a ZIP anywhere (no reply gesture needed).
+    // Persisted to Postgres so API restarts (Render free tier) don't lose it.
     const msgDoc = msg.document ?? msg.video ?? msg.audio;
-    const fileOwner = msg.from?.id ?? chatId;
+    const fromId = msg.from?.id ?? chatId;
     if (msgDoc) {
-      this.lastFileByUser.set(fileOwner, {
+      this.lastFileByUser.set(fromId, {
         messageId: msg.message_id,
         fileId: msgDoc.file_id,
         fileName: msgDoc.file_name ?? null,
         fileSize: msgDoc.file_size ?? null,
       });
+      await this.prisma.telegramUserFile
+        .upsert({
+          where: { userId: BigInt(fromId) },
+          create: {
+            userId: BigInt(fromId),
+            fileId: msgDoc.file_id,
+            fileName: msgDoc.file_name ?? null,
+            fileSizeMb: msgDoc.file_size ? Number((msgDoc.file_size / 1024 / 1024).toFixed(1)) : null,
+          },
+          update: {
+            fileId: msgDoc.file_id,
+            fileName: msgDoc.file_name ?? null,
+            fileSizeMb: msgDoc.file_size ? Number((msgDoc.file_size / 1024 / 1024).toFixed(1)) : null,
+          },
+        })
+        .catch((e) => this.logger.error(`persist user file failed: ${(e as Error).message}`));
+      await this.logActivity(fromId, chatId, 'file', `${msgDoc.file_name ?? 'file'} (${(msgDoc.file_size ?? 0) / 1024 / 1024} MB) cached`);
     }
 
     if (!msg.text) return;
-    const fromId = msg.from?.id ?? chatId;
     const text = msg.text.trim();
     const [command, ...rest] = text.split(/\s+/);
     const arg = rest.join(' ').trim();
@@ -202,6 +219,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
         await this.sendCourseList(chatId, threadId);
         break;
       case '/link':
+        await this.logActivity(fromId, chatId, 'command', `/link ${arg}`);
         if (await this.isAdmin(fromId)) await this.linkCourse(chatId, arg, msg, threadId, fromId);
         else await this.sendText(chatId, '⛔ This command is for admins only.', threadId);
         break;
@@ -279,7 +297,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     }
     const course = await this.prisma.course.findUnique({
       where: { slug },
-      select: { id: true, title: true, deletedAt: true },
+      select: { id: true, title: true, slug: true, deletedAt: true },
     });
     if (!course || course.deletedAt) {
       return this.sendText(
@@ -289,12 +307,17 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       );
     }
 
-    // Mode 1: a file to attach — from a reply, or the last file forwarded to
-    // this chat (so `/link <slug>` works as a plain message right after
-    // forwarding the ZIP to the bot).
+    // Mode 1: a file to attach — from a reply, or the last file this user
+    // forwarded to the bot (persisted in Postgres, so it survives restarts).
     const reply = msg?.reply_to_message;
     const replyDoc = reply ? (reply.document ?? reply.video ?? reply.audio) : undefined;
-    const cached = fromId ? this.lastFileByUser.get(fromId) : undefined;
+    const cachedMem = fromId ? this.lastFileByUser.get(fromId) : undefined;
+    const cachedDb = fromId
+      ? await this.prisma.telegramUserFile
+          .findUnique({ where: { userId: BigInt(fromId) } })
+          .catch(() => null)
+      : null;
+    const cached = cachedMem ?? (cachedDb ? { fileId: cachedDb.fileId, fileName: cachedDb.fileName, fileSize: cachedDb.fileSizeMb ? cachedDb.fileSizeMb * 1024 * 1024 : null } : undefined);
     const doc = replyDoc
       ? { file_id: replyDoc.file_id, file_name: replyDoc.file_name, file_size: replyDoc.file_size }
       : cached && !reply
@@ -313,6 +336,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
         fileSizeMb: doc.file_size ? Number((doc.file_size / 1024 / 1024).toFixed(1)) : null,
         caption: null,
       });
+      await this.logActivity(fromId ?? null, chatId, 'link', `✅ linked ${course.slug} -> ${doc.file_name ?? 'file'}`);
       return this.sendText(
         chatId,
         `✅ Linked “${course.title}” to ${sourceName} (${doc.file_name ?? 'file'}${doc.file_size ? ` · ${(doc.file_size / 1024 / 1024).toFixed(1)} MB` : ''}).\n\nUsers can now get it with /download ${slug} or from the app.`,
@@ -326,6 +350,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     // Mode 2: no file cached yet — guide the admin clearly.
     const url = arg.split(/\s+/)[1] ?? '';
     if (!url) {
+      await this.logActivity(fromId ?? null, chatId, 'link', `no file for ${slug} — guided admin`);
       return this.sendText(
         chatId,
         'I don\'t have a file for that yet. Two easy ways:\n\n' +
@@ -605,6 +630,26 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
   // Helpers
   // ---------------------------------------------------------------
 
+  /** Persist a bot event so /telegram/status can show what happened. */
+  private async logActivity(userId: number | null, chatId: number, kind: string, detail: string) {
+    try {
+      await this.prisma.telegramActivity.create({
+        data: {
+          userId: userId ? BigInt(userId) : null,
+          chatId: BigInt(chatId),
+          kind,
+          detail: detail.slice(0, 400),
+        },
+      });
+      // keep the table small
+      await this.prisma.telegramActivity
+        .deleteMany({ where: { at: { lt: new Date(Date.now() - 7 * 24 * 3600 * 1000) } } })
+        .catch(() => undefined);
+    } catch {
+      /* never break the bot because logging failed */
+    }
+  }
+
   private async sendText(chatId: number, text: string, threadId?: number | null) {
     if (!this.enabled) return;
     try {
@@ -637,11 +682,15 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     return slug;
   }
 
-  /** Bot status + linked courses — used by the API /telegram/status endpoint. */
+  /** Bot status + linked courses + recent activity — /telegram/status endpoint. */
   async status() {
     const links = await this.prisma.telegramCourseLink.findMany({
       include: { course: { select: { title: true, slug: true } } },
     });
+    const activity = await this.prisma.telegramActivity
+      .findMany({ orderBy: { at: 'desc' }, take: 15 })
+      .catch(() => []);
+    const filesCached = await this.prisma.telegramUserFile.count().catch(() => 0);
     return {
       enabled: this.enabled,
       polling: this.polling,
@@ -650,11 +699,19 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       lastUpdateAt: this.lastUpdateAt ? this.lastUpdateAt.toISOString() : null,
       pollErrors: this.pollErrors,
       lastError: this.lastError,
+      filesCached,
       linkedCourses: links.map((l) => ({
         slug: l.course.slug,
         title: l.course.title,
         fileName: l.fileName,
         chatUsername: l.chatUsername,
+      })),
+      recentActivity: activity.map((a) => ({
+        at: a.at.toISOString(),
+        kind: a.kind,
+        userId: a.userId ? a.userId.toString() : null,
+        chatId: a.chatId ? a.chatId.toString() : null,
+        detail: a.detail,
       })),
     };
   }

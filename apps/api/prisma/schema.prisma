@@ -544,6 +544,28 @@ model TelegramCourseLink {
   course          Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
 }
 
+// Persisted "last file this Telegram user sent/forwarded to the bot" so
+// `/link <slug>` works even after the API instance restarts (Render free
+// tier sleeps/redeploys wipe in-memory state).
+model TelegramUserFile {
+  userId     BigInt    @id
+  fileId     String
+  fileName   String?
+  fileSizeMb Float?
+  updatedAt  DateTime  @updatedAt
+}
+
+// Ring-buffer-ish log of the last bot events — surfaced via /telegram/status
+// so link failures are diagnosable without Render log access.
+model TelegramActivity {
+  id        String   @id @default(cuid())
+  at        DateTime @default(now())
+  userId    BigInt?
+  chatId    BigInt?
+  kind      String // update | link | error | reply
+  detail    String
+}
+
 model LegalDocument {
   id          String   @id @default(cuid())
   type        String   @unique // terms | privacy | refund
