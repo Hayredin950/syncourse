@@ -51,15 +51,27 @@ export class ReviewsService {
     const review = await this.prisma.review.create({
       data: { userId, courseId, body, containsSpoilers, parentId },
     });
+    // the client inserts this straight into the rendered list, so return the
+    // same shape the course-detail endpoint does — otherwise the new card is
+    // missing its stars and the reply body can't be shown until a reload
+    const myRating = await this.prisma.rating.findUnique({
+      where: { userId_courseId: { userId, courseId } },
+      select: { stars: true },
+    });
     return {
       id: review.id,
       userName: user?.name ?? 'Anonymous',
       userAvatar: user?.avatarUrl ?? null,
       isStaff: user?.isStaff ?? false,
+      rating: myRating?.stars ?? 0,
       body: review.body,
       containsSpoilers: review.containsSpoilers,
+      editedAt: review.editedAt,
       createdAt: review.createdAt,
       replyCount: 0,
+      upvotes: review.upvotes,
+      upvoted: false,
+      replies: [],
     };
   }
 

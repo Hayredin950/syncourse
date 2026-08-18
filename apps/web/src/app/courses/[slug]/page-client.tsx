@@ -180,10 +180,17 @@ export function CourseDetailView({ slug }: { slug: string }) {
   const onReplyToReview = async (parentId: string, body: string) => {
     if (!requireAuth() || !body.trim()) return;
     try {
-      await post(`/courses/${slug}/reviews`, { body, parentId });
+      const reply = await post<ReviewRow>(`/courses/${slug}/reviews`, { body, parentId });
       setCourse((c) =>
         c
-          ? { ...c, reviews: c.reviews.map((rv) => (rv.id === parentId ? { ...rv, replyCount: rv.replyCount + 1 } : rv)) }
+          ? {
+              ...c,
+              reviews: c.reviews.map((rv) =>
+                rv.id === parentId
+                  ? { ...rv, replyCount: rv.replyCount + 1, replies: [...(rv.replies ?? []), reply] }
+                  : rv,
+              ),
+            }
           : c,
       );
       flash("Reply posted");
@@ -802,10 +809,18 @@ function ReviewCard({
       )}
 
       {review.replies?.map((rep) => (
-        <div key={rep.id} style={{ marginLeft: 16, borderLeft: "2px solid hsl(var(--border))", paddingLeft: 12 }}>
-          <p className="muted" style={{ fontSize: 11 }}>
-            <strong>{rep.userName}</strong>: {rep.body}
-          </p>
+        <div
+          key={rep.id}
+          style={{ marginLeft: 16, borderLeft: "2px solid hsl(var(--border))", paddingLeft: 12, marginTop: 10 }}
+        >
+          <div className="review-top">
+            <span>
+              <strong style={{ fontSize: 12 }}>{rep.userName}</strong>{" "}
+              <span className="muted mono" style={{ fontSize: 10 }}>· {formatDate(rep.createdAt)}</span>
+              {rep.isStaff && <span className="badge" style={{ marginLeft: 6 }}>Staff</span>}
+            </span>
+          </div>
+          <p style={{ fontSize: 12, margin: "4px 0 0" }}>{rep.body}</p>
         </div>
       ))}
     </div>

@@ -250,7 +250,15 @@ export class CatalogService {
         where: { courseId: course.id, parentId: null },
         orderBy: [{ upvotes: 'desc' }, { createdAt: 'desc' }],
         take: 12,
-        include: { user: { select: { name: true, avatarUrl: true, isStaff: true } }, _count: { select: { replies: true } } },
+        include: {
+          user: { select: { name: true, avatarUrl: true, isStaff: true } },
+          _count: { select: { replies: true } },
+          // without this the cards show a "1 reply" counter but no reply text
+          replies: {
+            orderBy: { createdAt: 'asc' },
+            include: { user: { select: { name: true, avatarUrl: true, isStaff: true } } },
+          },
+        },
       }),
       this.downloadStats(course.id),
       userId
@@ -312,6 +320,20 @@ export class CatalogService {
         upvotes: r.upvotes,
         upvoted: upvotedIds.has(r.id),
         isStaff: r.user.isStaff,
+        replies: r.replies.map((rep) => ({
+          id: rep.id,
+          userName: rep.user.name,
+          userAvatar: rep.user.avatarUrl,
+          isStaff: rep.user.isStaff,
+          rating: ratingByUser.get(rep.userId) ?? 0,
+          body: rep.body,
+          containsSpoilers: rep.containsSpoilers,
+          editedAt: rep.editedAt,
+          createdAt: rep.createdAt,
+          replyCount: 0,
+          upvotes: rep.upvotes,
+          upvoted: upvotedIds.has(rep.id),
+        })),
       })),
       downloads: downloadStats,
     };
