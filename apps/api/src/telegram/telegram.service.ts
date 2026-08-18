@@ -51,6 +51,31 @@ interface KbButton {
   url?: string;
 }
 
+/** Interactive /newcourse wizard state, keyed by Telegram user id. */
+interface CourseWizard {
+  step:
+    | 'title'
+    | 'instructor'
+    | 'category'
+    | 'level'
+    | 'type'
+    | 'price'
+    | 'image'
+    | 'confirm';
+  data: {
+    title?: string;
+    instructor?: string;
+    categoryId?: string;
+    levelName?: string;
+    contentType?: string;
+    price?: number | null;
+    imageUrl?: string | null;
+  };
+  expiresAt: number;
+}
+
+const WIZARD_TTL_MS = 30 * 60 * 1000; // wizard expires after 30 min
+
 const BOT_USERNAME = process.env.TELEGRAM_BOT_USERNAME || 'syncourse_bot';
 const APP_URL = process.env.PUBLIC_APP_URL || 'https://syncourse.pages.dev';
 
@@ -77,6 +102,9 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     number,
     { messageId: number; fileId: string; fileName: string | null; fileSize: number | null }
   >();
+
+  /** Active /newcourse wizards, keyed by Telegram user id. */
+  private courseWizards = new Map<number, CourseWizard>();
 
   constructor(private readonly prisma: PrismaService) {}
 
@@ -216,6 +244,14 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     const [command, ...rest] = text.split(/\s+/);
     const arg = rest.join(' ').trim();
 
+    // If an interactive wizard is in progress, plain text feeds it — unless
+    // the user explicitly sends /cancel (handled below).
+    const wizard = this.courseWizards.get(fromId);
+    if (wizard && !text.startsWith('/') && !command.startsWith('wz:')) {
+      await this.handleWizardText(chatId, fromId, text, threadId, wizard);
+      return;
+    }
+
     switch (command) {
       case '/start': {
         const payload = arg.replace(/^@\w+\s*/, '');
@@ -268,8 +304,29 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
         else await this.sendText(chatId, '⛔ This command is for admins only.', threadId);
         break;
       case '/newcourse':
-        if (await this.isAdmin(fromId)) await this.newCourse(chatId, arg, threadId);
-        else await this.sendText(chatId, '⛔ This command is for admins only.', threadId);
+        if (await this.isAdmin(fromId)) {
+          if (arg.split('|').length >= 2 && arg.split('|')[0]?.trim() && arg.split('|')[1]?.trim()) {
+            // one-line format still supported: /newcourse Title | Instructor | ...
+            await this.newCourse(chatId, arg, threadId);
+          } else {
+            // otherwise start the guided wizard
+            await this.startCourseWizard(chatId, fromId, threadId);
+          }
+        } else {
+          await this.sendText(chatId, '⛔ This command is for admins only.', threadId);
+        }
+        break;
+      case '/cancel':
+        if (this.courseWizards.delete(fromId)) {
+          await this.sendRich(
+            chatId,
+            `${this.brandHeader('Cancelled')}\n\n` +
+              `❌ Course creation wizard cancelled. No changes were made.`,
+            threadId,
+          );
+        } else {
+          await this.sendText(chatId, 'Nothing to cancel — no wizard in progress.', threadId);
+        }
         break;
       case '/broadcast':
         if (await this.isAdmin(fromId)) await this.broadcast(chatId, arg, threadId);
@@ -309,6 +366,8 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       await this.sendWelcome(chatId);
     } else if (data === 'stats') {
       await this.sendStats(chatId);
+    } else if (data.startsWith('wz:')) {
+      await this.handleWizardCallback(chatId, cb.from.id, data, cb.message?.message_id);
     } else if (data.startsWith('link:')) {
       const slug = data.slice(5);
       await this.sendRich(
@@ -520,6 +579,55 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     await this.sendRich(chatId, html, threadId, kb);
   }
 
+  /** Route wizard button presses (category / level / type / confirm / cancel). */
+  private async handleWizardCallback(
+    chatId: number,
+    userId: number,
+    data: string,
+    messageId?: number,
+  ) {
+    const wizard = this.courseWizards.get(userId);
+    if (!wizard) {
+      await this.sendText(chatId, 'No wizard in progress — send /newcourse to start one.');
+      return;
+    }
+    if (Date.now() > wizard.expiresAt) {
+      this.courseWizards.delete(userId);
+      await this.sendText(chatId, '⏳ The wizard expired (30 min). Send /newcourse to start over.');
+      return;
+    }
+    if (data.startsWith('wz:cat:')) {
+      wizard.data.categoryId = data.slice(7);
+      wizard.step = 'level';
+      await this.askWizardLevel(chatId);
+    } else if (data.startsWith('wz:lvl:')) {
+      wizard.data.levelName = data.slice(7);
+      wizard.step = 'type';
+      await this.askWizardType(chatId);
+    } else if (data.startsWith('wz:type:')) {
+      wizard.data.contentType = data.slice(8);
+      wizard.step = 'price';
+      await this.sendRich(
+        chatId,
+        `${this.brandHeader('New Course Wizard')}\n\n` +
+          `<b>Step 6/7 · Price</b>\n\n` +
+          `💵 What's the <b>price in USD</b>?\n` +
+          `Type a number like <code>49.99</code>, or <code>free</code>.`,
+      );
+    } else if (data === 'wz:create') {
+      await this.createCourseFromWizard(chatId, userId, wizard);
+    } else if (data === 'wz:cancel') {
+      this.courseWizards.delete(userId);
+      await this.sendRich(
+        chatId,
+        `${this.brandHeader('Cancelled')}\n\n` +
+          `❌ Course creation cancelled. No changes were made.`,
+      );
+    }
+    // best-effort: dismiss the tapped button (spinner) — ignore failures
+    void messageId;
+  }
+
   // ---------------------------------------------------------------
   // Admin commands
   // ---------------------------------------------------------------
@@ -536,6 +644,239 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       select: { id: true },
     });
     return Boolean(staff);
+  }
+
+  // ---------------------------------------------------------------
+  // Interactive course creation wizard (/newcourse)
+  // ---------------------------------------------------------------
+
+  /** Begin the guided course creation flow. */
+  private async startCourseWizard(chatId: number, userId: number, threadId?: number | null) {
+    this.courseWizards.set(userId, {
+      step: 'title',
+      data: {},
+      expiresAt: Date.now() + WIZARD_TTL_MS,
+    });
+    await this.sendRich(
+      chatId,
+      `${this.brandHeader('New Course Wizard')}\n\n` +
+        `Let's create a course together — 7 quick steps, no command syntax needed. ✨\n\n` +
+        `<b>Step 1/7 · Title</b>\n\n` +
+        `📝 What is the course <b>title</b>?\n` +
+        `Just type it, e.g. <i>Hands-On AI: Building Your First LLM-Powered App</i>\n\n` +
+        `Send <code>/cancel</code> anytime to abort.`,
+      threadId,
+    );
+  }
+
+  /** Feed plain-text answers into the active wizard. */
+  private async handleWizardText(
+    chatId: number,
+    userId: number,
+    text: string,
+    threadId: number | null | undefined,
+    wizard: CourseWizard,
+  ) {
+    if (Date.now() > wizard.expiresAt) {
+      this.courseWizards.delete(userId);
+      await this.sendText(chatId, '⏳ The wizard expired (30 min). Send /newcourse to start over.', threadId);
+      return;
+    }
+    switch (wizard.step) {
+      case 'title':
+        wizard.data.title = text;
+        wizard.step = 'instructor';
+        await this.sendRich(
+          chatId,
+          `${this.brandHeader('New Course Wizard')}\n\n` +
+            `✅ Title: <b>“${esc(text)}”</b>\n\n` +
+            `<b>Step 2/7 · Instructor</b>\n\n` +
+            `👨‍🏫 Who is the <b>instructor</b>? (name)\n` +
+            `e.g. <i>Han-chung Lee</i>`,
+          threadId,
+        );
+        break;
+      case 'instructor':
+        wizard.data.instructor = text;
+        wizard.step = 'category';
+        await this.askWizardCategory(chatId, threadId);
+        break;
+      case 'price': {
+        const cleaned = text.replace(/[$,]/g, '').trim();
+        const lower = cleaned.toLowerCase();
+        if (lower === 'free' || lower === '0' || lower === '') {
+          wizard.data.price = null;
+        } else {
+          const num = Number(cleaned);
+          if (Number.isNaN(num) || num < 0) {
+            await this.sendRich(
+              chatId,
+              `${this.brandHeader('New Course Wizard')}\n\n` +
+                `⚠️ <b>Step 6/7 · Price</b>\n\n` +
+                `That doesn't look like a price. Send a number like <code>49.99</code>, or <code>free</code>.`,
+              threadId,
+            );
+            return;
+          }
+          wizard.data.price = num;
+        }
+        wizard.step = 'image';
+        await this.sendRich(
+          chatId,
+          `${this.brandHeader('New Course Wizard')}\n\n` +
+            `✅ Price: <b>${wizard.data.price == null ? 'Free' : `$${wizard.data.price}`}</b>\n\n` +
+            `<b>Step 7/7 · Cover image</b> (optional)\n\n` +
+            `🖼️ Paste an <b>image URL</b> for the course cover, or send <code>skip</code> to continue without one.`,
+          threadId,
+        );
+        break;
+      }
+      case 'image':
+        wizard.data.imageUrl = text.toLowerCase() === 'skip' ? null : text;
+        wizard.step = 'confirm';
+        await this.showWizardConfirm(chatId, threadId, wizard);
+        break;
+      default:
+        await this.sendText(chatId, 'Please use the buttons below.', threadId);
+    }
+  }
+
+  /** Step 3 — pick a category from the catalog (button list). */
+  private async askWizardCategory(chatId: number, threadId?: number | null) {
+    const cats = await this.prisma.category.findMany({ orderBy: { name: 'asc' } });
+    const kb: KbButton[][] = [];
+    for (let i = 0; i < cats.length; i += 2) {
+      const row: KbButton[] = [];
+      if (cats[i]) row.push({ text: `🏷️ ${cats[i].name}`, callback_data: `wz:cat:${cats[i].id}` });
+      if (cats[i + 1]) row.push({ text: `🏷️ ${cats[i + 1].name}`, callback_data: `wz:cat:${cats[i + 1].id}` });
+      kb.push(row);
+    }
+    await this.sendRich(
+      chatId,
+      `${this.brandHeader('New Course Wizard')}\n\n` +
+        `<b>Step 3/7 · Category</b>\n\n` +
+        `🏷️ Pick a <b>category</b> from the buttons below 👇`,
+      threadId,
+      kb,
+    );
+  }
+
+  /** Step 4 — pick a level (button list). */
+  private async askWizardLevel(chatId: number, threadId?: number | null) {
+    const levels = ['Beginner', 'Intermediate', 'Advanced', 'All Levels'];
+    const kb: KbButton[][] = [levels.slice(0, 2).map((l) => ({ text: `🔰 ${l}`, callback_data: `wz:lvl:${l}` }))];
+    kb.push(levels.slice(2).map((l) => ({ text: `🔰 ${l}`, callback_data: `wz:lvl:${l}` })));
+    await this.sendRich(
+      chatId,
+      `${this.brandHeader('New Course Wizard')}\n\n` +
+        `<b>Step 4/7 · Level</b>\n\n` +
+        `🔰 What <b>level</b> is this course?`,
+      threadId,
+      kb,
+    );
+  }
+
+  /** Step 5 — pick content type (button list). */
+  private async askWizardType(chatId: number, threadId?: number | null) {
+    const kb: KbButton[][] = [
+      [
+        { text: '📘 Course', callback_data: 'wz:type:course' },
+        { text: '📗 Mini-course', callback_data: 'wz:type:mini-course' },
+      ],
+      [
+        { text: '📋 Cheat-sheet', callback_data: 'wz:type:cheat-sheet' },
+        { text: '🗺️ Roadmap', callback_data: 'wz:type:roadmap' },
+      ],
+    ];
+    await this.sendRich(
+      chatId,
+      `${this.brandHeader('New Course Wizard')}\n\n` +
+        `<b>Step 5/7 · Content type</b>\n\n` +
+        `📦 What kind of content is this?`,
+      threadId,
+      kb,
+    );
+  }
+
+  /** Final review — show everything and let the admin confirm. */
+  private async showWizardConfirm(chatId: number, threadId: number | null | undefined, wizard: CourseWizard) {
+    const d = wizard.data;
+    const cat = d.categoryId
+      ? await this.prisma.category.findUnique({ where: { id: d.categoryId }, select: { name: true } })
+      : null;
+    const typeMap: Record<string, string> = { course: '📘 Course', 'mini-course': '📗 Mini-course', 'cheat-sheet': '📋 Cheat-sheet', roadmap: '🗺️ Roadmap' };
+    await this.sendRich(
+      chatId,
+      `${this.brandHeader('New Course Wizard')}\n\n` +
+        `📋 <b>Review your course</b> — everything correct?\n\n` +
+        `${DIV}\n` +
+        `📝 <b>${esc(d.title ?? '—')}</b>\n` +
+        `👨‍🏫 ${esc(d.instructor ?? '—')}\n` +
+        `🏷️ ${cat ? esc(cat.name) : '—'}\n` +
+        `🔰 ${esc(d.levelName ?? '—')}\n` +
+        `📦 ${typeMap[d.contentType ?? ''] ?? '—'}\n` +
+        `💵 ${d.price == null ? 'Free' : `$${d.price}`}\n` +
+        (d.imageUrl ? `🖼️ <a href="${esc(d.imageUrl)}">cover</a>\n` : '') +
+        `${DIV}\n\n` +
+        `Tap <b>✅ Create course</b> to publish it instantly — it will appear on the site and in <code>/courses</code>.`,
+      threadId,
+      [
+        [{ text: '✅ Create course', callback_data: 'wz:create' }],
+        [{ text: '❌ Cancel', callback_data: 'wz:cancel' }],
+      ],
+    );
+  }
+
+  /** Actually create the course from wizard data. */
+  private async createCourseFromWizard(chatId: number, userId: number, wizard: CourseWizard, threadId?: number | null) {
+    const d = wizard.data;
+    if (!d.title || !d.instructor) {
+      await this.sendText(chatId, 'Wizard data is incomplete — start over with /newcourse.', threadId);
+      this.courseWizards.delete(userId);
+      return;
+    }
+    try {
+      const lecturer = await this.prisma.lecturer.upsert({
+        where: { slug: slugify(d.instructor) },
+        update: {},
+        create: { name: d.instructor, slug: slugify(d.instructor) },
+      });
+      const level = d.levelName
+        ? await this.prisma.level.findFirst({ where: { name: d.levelName } })
+        : null;
+      const slug = await this.uniqueCourseSlug(slugify(d.title));
+      const course = await this.prisma.course.create({
+        data: {
+          title: d.title,
+          slug,
+          description: `Learn ${d.title} — brought to you by Syncourse. Start learning today.`,
+          lecturerId: lecturer.id,
+          levelId: level?.id ?? null,
+          contentType: ['mini-course', 'cheat-sheet', 'roadmap'].includes(d.contentType ?? '') ? d.contentType! : 'course',
+          price: d.price ?? null,
+          originalPrice: d.price ?? null,
+          thumbnailUrl: d.imageUrl || null,
+          ...(d.categoryId
+            ? { categories: { create: [{ categoryId: d.categoryId }] } }
+            : {}),
+        },
+      });
+      this.courseWizards.delete(userId);
+      await this.logActivity(userId, chatId, 'course', `created ${slug}`);
+      await this.sendRich(
+        chatId,
+        `${this.brandHeader('Course Created')}\n\n` +
+          `✅ <b>“${esc(course.title)}”</b> is live on the site!\n\n` +
+          `👨‍🏫 ${esc(d.instructor)}${d.categoryId && (await this.prisma.category.findUnique({ where: { id: d.categoryId }, select: { name: true } })) ? ` · 🏷️ ${esc((await this.prisma.category.findUnique({ where: { id: d.categoryId }, select: { name: true } }))!.name)}` : ''}${d.price != null ? ` · 💵 $${d.price}` : ' · 💵 Free'}\n` +
+          `🔗 <a href="${APP_URL}/courses/${course.slug}">Open the course →</a>\n\n` +
+          `<b>Next:</b> attach the file — forward the ZIP to this bot, then send:\n<code>/link ${course.slug}</code>`,
+        threadId,
+        [[{ text: '🔗 Link a file', callback_data: `link:${course.slug}` }], [{ text: '📊 Stats', callback_data: 'stats' }]],
+      );
+    } catch (err) {
+      this.logger.error(`createCourseFromWizard failed: ${(err as Error).message}`);
+      await this.sendText(chatId, 'Could not create the course — something went wrong. Try again with /newcourse.', threadId);
+    }
   }
 
   /**
