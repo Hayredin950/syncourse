@@ -432,16 +432,13 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       await this.logActivity(fromId, chatId, 'file', `${msgDoc.file_name ?? 'file'} (${(msgDoc.file_size ?? 0) / 1024 / 1024} MB) cached`);
     }
 
-    if (!msg.text) return;
-    const text = msg.text.trim();
-    const [command, ...rest] = text.split(/\s+/);
-    const arg = rest.join(' ').trim();
-
     // If an interactive wizard is in progress, plain text feeds it — unless
     // the user explicitly sends /cancel (handled below). Loaded from Postgres
     // so a deploy mid-flow doesn't lose the wizard.
     const wizard = await this.loadWizard(fromId);
-    // A photo at the cover-image step sets the banner directly (no URL needed)
+    // A photo at the cover-image step sets the banner directly (no URL needed).
+    // NOTE: this MUST run before the `if (!msg.text) return;` below — photos
+    // carry no text, so the early return would silently drop them.
     if (wizard && photo && !msg.text) {
       if (wizard.kind === 'course' && wizard.step === 'image') {
         wizard.data.imageUrl = photo.file_id;
@@ -456,6 +453,11 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
         return;
       }
     }
+
+    if (!msg.text) return;
+    const text = msg.text.trim();
+    const [command, ...rest] = text.split(/\s+/);
+    const arg = rest.join(' ').trim();
     if (wizard && !text.startsWith('/') && !command.startsWith('wz:')) {
       await this.handleWizardText(chatId, fromId, text, threadId, wizard);
       return;
