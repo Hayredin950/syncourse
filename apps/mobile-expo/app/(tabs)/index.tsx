@@ -55,6 +55,9 @@ export default function HomeScreen() {
     return (
       <View style={styles.center}>
         <Text style={styles.errorText}>Could not reach the server</Text>
+        <Text style={[styles.errorText, { fontSize: 11, color: "#999", marginTop: 4, textAlign: "center" }]}>
+          {(error as Error)?.message ?? "No data yet"}
+        </Text>
         <Link href="/auth" style={styles.retry}>
           Retry
         </Link>

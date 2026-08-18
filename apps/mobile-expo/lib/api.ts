@@ -70,9 +70,18 @@ async function request<T>(
 
   let res: Response;
   try {
-    res = await fetch(`${API_URL}/api${path}`, { ...options, headers });
-  } catch {
-    throw new ApiError(0, "Cannot reach the server. Check your connection.");
+    // Android's default OkHttp timeout is ~10s, but the Render free tier
+    // can cold-start for 30-60s — give it a real chance instead of failing.
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 60_000);
+    try {
+      res = await fetch(`${API_URL}/api${path}`, { ...options, headers, signal: controller.signal });
+    } finally {
+      clearTimeout(timer);
+    }
+  } catch (e) {
+    const aborted = e instanceof Error && e.name === "AbortError";
+    throw new ApiError(0, aborted ? "The server is waking up — please retry." : "Cannot reach the server. Check your connection.");
   }
   const text = await res.text();
   const data = text ? JSON.parse(text) : null;
