@@ -56,7 +56,7 @@ interface KbButton {
 /** Interactive wizard state, keyed by Telegram user id — persisted to Postgres
  *  so a Render restart/redeploy mid-flow never loses the user's progress. */
 interface CourseWizard {
-  kind: 'course' | 'search' | 'download' | 'broadcast';
+  kind: 'course' | 'search' | 'download' | 'broadcast' | 'coursefind' | 'edit';
   step:
     | 'title'
     | 'instructor'
@@ -68,7 +68,10 @@ interface CourseWizard {
     | 'confirm'
     | 'keyword'
     | 'pick'
-    | 'text';
+    | 'text'
+    | 'name'
+    | 'field'
+    | 'value';
   data: {
     title?: string;
     instructor?: string;
@@ -79,6 +82,11 @@ interface CourseWizard {
     imageUrl?: string | null;
     imageIsTelegram?: boolean; // imageUrl is a Telegram file_id, not an http URL
     keyword?: string;
+    /** /edit wizard — the course being edited */
+    editCourseId?: string;
+    editCourseSlug?: string;
+    /** /edit wizard — which of the 7 fields is being edited */
+    editField?: 'title' | 'instructor' | 'category' | 'level' | 'type' | 'price' | 'image';
   };
   /** the bot's wizard bubble — edited in place on every step (Argo-style) */
   messageId?: number;
@@ -434,13 +442,19 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     // so a deploy mid-flow doesn't lose the wizard.
     const wizard = await this.loadWizard(fromId);
     // A photo at the cover-image step sets the banner directly (no URL needed)
-    if (wizard && wizard.kind === 'course' && wizard.step === 'image' && photo && !msg.text) {
-      wizard.data.imageUrl = photo.file_id;
-      wizard.data.imageIsTelegram = true;
-      wizard.step = 'confirm';
-      await this.saveWizard(fromId, wizard);
-      await this.showWizardConfirm(chatId, fromId, threadId);
-      return;
+    if (wizard && photo && !msg.text) {
+      if (wizard.kind === 'course' && wizard.step === 'image') {
+        wizard.data.imageUrl = photo.file_id;
+        wizard.data.imageIsTelegram = true;
+        wizard.step = 'confirm';
+        await this.saveWizard(fromId, wizard);
+        await this.showWizardConfirm(chatId, fromId, threadId);
+        return;
+      }
+      if (wizard.kind === 'edit' && wizard.step === 'value' && wizard.data.editField === 'image') {
+        await this.applyEditField(chatId, fromId, threadId, wizard, { imageTelegramFileId: photo.file_id });
+        return;
+      }
     }
     if (wizard && !text.startsWith('/') && !command.startsWith('wz:')) {
       await this.handleWizardText(chatId, fromId, text, threadId, wizard);
@@ -464,6 +478,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
         await this.pushNav(fromId, { key: 'help' });
         await this.sendHelp(chatId, threadId, undefined, undefined, fromId);
         break;
+      case '/courselist':
       case '/courses':
         await this.pushNav(fromId, { key: 'courses', page: 0 });
         await this.sendCourseList(chatId, threadId, 0, undefined, fromId);
@@ -473,8 +488,19 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
           await this.pushNav(fromId, { key: 'course', arg });
           await this.sendCourseCard(chatId, arg, threadId, undefined, fromId);
         } else {
-          // interactive: pick a course from buttons
-          await this.startCoursePicker(chatId, fromId, threadId);
+          // interactive: prompt for a name/slug and find a match
+          await this.startCourseLookup(chatId, fromId, threadId);
+        }
+        break;
+      case '/edit':
+        if (await this.isAdmin(fromId)) {
+          if (arg) {
+            await this.startEditWizard(chatId, fromId, arg, threadId);
+          } else {
+            await this.pickerFor(chatId, fromId, 'edit', 0, undefined, threadId);
+          }
+        } else {
+          await this.sendText(chatId, '⛔ This command is for admins only.', threadId);
         }
         break;
       case '/search':
@@ -610,6 +636,14 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       const slug = data.slice(7);
       await this.pushNav(uid, { key: 'course', arg: slug });
       await this.sendCourseCard(chatId, slug, undefined, messageId, uid);
+    } else if (data.startsWith('edit:')) {
+      const slug = data.slice(5);
+      await this.startEditWizard(chatId, uid, slug);
+    } else if (data.startsWith('epg:')) {
+      const page = Number(data.slice(4));
+      if (!Number.isNaN(page)) {
+        await this.pickerFor(chatId, uid, 'edit', page, messageId);
+      }
     } else if (data.startsWith('ul:')) {
       await this.unlinkCourse(chatId, data.slice(3));
     } else if (data === 'noop') {
@@ -687,17 +721,18 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       `<b>👤 For everyone</b>\n` +
       `${DIV}\n` +
       `<code>/start</code> — welcome & quick actions\n` +
-      `<code>/courses</code> — browse courses (tap a title to download) 📚\n` +
+      `<code>/courselist</code> — browse courses (tap a title to download) 📚\n` +
       `<code>/search</code> — find a course by keyword 🔍\n` +
-      `<code>/course</code> — course details card 🎴\n` +
+      `<code>/course</code> — course details card 🎴 (type a name, no args needed)\n` +
       `<code>/download</code> — get a course file ⚡\n\n` +
       `<i>💡 No args needed — <b>/course</b>, <b>/search</b> and <b>/download</b> are interactive: they ask you what you want. You can also type a course <b>name</b> after them:</i>\n` +
       `<code>/download Complete Machine Learning</code>\n\n` +
       (isAdmin
         ? `<b>🛡️ Admin tools</b>\n${DIV}\n` +
+          `<code>/edit &lt;title&gt;</code> — edit any course field with buttons ✏️\n` +
           `<code>/link &lt;slug&gt;</code> — attach a file to a course (reply to the ZIP, or forward it first)\n` +
           `<code>/unlink &lt;slug&gt;</code> — detach the file\n` +
-          `<code>/newcourse</code> — create a course: <i>Title | Instructor | Category | type | price | image</i>\n` +
+          `<code>/newcourse</code> — create a course (guided wizard, 7 steps)\n` +
           `<code>/broadcast &lt;text&gt;</code> — message all linked users 📢\n` +
           `<code>/stats</code> — platform dashboard 📊\n\n`
         : '') +
@@ -902,6 +937,21 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
           `💵 What's the <b>price in USD</b>?\n` +
           `Type a number like <code>49.99</code>, or <code>free</code>.`,
       );
+    } else if (data.startsWith('wz:ef:')) {
+      const field = data.slice(6) as CourseWizard['data']['editField'];
+      await this.askEditValue(chatId, userId, field);
+    } else if (data.startsWith('wz:ev:cat:')) {
+      wizard.data.editField = 'category';
+      await this.saveWizard(userId, wizard);
+      await this.applyEditChoice(chatId, userId, undefined, data.slice(10));
+    } else if (data.startsWith('wz:ev:lvl:')) {
+      wizard.data.editField = 'level';
+      await this.saveWizard(userId, wizard);
+      await this.applyEditChoice(chatId, userId, undefined, data.slice(10));
+    } else if (data.startsWith('wz:ev:type:')) {
+      wizard.data.editField = 'type';
+      await this.saveWizard(userId, wizard);
+      await this.applyEditChoice(chatId, userId, undefined, data.slice(11));
     } else if (data === 'wz:create') {
       await this.createCourseFromWizard(chatId, userId);
     } else if (data === 'wz:cancel') {
@@ -1023,6 +1073,33 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
           threadId,
         );
       }
+      return;
+    }
+    // /course with no args — user types a name or slug, we find the match
+    if (wizard.kind === 'coursefind' && wizard.step === 'name') {
+      const slug = await this.resolveSlugByArg(text);
+      if (slug) {
+        const mid = wizard.messageId;
+        await this.clearWizard(userId);
+        await this.sendCourseCard(chatId, slug, threadId, mid, userId);
+      } else {
+        const suggestions = await this.titleSuggestions(text);
+        await this.sendWizardStep(
+          chatId,
+          userId,
+          `${this.brandHeader('Course Card')}\n\n` +
+            `❌ No course matches <code>${esc(text)}</code>.\n\n` +
+            (suggestions.length ? `Did you mean:\n${suggestions}\n\n` : '') +
+            `Type a course <b>name or slug</b> — or send <code>/courselist</code> to browse.`,
+          undefined,
+          threadId,
+        );
+      }
+      return;
+    }
+    // /edit — the user typed the new value for the field they chose
+    if (wizard.kind === 'edit' && wizard.step === 'value') {
+      await this.applyEditField(chatId, userId, threadId, wizard, { textValue: text });
       return;
     }
     switch (wizard.step) {
@@ -1305,36 +1382,27 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     );
   }
 
-  // ----- course picker (/course) -----
+  // ----- course lookup (/course) -----
 
-  /** /course with no args — pick a course from buttons. */
-  private async startCoursePicker(chatId: number, userId: number, threadId?: number | null) {
-    const courses = await this.prisma.course.findMany({
-      where: { deletedAt: null },
-      orderBy: { title: 'asc' },
-      select: { title: true, slug: true },
-      take: 20,
-    });
-    if (courses.length === 0) {
-      return this.sendRich(
-        chatId,
-        `${this.brandHeader('Course Card')}\n\n` +
-          `📭 <b>No courses in the catalog yet.</b>\n\n` +
-          `Admins can add one with <code>/newcourse</code>.`,
-        threadId,
-      );
-    }
-    const kb: KbButton[][] = courses.map((c) => [
-      { text: `🎴 ${c.title.slice(0, 42)}`, callback_data: `course:${c.slug}` },
-    ]);
-    kb.push([{ text: '🏠 Home', callback_data: 'home' }]);
-    await this.sendRich(
+  /** /course with no args — prompt for a name or slug, then find the match. */
+  private async startCourseLookup(chatId: number, userId: number, threadId?: number | null) {
+    await this.clearWizard(userId);
+    const wizard: CourseWizard = {
+      kind: 'coursefind',
+      step: 'name',
+      data: {},
+      expiresAt: Date.now() + WIZARD_TTL_MS,
+    };
+    await this.saveWizard(userId, wizard);
+    await this.sendWizardStep(
       chatId,
+      userId,
       `${this.brandHeader('Course Card')}\n\n` +
-        `🎴 Which course's details do you want?\n` +
-        `Tap a button below, or type a <b>title</b>.`,
+        `🎴 Which course do you want to see?\n` +
+        `Type the course <b>name</b> or <b>slug</b> — e.g. <i>machine learning</i>\n\n` +
+        `Or send <code>/courselist</code> to browse everything.`,
+      undefined,
       threadId,
-      kb,
     );
   }
 
@@ -1421,6 +1489,337 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       undefined,
       threadId,
     );
+  }
+
+  // ----- edit course wizard (/edit) -----
+
+  /** Generic paginated course picker (8/page, single bubble). Used by /edit. */
+  private async pickerFor(
+    chatId: number,
+    userId: number,
+    kind: 'edit',
+    page = 0,
+    editMessageId?: number,
+    threadId?: number | null,
+  ) {
+    const total = await this.prisma.course.count({ where: { deletedAt: null } });
+    if (total === 0) {
+      return this.sendRich(
+        chatId,
+        `${this.brandHeader('Edit Course')}\n\n` +
+          `📭 <b>No courses yet.</b> Create one with <code>/newcourse</code> first.`,
+        threadId,
+      );
+    }
+    const PAGE = 8;
+    const pages = Math.ceil(total / PAGE);
+    const safePage = Math.min(Math.max(page, 0), pages - 1);
+    const courses = await this.prisma.course.findMany({
+      where: { deletedAt: null },
+      orderBy: { title: 'asc' },
+      skip: safePage * PAGE,
+      take: PAGE,
+      select: { title: true, slug: true },
+    });
+    const kb: KbButton[][] = courses.map((c) => [
+      { text: `✏️ ${c.title.slice(0, 44)}`, callback_data: `edit:${c.slug}` },
+    ]);
+    const navRow: KbButton[] = [];
+    if (safePage > 0) navRow.push({ text: '◀️ Prev', callback_data: `epg:${safePage - 1}` });
+    navRow.push({ text: `📄 ${safePage + 1}/${pages}`, callback_data: 'noop' });
+    if (safePage < pages - 1) navRow.push({ text: 'Next ▶️', callback_data: `epg:${safePage + 1}` });
+    kb.push(navRow);
+    kb.push([{ text: '🏠 Home', callback_data: 'home' }]);
+    const html =
+      `${this.brandHeader('Edit Course')}\n\n` +
+      `✏️ Which course do you want to <b>edit</b>?\n` +
+      `Tap a course below, or send <code>/edit &lt;title&gt;</code> directly.\n\n` +
+      `${DIV}\n<i>${total} courses · page ${safePage + 1}/${pages}</i>`;
+    if (editMessageId) await this.editRich(chatId, editMessageId, html, kb);
+    else await this.sendRich(chatId, html, threadId, kb);
+  }
+
+  /** /edit <title-or-slug> — pick a field, then change it. */
+  private async startEditWizard(chatId: number, userId: number, arg: string, threadId?: number | null) {
+    const slug = await this.resolveSlugByArg(arg);
+    if (!slug) {
+      const suggestions = await this.titleSuggestions(arg);
+      return this.sendRich(
+        chatId,
+        `${this.brandHeader('Edit Course')}\n\n` +
+          `❌ No course matches <code>${esc(arg)}</code>.\n\n` +
+          (suggestions.length ? `Did you mean:\n${suggestions}\n\n` : '') +
+          `Try <code>/edit &lt;title&gt;</code> or send <code>/edit</code> to pick from a list.`,
+        threadId,
+      );
+    }
+    const course = await this.prisma.course.findUnique({
+      where: { slug },
+      select: { id: true, slug: true, title: true },
+    });
+    if (!course) return;
+    await this.clearWizard(userId);
+    const wizard: CourseWizard = {
+      kind: 'edit',
+      step: 'field',
+      data: { editCourseId: course.id, editCourseSlug: course.slug },
+      expiresAt: Date.now() + WIZARD_TTL_MS,
+    };
+    await this.saveWizard(userId, wizard);
+    await this.sendWizardStep(
+      chatId,
+      userId,
+      `${this.brandHeader('Edit Course')}\n\n` +
+        `✏️ Editing <b>“${esc(course.title)}”</b>\n\n` +
+        `What would you like to <b>change</b>?`,
+      [
+        [
+          { text: '📝 Title', callback_data: 'wz:ef:title' },
+          { text: '👨‍🏫 Instructor', callback_data: 'wz:ef:instructor' },
+        ],
+        [
+          { text: '🏷️ Category', callback_data: 'wz:ef:category' },
+          { text: '🔰 Level', callback_data: 'wz:ef:level' },
+        ],
+        [
+          { text: '📦 Content type', callback_data: 'wz:ef:type' },
+          { text: '💵 Price', callback_data: 'wz:ef:price' },
+        ],
+        [{ text: '🖼️ Cover image', callback_data: 'wz:ef:image' }],
+        [{ text: '❌ Cancel', callback_data: 'wz:cancel' }],
+      ],
+      threadId,
+    );
+  }
+
+  /** Human label for an editable field. */
+  private editFieldLabel(field: CourseWizard['data']['editField']): string {
+    const map: Record<string, string> = {
+      title: 'Title',
+      instructor: 'Instructor',
+      category: 'Category',
+      level: 'Level',
+      type: 'Content type',
+      price: 'Price',
+      image: 'Cover image',
+    };
+    return field ? (map[field] ?? field) : '';
+  }
+
+  /** Ask for the new value of the chosen field (text prompts + button pickers). */
+  private async askEditValue(
+    chatId: number,
+    userId: number,
+    field: CourseWizard['data']['editField'],
+    threadId?: number | null,
+  ) {
+    const wizard = await this.loadWizard(userId);
+    if (!wizard) return;
+    wizard.data.editField = field;
+    wizard.step = 'value';
+    await this.saveWizard(userId, wizard);
+    const header = `${this.brandHeader('Edit Course')}\n\n✏️ <b>${esc(this.editFieldLabel(field))}</b> — new value:\n\n`;
+    if (field === 'category') {
+      const cats = await this.prisma.category.findMany({ orderBy: { name: 'asc' } });
+      const kb: KbButton[][] = [];
+      for (let i = 0; i < cats.length; i += 2) {
+        const row: KbButton[] = [];
+        if (cats[i]) row.push({ text: `🏷️ ${cats[i].name}`, callback_data: `wz:ev:cat:${cats[i].id}` });
+        if (cats[i + 1]) row.push({ text: `🏷️ ${cats[i + 1].name}`, callback_data: `wz:ev:cat:${cats[i + 1].id}` });
+        kb.push(row);
+      }
+      await this.sendWizardStep(chatId, userId, header + `Tap the new <b>category</b> 👇`, kb, threadId);
+    } else if (field === 'level') {
+      const levels = ['Beginner', 'Intermediate', 'Advanced', 'All Levels'];
+      const kb: KbButton[][] = [
+        levels.slice(0, 2).map((l) => ({ text: `🔰 ${l}`, callback_data: `wz:ev:lvl:${l}` })),
+        levels.slice(2).map((l) => ({ text: `🔰 ${l}`, callback_data: `wz:ev:lvl:${l}` })),
+      ];
+      await this.sendWizardStep(chatId, userId, header + `Tap the new <b>level</b> 👇`, kb, threadId);
+    } else if (field === 'type') {
+      const kb: KbButton[][] = [
+        [
+          { text: '📘 Course', callback_data: 'wz:ev:type:course' },
+          { text: '📗 Mini-course', callback_data: 'wz:ev:type:mini-course' },
+        ],
+        [
+          { text: '📋 Cheat-sheet', callback_data: 'wz:ev:type:cheat-sheet' },
+          { text: '🗺️ Roadmap', callback_data: 'wz:ev:type:roadmap' },
+        ],
+      ];
+      await this.sendWizardStep(chatId, userId, header + `Tap the new <b>content type</b> 👇`, kb, threadId);
+    } else if (field === 'image') {
+      await this.sendWizardStep(
+        chatId,
+        userId,
+        header +
+          `🖼️ <b>Send a photo</b> directly here, paste an <b>image URL</b>, or send <code>skip</code> to keep the current cover.`,
+        undefined,
+        threadId,
+      );
+    } else if (field === 'price') {
+      await this.sendWizardStep(
+        chatId,
+        userId,
+        header + `💵 Type the new <b>price in USD</b> (e.g. <code>49.99</code>) or <code>free</code>.`,
+        undefined,
+        threadId,
+      );
+    } else {
+      const hint =
+        field === 'title'
+          ? `e.g. <i>Hands-On AI: Building Your First LLM-Powered App</i>\n`
+          : field === 'instructor'
+            ? `e.g. <i>Han-chung Lee</i>\n`
+            : '';
+      await this.sendWizardStep(chatId, userId, header + `${hint}Just type the new value.`, undefined, threadId);
+    }
+  }
+
+  /** Apply a text-based edit (title / instructor / price / image URL). */
+  private async applyEditField(
+    chatId: number,
+    userId: number,
+    threadId: number | null | undefined,
+    wizard: CourseWizard,
+    input: { textValue?: string; imageTelegramFileId?: string },
+  ) {
+    const field = wizard.data.editField;
+    const courseId = wizard.data.editCourseId;
+    if (!field || !courseId) {
+      await this.sendText(chatId, 'Edit session is incomplete — start over with /edit.', threadId);
+      await this.clearWizard(userId);
+      return;
+    }
+    const course = await this.prisma.course.findUnique({
+      where: { id: courseId },
+      select: { id: true, title: true, slug: true },
+    });
+    if (!course) {
+      await this.clearWizard(userId);
+      return;
+    }
+    let valueLabel = '';
+    try {
+      if (field === 'title' && input.textValue) {
+        const title = input.textValue.trim();
+        if (!title) {
+          await this.sendWizardStep(chatId, userId, `${this.brandHeader('Edit Course')}\n\n⚠️ Title can't be empty.`, undefined, threadId);
+          return;
+        }
+        const newSlug = await this.uniqueCourseSlug(slugify(title));
+        await this.prisma.course.update({ where: { id: course.id }, data: { title, slug: newSlug } });
+        valueLabel = `📝 <b>“${esc(title)}”</b>`;
+      } else if (field === 'instructor' && input.textValue) {
+        const name = input.textValue.trim();
+        if (!name) {
+          await this.sendWizardStep(chatId, userId, `${this.brandHeader('Edit Course')}\n\n⚠️ Instructor can't be empty.`, undefined, threadId);
+          return;
+        }
+        const lecturer = await this.prisma.lecturer.upsert({
+          where: { slug: slugify(name) },
+          update: {},
+          create: { name, slug: slugify(name) },
+        });
+        await this.prisma.course.update({ where: { id: course.id }, data: { lecturerId: lecturer.id } });
+        valueLabel = `👨‍🏫 ${esc(name)}`;
+      } else if (field === 'price') {
+        const cleaned = (input.textValue ?? '').replace(/[$,]/g, '').trim();
+        const lower = cleaned.toLowerCase();
+        if (lower === 'free' || lower === '0' || lower === '') {
+          await this.prisma.course.update({ where: { id: course.id }, data: { price: null } });
+          valueLabel = '💵 <b>Free</b>';
+        } else {
+          const num = Number(cleaned);
+          if (Number.isNaN(num) || num < 0) {
+            await this.sendWizardStep(
+              chatId,
+              userId,
+              `${this.brandHeader('Edit Course')}\n\n⚠️ That doesn't look like a price. Send a number like <code>49.99</code>, or <code>free</code>.`,
+              undefined,
+              threadId,
+            );
+            return;
+          }
+          await this.prisma.course.update({ where: { id: course.id }, data: { price: num } });
+          valueLabel = `💵 <b>$${num}</b>`;
+        }
+      } else if (field === 'image') {
+        if (input.imageTelegramFileId) {
+          const url = await this.resolveImageUrl(input.imageTelegramFileId, true);
+          await this.prisma.course.update({ where: { id: course.id }, data: { thumbnailUrl: url } });
+          valueLabel = '🖼️ new cover uploaded ✅';
+        } else if (input.textValue && input.textValue.toLowerCase() !== 'skip') {
+          await this.prisma.course.update({ where: { id: course.id }, data: { thumbnailUrl: input.textValue } });
+          valueLabel = '🖼️ cover updated';
+        } else {
+          valueLabel = '🖼️ cover unchanged';
+        }
+      } else {
+        await this.sendText(chatId, 'Please use the buttons below.', threadId);
+        return;
+      }
+    } catch (err) {
+      this.logger.error(`applyEditField failed: ${(err as Error).message}`);
+      await this.sendText(chatId, 'Could not save that change — something went wrong.', threadId);
+      return;
+    }
+    const mid = wizard.messageId;
+    await this.clearWizard(userId);
+    await this.logActivity(userId, chatId, 'course', `edited ${course.slug} (${field})`);
+    const updated = `${this.brandHeader('Course Updated')}\n\n` +
+      `✅ <b>“${esc(course.title)}”</b> — ${esc(this.editFieldLabel(field))} saved\n\n` +
+      `${valueLabel}\n\n` +
+      `${DIV}\nChanges are live on the site and in the bot instantly.`;
+    const kb = [[{ text: '🎴 View updated card', callback_data: `course:${course.slug}` }], [{ text: '🏠 Home', callback_data: 'home' }]];
+    if (mid) await this.editRich(chatId, mid, updated, kb);
+    else await this.sendRich(chatId, updated, threadId, kb);
+  }
+
+  /** Apply a button-based edit (category / level / content type). */
+  private async applyEditChoice(chatId: number, userId: number, threadId: number | null | undefined, value: string) {
+    const wizard = await this.loadWizard(userId);
+    if (!wizard) return;
+    const field = wizard.data.editField;
+    const courseId = wizard.data.editCourseId;
+    if (!field || !courseId || !['category', 'level', 'type'].includes(field)) return;
+    const course = await this.prisma.course.findUnique({ where: { id: courseId }, select: { id: true, slug: true, title: true } });
+    if (!course) {
+      await this.clearWizard(userId);
+      return;
+    }
+    let valueLabel = '';
+    try {
+      if (field === 'category') {
+        const cat = await this.prisma.category.findUnique({ where: { id: value }, select: { id: true, name: true } });
+        if (!cat) return;
+        await this.prisma.courseCategory.deleteMany({ where: { courseId: course.id } });
+        await this.prisma.courseCategory.create({ data: { courseId: course.id, categoryId: cat.id } });
+        valueLabel = `🏷️ ${esc(cat.name)}`;
+      } else if (field === 'level') {
+        const level = await this.prisma.level.findFirst({ where: { name: value } });
+        await this.prisma.course.update({ where: { id: course.id }, data: { levelId: level?.id ?? null } });
+        valueLabel = `🔰 ${esc(value)}`;
+      } else if (field === 'type') {
+        const ok = ['course', 'mini-course', 'cheat-sheet', 'roadmap'].includes(value);
+        await this.prisma.course.update({ where: { id: course.id }, data: { contentType: ok ? value : 'course' } });
+        valueLabel = `📦 ${esc(value)}`;
+      }
+    } catch (err) {
+      this.logger.error(`applyEditChoice failed: ${(err as Error).message}`);
+      await this.sendText(chatId, 'Could not save that change — something went wrong.', threadId);
+      return;
+    }
+    const mid = wizard.messageId;
+    await this.clearWizard(userId);
+    await this.logActivity(userId, chatId, 'course', `edited ${course.slug} (${field})`);
+    const updated = `${this.brandHeader('Course Updated')}\n\n` +
+      `✅ <b>“${esc(course.title)}”</b> — ${esc(this.editFieldLabel(field))} saved\n\n` +
+      `${valueLabel}\n\n` +
+      `${DIV}\nChanges are live on the site and in the bot instantly.`;
+    const kb = [[{ text: '🎴 View updated card', callback_data: `course:${course.slug}` }], [{ text: '🏠 Home', callback_data: 'home' }]];
+    if (mid) await this.editRich(chatId, mid, updated, kb);
+    else await this.sendRich(chatId, updated, threadId, kb);
   }
 
   /**
