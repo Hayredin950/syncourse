@@ -345,6 +345,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
 
   private async handleCallback(cb: NonNullable<TelegramUpdate['callback_query']>) {
     const chatId = cb.message?.chat.id ?? cb.from.id;
+    const messageId = cb.message?.message_id;
     const data = cb.data ?? '';
     try {
       await this.api('answerCallbackQuery', { callback_query_id: cb.id });
@@ -352,22 +353,23 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       /* ignore */
     }
     if (data.startsWith('dl:')) {
+      // sending a file is a new message by nature (can't edit into a document)
       await this.sendCourseFile(chatId, data.slice(3));
     } else if (data.startsWith('pg:')) {
       const page = Number(data.slice(3));
-      if (!Number.isNaN(page)) await this.sendCourseList(chatId, undefined, page);
+      if (!Number.isNaN(page)) await this.sendCourseList(chatId, undefined, page, messageId);
     } else if (data === 'noop') {
       /* the "Page X/Y" label is not clickable */
     } else if (data === 'courses') {
-      await this.sendCourseList(chatId);
+      await this.sendCourseList(chatId, undefined, 0, messageId);
     } else if (data === 'help') {
-      await this.sendHelp(chatId);
+      await this.sendHelp(chatId, undefined, false, messageId);
     } else if (data === 'home' || data === 'start') {
-      await this.sendWelcome(chatId);
+      await this.sendWelcome(chatId, undefined, messageId);
     } else if (data === 'stats') {
-      await this.sendStats(chatId);
+      await this.sendStats(chatId, undefined, messageId);
     } else if (data.startsWith('wz:')) {
-      await this.handleWizardCallback(chatId, cb.from.id, data, cb.message?.message_id);
+      await this.handleWizardCallback(chatId, cb.from.id, data, messageId);
     } else if (data.startsWith('link:')) {
       const slug = data.slice(5);
       await this.sendRich(
@@ -390,7 +392,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     return `${DIV}\n🎓 <b>SYNCOURSE</b> <i>· ${title}</i>\n${DIV}`;
   }
 
-  private async sendWelcome(chatId: number, threadId?: number | null) {
+  private async sendWelcome(chatId: number, threadId?: number | null, editMessageId?: number) {
     const [courseCount, linkedCount] = await Promise.all([
       this.prisma.course.count({ where: { deletedAt: null } }),
       this.prisma.telegramCourseLink.count(),
@@ -409,13 +411,15 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       `2️⃣ Tap <b>📥 Download</b> on any course\n` +
       `3️⃣ The file arrives here instantly ⚡\n\n` +
       `🔗 <a href="${APP_URL}">Open the Syncourse web app →</a>`;
-    await this.sendRich(chatId, html, threadId, [
+    const kb: KbButton[][] = [
       [{ text: '📚 Browse courses', callback_data: 'courses' }],
       [{ text: '❓ Help', callback_data: 'help' }, { text: '🌐 Web app', url: APP_URL }],
-    ]);
+    ];
+    if (editMessageId) await this.editRich(chatId, editMessageId, html, kb);
+    else await this.sendRich(chatId, html, threadId, kb);
   }
 
-  private async sendHelp(chatId: number, threadId?: number | null, isAdmin = false) {
+  private async sendHelp(chatId: number, threadId?: number | null, isAdmin = false, editMessageId?: number) {
     const html =
       `${this.brandHeader('Command Center')}\n\n` +
       `<b>👤 For everyone</b>\n` +
@@ -437,10 +441,12 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
         : '') +
       `💡 Tip: on any course, tap <b>📥 Download</b> under its listing.\n` +
       `🔗 <a href="${APP_URL}">Explore the full catalog on the web →</a>`;
-    await this.sendRich(chatId, html, threadId, [
+    const kb: KbButton[][] = [
       [{ text: '📚 Browse courses', callback_data: 'courses' }],
       [{ text: '🏠 Home', callback_data: 'home' }, { text: '🌐 Web app', url: APP_URL }],
-    ]);
+    ];
+    if (editMessageId) await this.editRich(chatId, editMessageId, html, kb);
+    else await this.sendRich(chatId, html, threadId, kb);
   }
 
   /** Page size for the /courses catalog. */
@@ -449,9 +455,11 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
   /**
    * /courses — paginated catalog of ALL courses. 8 per page with ◀️/▶️
    * navigation. Download buttons only appear for courses that have a linked
-   * file; the rest show 📭 no file yet.
+   * file; the rest show 📭 no file yet. When called from a button tap
+   * (editMessageId set) it EDITs the tapped message in place — no message
+   * spam, just like Argo Search's pagination.
    */
-  private async sendCourseList(chatId: number, threadId?: number | null, page = 0) {
+  private async sendCourseList(chatId: number, threadId?: number | null, page = 0, editMessageId?: number) {
     const total = await this.prisma.course.count({ where: { deletedAt: null } });
     if (total === 0) {
       return this.sendRich(
@@ -511,14 +519,15 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       { text: '🌐 Web app', url: APP_URL },
     ]);
 
-    await this.sendRich(
-      chatId,
+    const html =
       `${this.brandHeader('Course Catalog')}\n\n${rows}\n\n${DIV}\n` +
-        `<i>${total} courses · page ${safePage + 1}/${pages}</i>` +
-        `\n<i>📥 buttons appear for courses with files ready — tap to download instantly</i>`,
-      threadId,
-      kb,
-    );
+      `<i>${total} courses · page ${safePage + 1}/${pages}</i>` +
+      `\n<i>📥 buttons appear for courses with files ready — tap to download instantly</i>`;
+    if (editMessageId) {
+      await this.editRich(chatId, editMessageId, html, kb);
+    } else {
+      await this.sendRich(chatId, html, threadId, kb);
+    }
   }
 
   /** /course <title-or-slug> — premium course details card with one-tap actions. */
@@ -1162,7 +1171,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** /stats — admin platform dashboard. */
-  private async sendStats(chatId: number, threadId?: number | null) {
+  private async sendStats(chatId: number, threadId?: number | null, editMessageId?: number) {
     const [courses, users, links, downloads, lessons, reviews] = await Promise.all([
       this.prisma.course.count({ where: { deletedAt: null } }),
       this.prisma.user.count(),
@@ -1191,9 +1200,11 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       `<b>Recently linked:</b>\n${recent}\n` +
       `${DIV}\n` +
       `🔗 <a href="${APP_URL}/admin">Open the admin console →</a>`;
-    await this.sendRich(chatId, html, threadId, [
+    const kb: KbButton[][] = [
       [{ text: '📚 Catalog', callback_data: 'courses' }, { text: '🏠 Home', callback_data: 'home' }],
-    ]);
+    ];
+    if (editMessageId) await this.editRich(chatId, editMessageId, html, kb);
+    else await this.sendRich(chatId, html, threadId, kb);
   }
 
   // ---------------------------------------------------------------
@@ -1523,6 +1534,34 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       }
     } catch (err) {
       this.logger.error(`sendRich failed: ${(err as Error).message}`);
+    }
+  }
+
+  /**
+   * Edit an existing bot message in place (Argo-style pagination). Used for
+   * navigation taps so the conversation doesn't fill up with new messages.
+   */
+  private async editRich(chatId: number, messageId: number, html: string, keyboard?: KbButton[][]) {
+    if (!this.enabled) return;
+    try {
+      const body: Record<string, unknown> = {
+        chat_id: chatId,
+        message_id: messageId,
+        text: html,
+        parse_mode: 'HTML',
+        disable_web_page_preview: true,
+      };
+      if (keyboard && keyboard.length) body.reply_markup = { inline_keyboard: keyboard };
+      const res = await this.api('editMessageText', body);
+      const json = (await res.json()) as { ok: boolean; description?: string };
+      if (!json.ok) {
+        this.logger.error(`editMessageText rejected (${chatId}/${messageId}): ${json.description}`);
+        // fall back to a fresh message so navigation still works
+        await this.sendRich(chatId, html, undefined, keyboard);
+      }
+    } catch (err) {
+      this.logger.error(`editMessageText failed: ${(err as Error).message}`);
+      await this.sendRich(chatId, html, undefined, keyboard);
     }
   }
 
