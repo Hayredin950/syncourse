@@ -99,7 +99,7 @@ export default function AuthScreen() {
     >
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.logo}>🎓</Text>
-        <Text style={styles.title}>SynCourse</Text>
+        <Text style={styles.title}>Syncourse</Text>
         <Text style={styles.subtitle}>One account across web, app and Telegram</Text>
 
         {mode === "register" && (

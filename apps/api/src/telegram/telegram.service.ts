@@ -2084,6 +2084,9 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
 
     // Mode 1: a file to attach — from a reply, or the last file this user
     // forwarded to the bot (persisted in Postgres, so it survives restarts).
+    // NOTE: a t.me URL takes priority over the cached file, so pasting
+    // `/link <t.me link> <slug>` always attaches the file AT that link — it
+    // never silently reuses a photo the user sent earlier.
     const reply = msg?.reply_to_message;
     const replyDoc = reply ? (reply.document ?? reply.video ?? reply.audio) : undefined;
     const cachedMem = fromId ? this.lastFileByUser.get(fromId) : undefined;
@@ -2095,7 +2098,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     const cached = cachedMem ?? (cachedDb ? { fileId: cachedDb.fileId, fileName: cachedDb.fileName, fileSize: cachedDb.fileSizeMb ? cachedDb.fileSizeMb * 1024 * 1024 : null } : undefined);
     const doc = replyDoc
       ? { file_id: replyDoc.file_id, file_name: replyDoc.file_name, file_size: replyDoc.file_size }
-      : cached && !reply
+      : cached && !reply && !url
         ? { file_id: cached.fileId, file_name: cached.fileName, file_size: cached.fileSize }
         : null;
     if (doc) {
@@ -2127,7 +2130,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
         kb,
       );
     }
-    if (reply) {
+    if (reply && !url) {
       return this.sendText(chatId, 'The message you replied to does not contain a file (ZIP/video/audio). Reply to the file message itself.', threadId);
     }
 
