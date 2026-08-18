@@ -50,11 +50,16 @@ export default function HomeScreen() {
   const feed: HomeFeed = data;
 
   // dropdown rows — same data the web uses, swapped client-side per selection
-  const catCourses = feed.rails.find((r) => r.slug === catSlug)?.courses
-    ?? feed.trending.slice(0, 8);
-  const activeOrg = feed.bestOf.find((o) => o.slug === orgSlug) ?? feed.bestOf[0];
+  // (the API no longer returns per-category "rails"; fetch by category instead)
+  const catCoursesQ = useQuery({
+    queryKey: ["category-courses", catSlug],
+    queryFn: () => api.browse({ category: catSlug, limit: 8 }).then((r) => r.results),
+    enabled: !!catSlug,
+  });
+  const catCourses = catSlug ? (catCoursesQ.data ?? []) : feed.trending.slice(0, 8);
+  const activeOrg = (feed.bestOf ?? []).find((o) => o.slug === orgSlug) ?? feed.bestOf?.[0];
   const hero = feed.trending[0];
-  const activeLecturer = feed.lecturers.find((l) => l.slug === lecturerSlug) ?? feed.lecturers[0];
+  const activeLecturer = (feed.lecturers ?? []).find((l) => l.slug === lecturerSlug) ?? feed.lecturers?.[0];
   const lecturerCoursesQ = useQuery({
     queryKey: ["lecturer-courses", activeLecturer?.slug],
     queryFn: () => api.browse({ lecturer: activeLecturer?.slug, limit: 8 }).then((r) => r.results),

@@ -153,12 +153,6 @@ export interface UserProfile {
   };
 }
 
-export interface HomeRail {
-  title: string;
-  slug: string;
-  courses: CourseSummary[];
-}
-
 export interface BestOfOrg {
   id: string;
   name: string;
@@ -206,7 +200,6 @@ export interface HomeFeed {
   categories: Category[];
   lecturers: HomeLecturer[];
   organizations: HomeOrganization[];
-  rails: HomeRail[];
 }
 
 export interface MyLearningItem {
