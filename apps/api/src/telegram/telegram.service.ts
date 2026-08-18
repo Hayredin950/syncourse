@@ -296,6 +296,11 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     }
     if (data.startsWith('dl:')) {
       await this.sendCourseFile(chatId, data.slice(3));
+    } else if (data.startsWith('pg:')) {
+      const page = Number(data.slice(3));
+      if (!Number.isNaN(page)) await this.sendCourseList(chatId, undefined, page);
+    } else if (data === 'noop') {
+      /* the "Page X/Y" label is not clickable */
     } else if (data === 'courses') {
       await this.sendCourseList(chatId);
     } else if (data === 'help') {
@@ -379,46 +384,79 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     ]);
   }
 
-  private async sendCourseList(chatId: number, threadId?: number | null) {
-    const links = await this.prisma.telegramCourseLink.findMany({
-      include: { course: { select: { title: true, slug: true, ratingAvg: true, lecturer: { select: { name: true } } } } },
-      orderBy: { createdAt: 'desc' },
-      take: 15,
-    });
-    if (links.length === 0) {
+  /** Page size for the /courses catalog. */
+  private static readonly CATALOG_PAGE = 8;
+
+  /**
+   * /courses — paginated catalog of ALL courses. 8 per page with ◀️/▶️
+   * navigation. Download buttons only appear for courses that have a linked
+   * file; the rest show 📭 no file yet.
+   */
+  private async sendCourseList(chatId: number, threadId?: number | null, page = 0) {
+    const total = await this.prisma.course.count({ where: { deletedAt: null } });
+    if (total === 0) {
       return this.sendRich(
         chatId,
         `${this.brandHeader('Catalog')}\n\n` +
-          `📭 <b>No courses linked yet.</b>\n\n` +
-          `The team is adding files daily — check back soon, or browse the web app in the meantime.`,
+          `📭 <b>No courses yet.</b>\n\n` +
+          `The catalog is filling up — check back soon, or browse the web app in the meantime.`,
         threadId,
         [[{ text: '🌐 Web app', url: APP_URL }]],
       );
     }
-    const total = await this.prisma.telegramCourseLink.count();
-    const rows = links
-      .map((l, i) => {
-        const c = l.course;
+    const pages = Math.ceil(total / TelegramService.CATALOG_PAGE);
+    const safePage = Math.min(Math.max(page, 0), pages - 1);
+    const courses = await this.prisma.course.findMany({
+      where: { deletedAt: null },
+      orderBy: [{ createdAt: 'desc' }, { title: 'asc' }],
+      skip: safePage * TelegramService.CATALOG_PAGE,
+      take: TelegramService.CATALOG_PAGE,
+      select: { id: true, title: true, slug: true, ratingAvg: true, lecturer: { select: { name: true } } },
+    });
+    const links = await this.prisma.telegramCourseLink.findMany({
+      where: { courseId: { in: courses.map((c) => c.id) } },
+      select: { courseId: true, fileName: true, fileSizeMb: true },
+    });
+    const linkByCourse = new Map(links.map((l) => [l.courseId, l]));
+    const rows = courses
+      .map((c, i) => {
+        const l = linkByCourse.get(c.id);
+        const startIdx = safePage * TelegramService.CATALOG_PAGE;
         return (
-          `${i + 1}. <b>${esc(c.title)}</b>\n` +
+          `${startIdx + i + 1}. <b>${esc(c.title)}</b>\n` +
           `   🔑 <code>${esc(c.slug)}</code>\n` +
-          `   📦 ${esc(l.fileName ?? 'file')}${l.fileSizeMb ? ` · ${l.fileSizeMb} MB` : ''} · ⭐ ${c.ratingAvg.toFixed(1)}` +
+          (l
+            ? `   📦 ${esc(l.fileName ?? 'file')}${l.fileSizeMb ? ` · ${l.fileSizeMb} MB` : ''} · ⭐ ${c.ratingAvg.toFixed(1)}`
+            : `   📭 <i>no file yet</i> · ⭐ ${c.ratingAvg.toFixed(1)}`) +
           (c.lecturer ? ` · 👨‍🏫 ${esc(c.lecturer.name)}` : '')
         );
       })
       .join('\n\n');
-    const kb: KbButton[][] = links.map((l) => [
-      { text: `📥 Download — ${l.course.slug.slice(0, 24)}`, callback_data: `dl:${l.course.slug}` },
-    ]);
+
+    const kb: KbButton[][] = [];
+    // Download buttons — only for courses that have a linked file
+    for (const c of courses) {
+      if (linkByCourse.has(c.id)) {
+        kb.push([{ text: `📥 Download — ${c.slug.slice(0, 24)}`, callback_data: `dl:${c.slug}` }]);
+      }
+    }
+    // Pagination row: ◀️ Prev · Page X/Y · Next ▶️
+    const navRow: KbButton[] = [];
+    if (safePage > 0) navRow.push({ text: '◀️ Prev', callback_data: `pg:${safePage - 1}` });
+    navRow.push({ text: `📄 ${safePage + 1}/${pages}`, callback_data: 'noop' });
+    if (safePage < pages - 1) navRow.push({ text: 'Next ▶️', callback_data: `pg:${safePage + 1}` });
+    kb.push(navRow);
     kb.push([
       { text: '🏠 Home', callback_data: 'home' },
       { text: '❓ Help', callback_data: 'help' },
       { text: '🌐 Web app', url: APP_URL },
     ]);
+
     await this.sendRich(
       chatId,
-      `${this.brandHeader('Course Catalog')}\n\n${rows}\n\n${DIV}\n<i>Tap a download button below ⬇️</i>` +
-        (total > links.length ? `\n\n<i>+${total - links.length} more — see them all on the <a href="${APP_URL}">web app</a></i>` : ''),
+      `${this.brandHeader('Course Catalog')}\n\n${rows}\n\n${DIV}\n` +
+        `<i>${total} courses · page ${safePage + 1}/${pages}</i>` +
+        `\n<i>📥 buttons appear for courses with files ready — tap to download instantly</i>`,
       threadId,
       kb,
     );
