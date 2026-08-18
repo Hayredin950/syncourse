@@ -81,7 +81,16 @@ async function request<T>(
     }
   } catch (e) {
     const aborted = e instanceof Error && e.name === "AbortError";
-    throw new ApiError(0, aborted ? "The server is waking up — please retry." : "Cannot reach the server. Check your connection.");
+    const native =
+      ((e as { cause?: { message?: string } })?.cause?.message as string) ||
+      ((e as { cause?: unknown })?.cause as string) ||
+      "";
+    throw new ApiError(
+      0,
+      aborted
+        ? "The server is waking up — please retry."
+        : `Cannot reach the server. Check your connection.${native ? ` [${native}]` : ""}`,
+    );
   }
   const text = await res.text();
   const data = text ? JSON.parse(text) : null;
