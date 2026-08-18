@@ -278,7 +278,7 @@ export default function HomePage() {
             <h2>Featured learning paths</h2>
             <Link href="/paths">See all <ChevronRight size={14} style={{ verticalAlign: "middle" }} /></Link>
           </div>
-          <div className="rail-row" style={{ gridAutoColumns: "minmax(260px, 1fr)" }}>
+          <div className="rail-row" style={{ gridAutoColumns: "minmax(260px, min(1fr, 400px))" }}>
             {home.featuredPaths.map((p) => (
               <Link
                 key={p.id}

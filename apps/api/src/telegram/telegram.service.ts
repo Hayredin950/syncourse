@@ -743,8 +743,8 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       `3️⃣ The file arrives here instantly ⚡\n\n` +
       `🔗 <a href="${APP_URL}">Open the Syncourse web app →</a>`;
     const kb: KbButton[][] = [
-      [{ text: '📚 Browse courses', callback_data: 'courses' }],
-      [{ text: '❓ Help', callback_data: 'help' }, { text: '🌐 Web app', url: APP_URL }],
+      [{ text: '🟢 📚 Browse courses', callback_data: 'courses' }],
+      [{ text: '🔵 ❓ Help', callback_data: 'help' }, { text: '🟣 🌐 Web app', url: APP_URL }],
     ];
     if (userId) {
       const nav = await this.navRowFor(userId);
@@ -782,8 +782,8 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       `💡 Tip: on any course, tap <b>📥 Download</b> under its listing.\n` +
       `🔗 <a href="${APP_URL}">Explore the full catalog on the web →</a>`;
     const kb: KbButton[][] = [
-      [{ text: '📚 Browse courses', callback_data: 'courses' }],
-      [{ text: '🏠 Home', callback_data: 'home' }, { text: '🌐 Web app', url: APP_URL }],
+      [{ text: '🟢 📚 Browse courses', callback_data: 'courses' }],
+      [{ text: '🟠 🏠 Home', callback_data: 'home' }, { text: '🟣 🌐 Web app', url: APP_URL }],
     ];
     if (userId) {
       const nav = await this.navRowFor(userId);
@@ -812,7 +812,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
           `📭 <b>No courses yet.</b>\n\n` +
           `The catalog is filling up — check back soon, or browse the web app in the meantime.`,
         threadId,
-        [[{ text: '🌐 Web app', url: APP_URL }]],
+        [[{ text: '🟣 🌐 Web app', url: APP_URL }]],
       );
     }
     const pages = Math.ceil(total / TelegramService.CATALOG_PAGE);
@@ -858,9 +858,9 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     if (safePage < pages - 1) navRow.push({ text: 'Next ▶️', callback_data: `pg:${safePage + 1}` });
     kb.push(navRow);
     kb.push([
-      { text: '🏠 Home', callback_data: 'home' },
-      { text: '❓ Help', callback_data: 'help' },
-      { text: '🌐 Web app', url: APP_URL },
+      { text: '🟠 🏠 Home', callback_data: 'home' },
+      { text: '🔵 ❓ Help', callback_data: 'help' },
+      { text: '🟣 🌐 Web app', url: APP_URL },
     ]);
     if (userId) {
       const nav = await this.navRowFor(userId);
@@ -928,10 +928,10 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       (course.description ? `${esc(course.description.slice(0, 220))}\n\n` : '') +
       `🔗 <a href="${APP_URL}/courses/${course.slug}">View on the web →</a>`;
     const kb: KbButton[][] = [];
-    if (link) kb.push([{ text: '📥 Download now', callback_data: `dl:${course.slug}` }]);
+    if (link) kb.push([{ text: '🟡 📥 Download now', callback_data: `dl:${course.slug}` }]);
     kb.push([
-      { text: '📚 All courses', callback_data: 'courses' },
-      { text: '🏠 Home', callback_data: 'home' },
+      { text: '🟢 📚 All courses', callback_data: 'courses' },
+      { text: '🟠 🏠 Home', callback_data: 'home' },
     ]);
     if (userId) {
       const nav = await this.navRowFor(userId);
@@ -1484,7 +1484,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     const kb: KbButton[][] = courses.map((c) => [
       { text: `🔗 ${c.title.slice(0, 42)}`, callback_data: `link:${c.slug}` },
     ]);
-    kb.push([{ text: '🏠 Home', callback_data: 'home' }]);
+    kb.push([{ text: '🟠 🏠 Home', callback_data: 'home' }]);
     await this.sendRich(
       chatId,
       `${this.brandHeader('Link a File')}\n\n` +
@@ -1515,7 +1515,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     const kb: KbButton[][] = links.map((l) => [
       { text: `🗑️ ${l.course.title.slice(0, 42)}`, callback_data: `ul:${l.course.slug}` },
     ]);
-    kb.push([{ text: '🏠 Home', callback_data: 'home' }]);
+    kb.push([{ text: '🟠 🏠 Home', callback_data: 'home' }]);
     await this.sendRich(
       chatId,
       `${this.brandHeader('Unlink')}\n\n` +
@@ -1586,7 +1586,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     navRow.push({ text: `📄 ${safePage + 1}/${pages}`, callback_data: 'noop' });
     if (safePage < pages - 1) navRow.push({ text: 'Next ▶️', callback_data: `epg:${safePage + 1}` });
     kb.push(navRow);
-    kb.push([{ text: '🏠 Home', callback_data: 'home' }]);
+    kb.push([{ text: '🟠 🏠 Home', callback_data: 'home' }]);
     const html =
       `${this.brandHeader('Edit Course')}\n\n` +
       `✏️ Which course do you want to <b>edit</b>?\n` +
@@ -1894,7 +1894,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       `✅ <b>“${esc(course.title)}”</b> — ${esc(this.editFieldLabel(field))} saved\n\n` +
       `${valueLabel}\n\n` +
       `${DIV}\nChanges are live on the site and in the bot instantly.`;
-    const kb = [[{ text: '🎴 View updated card', callback_data: `course:${course.slug}` }], [{ text: '🏠 Home', callback_data: 'home' }]];
+    const kb = [[{ text: '🎴 View updated card', callback_data: `course:${course.slug}` }], [{ text: '🟠 🏠 Home', callback_data: 'home' }]];
     if (mid) await this.editRich(chatId, mid, updated, kb);
     else await this.sendRich(chatId, updated, threadId, kb);
   }
@@ -1940,7 +1940,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       `✅ <b>“${esc(course.title)}”</b> — ${esc(this.editFieldLabel(field))} saved\n\n` +
       `${valueLabel}\n\n` +
       `${DIV}\nChanges are live on the site and in the bot instantly.`;
-    const kb = [[{ text: '🎴 View updated card', callback_data: `course:${course.slug}` }], [{ text: '🏠 Home', callback_data: 'home' }]];
+    const kb = [[{ text: '🎴 View updated card', callback_data: `course:${course.slug}` }], [{ text: '🟠 🏠 Home', callback_data: 'home' }]];
     if (mid) await this.editRich(chatId, mid, updated, kb);
     else await this.sendRich(chatId, updated, threadId, kb);
   }
@@ -2269,7 +2269,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       `${DIV}\n` +
       `🔗 <a href="${APP_URL}/admin">Open the admin console →</a>`;
     const kb: KbButton[][] = [
-      [{ text: '📚 Catalog', callback_data: 'courses' }, { text: '🏠 Home', callback_data: 'home' }],
+      [{ text: '📚 Catalog', callback_data: 'courses' }, { text: '🟠 🏠 Home', callback_data: 'home' }],
     ];
     if (userId) {
       const nav = await this.navRowFor(userId);
@@ -2307,7 +2307,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
           `📭 <b>“${esc(course.title)}”</b> has no Telegram file linked yet.\n` +
           `Try again later — the team adds files daily.`,
         threadId,
-        [[{ text: '📚 All courses', callback_data: 'courses' }]],
+        [[{ text: '🟢 📚 All courses', callback_data: 'courses' }]],
       );
     }
     const caption =
@@ -2359,8 +2359,8 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
           `Want more? Browse the full catalog below. 👇`,
         threadId,
         [
-          [{ text: '📚 All courses', callback_data: 'courses' }],
-          [{ text: '🏠 Home', callback_data: 'home' }, { text: '❓ Help', callback_data: 'help' }],
+          [{ text: '🟢 📚 All courses', callback_data: 'courses' }],
+          [{ text: '🟠 🏠 Home', callback_data: 'home' }, { text: '🔵 ❓ Help', callback_data: 'help' }],
         ],
       );
     } catch {
@@ -2501,7 +2501,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       })
       .join('\n\n');
     const kb: KbButton[][] = [
-      [{ text: '🏠 Home', callback_data: 'home' }, { text: '❓ Help', callback_data: 'help' }],
+      [{ text: '🟠 🏠 Home', callback_data: 'home' }, { text: '🔵 ❓ Help', callback_data: 'help' }],
     ];
     if (userId) {
       const nav = await this.navRowFor(userId);
