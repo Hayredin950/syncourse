@@ -390,6 +390,13 @@ h3 { color: hsl(var(--foreground)); }
 /* ---------- pills / badges / panels ---------- */
 .badge { display: inline-flex; align-items: center; gap: 5px; border: 1px solid rgba(255,255,255,.09); border-radius: 999px; padding: 5px 9px; color: #c9c0b5; font-size: 11px; background: rgba(255,255,255,.05); }
 .badge:hover { color: hsl(var(--foreground)); }
+/* selects reusing the badge pill (home dropdown rows): force the native
+   dropdown popup to dark so options stay readable instead of white-on-white */
+select.badge { color-scheme: dark; cursor: pointer; }
+select.badge option { background: #17150f; color: #e8e0d5; }
+/* every other select on the dark site gets the same dark native popup */
+select { color-scheme: dark; }
+select option { background: #17150f; color: #e8e0d5; }
 .badge.primary { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); border-color: hsl(var(--primary)); font-weight: 700; }
 .pills { display: flex; gap: 7px; flex-wrap: wrap; }
 .dark-panel { background: #11100e; border: 1px solid hsl(var(--border)); border-radius: 16px; }
