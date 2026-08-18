@@ -139,6 +139,20 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
    *  course cover/banner directly from an image instead of a URL. */
   private lastPhotoByUser = new Map<number, { fileId: string; updatedAt: number }>();
 
+  /** Message ids of bot bubbles that are PHOTOS (course cards with a cover).
+   *  A photo message can't be editMessageText'd into another view, so when a
+   *  button on a photo bubble is tapped we delete it and send the target as a
+   *  fresh message instead (Argo-style replace, no dead bubbles). */
+  private photoBubbles = new Map<number, Set<number>>();
+
+  private async deleteMessage(chatId: number, messageId: number) {
+    try {
+      await this.api('deleteMessage', { chat_id: chatId, message_id: messageId });
+    } catch {
+      /* ignore */
+    }
+  }
+
   /** Active wizards, keyed by Telegram user id (memory cache over Postgres). */
   private courseWizards = new Map<number, CourseWizard>();
 
@@ -440,6 +454,9 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     // NOTE: this MUST run before the `if (!msg.text) return;` below — photos
     // carry no text, so the early return would silently drop them.
     if (wizard && photo && !msg.text) {
+      // the user's input photo is consumed by the wizard — remove it so the
+      // chat stays clean (single morphing bubble, no pile-up)
+      if (msg.chat.type === 'private') await this.deleteMessage(chatId, msg.message_id);
       if (wizard.kind === 'course' && wizard.step === 'image') {
         wizard.data.imageUrl = photo.file_id;
         wizard.data.imageIsTelegram = true;
@@ -459,6 +476,8 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     const [command, ...rest] = text.split(/\s+/);
     const arg = rest.join(' ').trim();
     if (wizard && !text.startsWith('/') && !command.startsWith('wz:')) {
+      // the answer feeds the wizard — remove the user's input message too
+      if (msg.chat.type === 'private') await this.deleteMessage(chatId, msg.message_id);
       await this.handleWizardText(chatId, fromId, text, threadId, wizard);
       return;
     }
@@ -497,7 +516,16 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       case '/edit':
         if (await this.isAdmin(fromId)) {
           if (arg) {
-            await this.startEditWizard(chatId, fromId, arg, threadId);
+            const tokens = arg.split(/\s+/);
+            const fieldToken = (tokens[1] ?? '').toLowerCase().replace(/^--/, '');
+            const EDIT_FIELDS = ['title', 'instructor', 'category', 'level', 'type', 'price', 'image', 'cover'];
+            if (tokens.length >= 3 && EDIT_FIELDS.includes(fieldToken)) {
+              // one-line: /edit <title> <field> <value>
+              const field = fieldToken === 'cover' ? 'image' : fieldToken;
+              await this.editCourseOneLine(chatId, fromId, tokens[0], field, tokens.slice(2).join(' ').trim(), threadId);
+            } else {
+              await this.startEditWizard(chatId, fromId, arg, threadId);
+            }
           } else {
             await this.pickerFor(chatId, fromId, 'edit', 0, undefined, threadId);
           }
@@ -613,15 +641,24 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       /* ignore */
     }
     const uid = cb.from.id;
+    // If the tapped bubble is a PHOTO (course card with a cover), it can't be
+    // edited into a text view — delete it and render the target as a fresh
+    // message instead (Argo-style replace, keeps the chat clean).
+    const isPhotoBubble = messageId != null && (this.photoBubbles.get(uid)?.has(messageId) ?? false);
+    if (isPhotoBubble) {
+      await this.deleteMessage(chatId, messageId!);
+      this.photoBubbles.get(uid)?.delete(messageId!);
+    }
+    const msgId = isPhotoBubble ? undefined : messageId;
     if (data.startsWith('dl:')) {
       // sending a file is a new message by nature (can't edit into a document)
       await this.sendCourseFile(chatId, data.slice(3));
       // a download tap completes the interactive download picker
       await this.clearWizard(uid);
     } else if (data === 'nav:back') {
-      await this.navBack(chatId, uid, messageId);
+      await this.navBack(chatId, uid, msgId);
     } else if (data === 'nav:fwd') {
-      await this.navFwd(chatId, uid, messageId);
+      await this.navFwd(chatId, uid, msgId);
     } else if (data.startsWith('pg:')) {
       const page = Number(data.slice(3));
       if (!Number.isNaN(page)) {
@@ -632,19 +669,19 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
           if (top && top.key === 'courses') top.page = page;
           await this.saveNav(uid, state);
         }
-        await this.sendCourseList(chatId, undefined, page, messageId, uid);
+        await this.sendCourseList(chatId, undefined, page, msgId, uid);
       }
     } else if (data.startsWith('course:')) {
       const slug = data.slice(7);
       await this.pushNav(uid, { key: 'course', arg: slug });
-      await this.sendCourseCard(chatId, slug, undefined, messageId, uid);
+      await this.sendCourseCard(chatId, slug, undefined, msgId, uid);
     } else if (data.startsWith('edit:')) {
       const slug = data.slice(5);
       await this.startEditWizard(chatId, uid, slug);
     } else if (data.startsWith('epg:')) {
       const page = Number(data.slice(4));
       if (!Number.isNaN(page)) {
-        await this.pickerFor(chatId, uid, 'edit', page, messageId);
+        await this.pickerFor(chatId, uid, 'edit', page, msgId);
       }
     } else if (data.startsWith('ul:')) {
       await this.unlinkCourse(chatId, data.slice(3));
@@ -652,16 +689,16 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       /* the "Page X/Y" label is not clickable */
     } else if (data === 'courses') {
       await this.pushNav(uid, { key: 'courses', page: 0 });
-      await this.sendCourseList(chatId, undefined, 0, messageId, uid);
+      await this.sendCourseList(chatId, undefined, 0, msgId, uid);
     } else if (data === 'help') {
       await this.pushNav(uid, { key: 'help' });
-      await this.sendHelp(chatId, undefined, false, messageId, uid);
+      await this.sendHelp(chatId, undefined, false, msgId, uid);
     } else if (data === 'home' || data === 'start') {
       await this.pushNav(uid, { key: 'home' });
-      await this.sendWelcome(chatId, undefined, messageId, uid);
+      await this.sendWelcome(chatId, undefined, msgId, uid);
     } else if (data === 'stats') {
       await this.pushNav(uid, { key: 'stats' });
-      await this.sendStats(chatId, undefined, messageId, uid);
+      await this.sendStats(chatId, undefined, msgId, uid);
     } else if (data.startsWith('wz:')) {
       await this.handleWizardCallback(chatId, cb.from.id, data, messageId);
     } else if (data.startsWith('link:')) {
@@ -725,16 +762,20 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       `<code>/start</code> — welcome & quick actions\n` +
       `<code>/courselist</code> — browse courses (tap a title to download) 📚\n` +
       `<code>/search</code> — find a course by keyword 🔍\n` +
-      `<code>/course</code> — course details card 🎴 (type a name, no args needed)\n` +
+      `<code>/course</code> — course details card 🎴\n` +
       `<code>/download</code> — get a course file ⚡\n\n` +
-      `<i>💡 No args needed — <b>/course</b>, <b>/search</b> and <b>/download</b> are interactive: they ask you what you want. You can also type a course <b>name</b> after them:</i>\n` +
+      `<i>💡 <b>Two ways to use everything:</b> send the command with no args for an <b>interactive</b> walkthrough, or type it all in one line:</i>\n` +
+      `<code>/course Complete Machine Learning</code>\n` +
+      `<code>/search machine learning</code>\n` +
       `<code>/download Complete Machine Learning</code>\n\n` +
       (isAdmin
         ? `<b>🛡️ Admin tools</b>\n${DIV}\n` +
-          `<code>/edit &lt;title&gt;</code> — edit any course field with buttons ✏️\n` +
+          `<b>Interactive:</b> <code>/edit</code> → pick course → pick field → new value\n` +
+          `<b>One line:</b> <code>/edit &lt;title&gt; &lt;field&gt; &lt;value&gt;</code> — fields: title | instructor | category | level | type | price | image\n` +
+          `<code>/newcourse</code> — create a course (guided wizard, 7 steps)\n` +
+          `<b>One line:</b> <code>/newcourse Title | Instructor | Category | type | price | image-url</code>\n` +
           `<code>/link &lt;slug&gt;</code> — attach a file to a course (reply to the ZIP, or forward it first)\n` +
           `<code>/unlink &lt;slug&gt;</code> — detach the file\n` +
-          `<code>/newcourse</code> — create a course (guided wizard, 7 steps)\n` +
           `<code>/broadcast &lt;text&gt;</code> — message all linked users 📢\n` +
           `<code>/stats</code> — platform dashboard 📊\n\n`
         : '') +
@@ -895,6 +936,20 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     if (userId) {
       const nav = await this.navRowFor(userId);
       if (nav.length) kb.push(nav);
+    }
+    const imageUrl = course.bannerUrl ?? course.thumbnailUrl;
+    if (imageUrl) {
+      // photo card — send as a NEW message (a photo can't be edited into a
+      // text view). Its buttons are handled by handleCallback: the bubble is
+      // deleted and the tapped view is sent fresh (Argo-style replace).
+      const mid = await this.sendPhoto(chatId, imageUrl, html, kb, threadId);
+      if (mid && userId) {
+        const set = this.photoBubbles.get(userId) ?? new Set();
+        set.add(mid);
+        this.photoBubbles.set(userId, set);
+      }
+      if (mid) return;
+      // photo failed (e.g. t.me link isn't a real image) — fall back to text
     }
     if (editMessageId) await this.editRich(chatId, editMessageId, html, kb);
     else await this.sendRich(chatId, html, threadId, kb);
@@ -1539,6 +1594,72 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       `${DIV}\n<i>${total} courses · page ${safePage + 1}/${pages}</i>`;
     if (editMessageId) await this.editRich(chatId, editMessageId, html, kb);
     else await this.sendRich(chatId, html, threadId, kb);
+  }
+
+  /**
+   * One-line edit for power users: /edit <title> <field> <value>
+   * Fields: title | instructor | category | level | type | price | image
+   * Reuses the wizard machinery so validation + confirmation are identical.
+   */
+  private async editCourseOneLine(
+    chatId: number,
+    userId: number,
+    titleArg: string,
+    field: string,
+    value: string,
+    threadId?: number | null,
+  ) {
+    const slug = await this.resolveSlugByArg(titleArg);
+    if (!slug) {
+      return this.sendRich(
+        chatId,
+        `${this.brandHeader('Edit Course')}\n\n` +
+          `❌ No course matches <code>${esc(titleArg)}</code>.\n\n` +
+          `Usage: <code>/edit &lt;title&gt; &lt;field&gt; &lt;value&gt;</code>\n` +
+          `Fields: <code>title | instructor | category | level | type | price | image</code>`,
+        threadId,
+      );
+    }
+    if (!value) {
+      return this.sendRich(
+        chatId,
+        `${this.brandHeader('Edit Course')}\n\n` +
+          `❌ Missing the new value.\n\n` +
+          `Usage: <code>/edit &lt;title&gt; &lt;field&gt; &lt;value&gt;</code>`,
+        threadId,
+      );
+    }
+    const course = await this.prisma.course.findUnique({ where: { slug }, select: { id: true } });
+    if (!course) return;
+    if (!['title', 'instructor', 'category', 'level', 'type', 'price', 'image'].includes(field)) {
+      return this.sendRich(
+        chatId,
+        `${this.brandHeader('Edit Course')}\n\n` +
+          `❌ Unknown field <code>${esc(field)}</code>.\n\n` +
+          `Fields: <code>title | instructor | category | level | type | price | image</code>`,
+        threadId,
+      );
+    }
+    const wizard: CourseWizard = {
+      kind: 'edit',
+      step: 'value',
+      data: { editCourseId: course.id, editCourseSlug: slug, editField: field as CourseWizard['data']['editField'] },
+      expiresAt: Date.now() + WIZARD_TTL_MS,
+    };
+    await this.saveWizard(userId, wizard);
+    if (field === 'category') {
+      let cat = await this.prisma.category.findFirst({
+        where: { OR: [{ slug: slugify(value) }, { name: { equals: value, mode: 'insensitive' } }] },
+      });
+      if (!cat) {
+        cat = await this.prisma.category.create({ data: { name: value, slug: slugify(value), icon: '📚' } });
+      }
+      await this.applyEditChoice(chatId, userId, threadId, cat.id);
+    } else if (field === 'level' || field === 'type') {
+      await this.applyEditChoice(chatId, userId, threadId, value);
+    } else {
+      await this.applyEditField(chatId, userId, threadId, wizard, { textValue: value });
+    }
   }
 
   /** /edit <title-or-slug> — pick a field, then change it. */
@@ -2276,6 +2397,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       originalPrice: true,
       contentType: true,
       thumbnailUrl: true,
+      bannerUrl: true,
       lecturer: { select: { name: true } },
       level: { select: { name: true } },
       categories: { include: { category: { select: { name: true } } } },
@@ -2525,6 +2647,38 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       return json.result?.message_id ?? null;
     } catch (err) {
       this.logger.error(`sendRich failed: ${(err as Error).message}`);
+      return null;
+    }
+  }
+
+  /** Send a photo with an HTML caption + inline keyboard (course cards).
+   *  Returns the message id, or null on failure (caller falls back to text). */
+  private async sendPhoto(
+    chatId: number,
+    photoUrl: string,
+    caption: string,
+    keyboard?: KbButton[][],
+    threadId?: number | null,
+  ): Promise<number | null> {
+    if (!this.enabled) return null;
+    try {
+      const body: Record<string, unknown> = {
+        chat_id: chatId,
+        photo: photoUrl,
+        caption,
+        parse_mode: 'HTML',
+      };
+      if (threadId) body.message_thread_id = threadId;
+      if (keyboard && keyboard.length) body.reply_markup = { inline_keyboard: keyboard };
+      const res = await this.api('sendPhoto', body);
+      const json = (await res.json()) as { ok: boolean; description?: string; result?: { message_id?: number } };
+      if (!json.ok) {
+        this.logger.warn(`sendPhoto rejected (${chatId}): ${json.description} — url: ${photoUrl.slice(0, 120)}`);
+        return null;
+      }
+      return json.result?.message_id ?? null;
+    } catch (err) {
+      this.logger.error(`sendPhoto failed: ${(err as Error).message}`);
       return null;
     }
   }
