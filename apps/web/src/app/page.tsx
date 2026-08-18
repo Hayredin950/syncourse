@@ -278,13 +278,13 @@ export default function HomePage() {
             <h2>Featured learning paths</h2>
             <Link href="/paths">See all <ChevronRight size={14} style={{ verticalAlign: "middle" }} /></Link>
           </div>
-          <div className="rail-row" style={{ gridAutoColumns: "minmax(260px, min(1fr, 400px))" }}>
+          <div className="rail-row" style={{ gridAutoColumns: "minmax(260px, 1fr)" }}>
             {home.featuredPaths.map((p) => (
               <Link
                 key={p.id}
                 href={`/paths/${p.id}`}
                 className="dark-panel"
-                style={{ padding: 18, background: "linear-gradient(135deg, hsl(196 40% 24%), #12100e 70%)", display: "block" }}
+                style={{ padding: 18, background: "linear-gradient(135deg, hsl(196 40% 24%), #12100e 70%)", display: "block", maxWidth: 400 }}
               >
                 <span className="eyebrow">Learning path</span>
                 <h3 style={{ margin: "14px 0 8px", fontSize: 17 }}>{p.title}</h3>
