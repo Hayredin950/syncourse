@@ -512,7 +512,8 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
         await this.pushNav(fromId, { key: 'courses', page: 0 });
         await this.sendCourseList(chatId, threadId, 0, undefined, fromId);
         break;
-      case '/course':
+      case '/course-detail':
+      case '/course': // alias kept for backward compatibility
         if (arg) {
           await this.pushNav(fromId, { key: 'course', arg });
           await this.sendCourseCard(chatId, arg, threadId, undefined, fromId);
@@ -782,10 +783,10 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       `<code>/courses</code> — browse the catalog (tap a title to download) 📚\n` +
       `<code>/courselist</code> — pick a course from buttons 🎴\n` +
       `<code>/search</code> — find a course by keyword 🔍\n` +
-      `<code>/course</code> — course details card 🎴\n` +
+      `<code>/course-detail</code> — course details card 🎴\n` +
       `<code>/download</code> — get a course file ⚡\n\n` +
       `<i>💡 <b>Two ways to use everything:</b> send the command with no args for an <b>interactive</b> walkthrough, or type it all in one line:</i>\n` +
-      `<code>/course Complete Machine Learning</code>\n` +
+      `<code>/course-detail Complete Machine Learning</code>\n` +
       `<code>/search machine learning</code>\n` +
       `<code>/download Complete Machine Learning</code>\n\n` +
       (isAdmin
@@ -818,7 +819,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
 
   /**
    * Paginated course buttons (8/page). Used by the /courselist picker and the
-   * /course lookup wizard. `kind` selects the callback prefix.
+   * /course-detail lookup wizard. `kind` selects the callback prefix.
    */
   private async pickerButtonsFor(kind: 'course' | 'coursefind', page = 0): Promise<KbButton[][]> {
     const total = await this.prisma.course.count({ where: { deletedAt: null } });
@@ -962,14 +963,14 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  /** /course <title-or-slug> — premium course details card with one-tap actions. */
+  /** /course-detail <title-or-slug> — premium course details card with one-tap actions. */
   private async sendCourseCard(chatId: number, arg: string, threadId?: number | null, editMessageId?: number, userId?: number) {
     if (!arg) {
       return this.sendRich(
         chatId,
         `${this.brandHeader('Course Card')}\n\n` +
-          `Usage: <code>/course &lt;title or slug&gt;</code>\n\n` +
-          `Example: <code>/course Complete Machine Learning</code>\n` +
+          `Usage: <code>/course-detail &lt;title or slug&gt;</code>\n\n` +
+          `Example: <code>/course-detail Complete Machine Learning</code>\n` +
           `Or browse with <code>/courses</code>.`,
         threadId,
       );
@@ -1216,7 +1217,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       }
       return;
     }
-    // /course with no args — user types a name or slug, we find the match
+    // /course-detail with no args — user types a name or slug, we find the match
     if (wizard.kind === 'coursefind' && wizard.step === 'name') {
       const slug = await this.resolveSlugByArg(text);
       if (slug) {
@@ -1523,9 +1524,9 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     );
   }
 
-  // ----- course lookup (/course) -----
+  // ----- course lookup (/course-detail) -----
 
-  /** /course with no args — prompt for a name or slug, then find the match. */
+  /** /course-detail with no args — prompt for a name or slug, then find the match. */
   private async startCourseLookup(chatId: number, userId: number, threadId?: number | null) {
     await this.clearWizard(userId);
     const wizard: CourseWizard = {
@@ -1535,15 +1536,14 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       expiresAt: Date.now() + WIZARD_TTL_MS,
     };
     await this.saveWizard(userId, wizard);
-    const buttons = await this.pickerButtonsFor('course', 0);
     await this.sendWizardStep(
       chatId,
       userId,
       `${this.brandHeader('Course Card')}\n\n` +
         `🎴 Which course do you want to see?\n` +
         `Type the course <b>name</b> or <b>slug</b> — e.g. <i>machine learning</i>\n\n` +
-        `Or tap a button below to pick one.`,
-      buttons,
+        `💡 Tip: use <code>/courselist</code> to pick one from buttons instead.`,
+      undefined,
       threadId,
     );
   }
