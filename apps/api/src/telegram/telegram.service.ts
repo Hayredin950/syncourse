@@ -872,7 +872,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     });
     // Build keyboard inline — same proven pattern as sendCourseList
     const kb: KbButton[][] = courses.map((c) => [
-      { text: `🎲 ${c.title.slice(0, 44)}`, callback_data: `course:${c.slug}` },
+      { text: `🎴 ${c.title.slice(0, 44)}`, callback_data: `course:${c.slug}` },
     ]);
     const navRow: KbButton[] = [];
     if (safePage > 0) navRow.push({ text: '◀️ Prev', callback_data: `clp:${safePage - 1}` });
