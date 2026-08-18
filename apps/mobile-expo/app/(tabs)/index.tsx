@@ -58,6 +58,9 @@ export default function HomeScreen() {
         <Text style={[styles.errorText, { fontSize: 11, color: "#999", marginTop: 4, textAlign: "center" }]}>
           {(error as Error)?.message ?? "No data yet"}
         </Text>
+        <Text style={[styles.errorText, { fontSize: 10, color: "#777", marginTop: 2, textAlign: "center" }]}>
+          {(((error as any)?.cause as any)?.message || String((error as any)?.cause || ""))?.slice(0, 160)}
+        </Text>
         <Link href="/auth" style={styles.retry}>
           Retry
         </Link>
