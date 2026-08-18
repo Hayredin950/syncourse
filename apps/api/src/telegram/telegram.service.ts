@@ -218,6 +218,17 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       case '/courses':
         await this.sendCourseList(chatId, threadId);
         break;
+      case '/download': {
+        // tolerate extra text after the slug, e.g. the "(file name)" the user
+        // may paste from /courses — only the first token is the slug
+        const slug = arg.split(/\s+/)[0];
+        if (!slug) {
+          await this.sendText(chatId, 'Usage: /download <course-slug>\n\nSee /courses for the list of available courses.', threadId);
+        } else {
+          await this.sendCourseFile(chatId, slug, threadId);
+        }
+        break;
+      }
       case '/link':
         await this.logActivity(fromId, chatId, 'command', `/link ${arg}`);
         if (await this.isAdmin(fromId)) await this.linkCourse(chatId, arg, msg, threadId, fromId);
