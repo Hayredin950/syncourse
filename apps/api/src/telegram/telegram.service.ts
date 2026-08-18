@@ -863,7 +863,22 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     }
     const pages = Math.ceil(total / TelegramService.CATALOG_PAGE);
     const safePage = Math.min(Math.max(page, 0), pages - 1);
-    const kb = await this.pickerButtonsFor('course', safePage);
+    const courses = await this.prisma.course.findMany({
+      where: { deletedAt: null },
+      orderBy: [{ createdAt: 'desc' }, { title: 'asc' }],
+      skip: safePage * TelegramService.CATALOG_PAGE,
+      take: TelegramService.CATALOG_PAGE,
+      select: { title: true, slug: true },
+    });
+    // Build keyboard inline — same proven pattern as sendCourseList
+    const kb: KbButton[][] = courses.map((c) => [
+      { text: `🎲 ${c.title.slice(0, 44)}`, callback_data: `course:${c.slug}` },
+    ]);
+    const navRow: KbButton[] = [];
+    if (safePage > 0) navRow.push({ text: '◀️ Prev', callback_data: `clp:${safePage - 1}` });
+    navRow.push({ text: `📄 ${safePage + 1}/${pages}`, callback_data: 'noop' });
+    if (safePage < pages - 1) navRow.push({ text: 'Next ▶️', callback_data: `clp:${safePage + 1}` });
+    kb.push(navRow);
     kb.push([
       { text: '📚 Catalog', callback_data: 'courses' },
       { text: '🏠 Home', callback_data: 'home' },
