@@ -44,7 +44,23 @@ interface TelegramMessage {
   description?: string;
 }
 
+/** Inline keyboard button — either a callback button or a URL button. */
+interface KbButton {
+  text: string;
+  callback_data?: string;
+  url?: string;
+}
+
 const BOT_USERNAME = process.env.TELEGRAM_BOT_USERNAME || 'syncourse_bot';
+const APP_URL = process.env.PUBLIC_APP_URL || 'https://syncourse.pages.dev';
+
+// ---------------------------------------------------------------------------
+// Premium design system — every bot message follows the same visual language:
+//   • ━━ divider bars for section separation
+//   • Bold brand header, emoji accents, <code> for slugs/commands
+//   • <a> links to the web app, inline keyboards for one-tap actions
+// ---------------------------------------------------------------------------
+const DIV = '━━━━━━━━━━━━━━━━━━';
 
 @Injectable()
 export class TelegramService implements OnModuleInit, OnModuleDestroy {
@@ -208,15 +224,18 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
         } else if (payload.startsWith('download_')) {
           await this.sendLessonLink(chatId, payload.slice(9));
         } else {
-          await this.sendText(chatId, welcomeMessage(), threadId);
+          await this.sendWelcome(chatId, threadId);
         }
         break;
       }
       case '/help':
-        await this.sendText(chatId, helpMessage(), threadId);
+        await this.sendHelp(chatId, threadId);
         break;
       case '/courses':
         await this.sendCourseList(chatId, threadId);
+        break;
+      case '/course':
+        await this.sendCourseCard(chatId, arg, threadId);
         break;
       case '/download': {
         // tolerate extra text after the slug, e.g. the "(file name)" the user
@@ -246,6 +265,10 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
         if (await this.isAdmin(fromId)) await this.broadcast(chatId, arg, threadId);
         else await this.sendText(chatId, '⛔ This command is for admins only.', threadId);
         break;
+      case '/stats':
+        if (await this.isAdmin(fromId)) await this.sendStats(chatId, threadId);
+        else await this.sendText(chatId, '⛔ This command is for admins only.', threadId);
+        break;
       default:
         if (text.startsWith('/')) {
           await this.sendText(chatId, `Unknown command. Send /help for the list of commands.`, threadId);
@@ -263,7 +286,199 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     }
     if (data.startsWith('dl:')) {
       await this.sendCourseFile(chatId, data.slice(3));
+    } else if (data === 'courses') {
+      await this.sendCourseList(chatId);
+    } else if (data === 'help') {
+      await this.sendHelp(chatId);
+    } else if (data === 'home' || data === 'start') {
+      await this.sendWelcome(chatId);
+    } else if (data === 'stats') {
+      await this.sendStats(chatId);
+    } else if (data.startsWith('link:')) {
+      const slug = data.slice(5);
+      await this.sendRich(
+        chatId,
+        `${this.brandHeader('Link a File')}\n\n` +
+          `📎 Now attach the file for <code>${esc(slug)}</code>:\n\n` +
+          `1️⃣ In the group, <b>REPLY to the ZIP message</b> with <code>/link ${esc(slug)}</code>\n` +
+          `2️⃣ Or <b>forward the ZIP</b> to this bot, then send <code>/link ${esc(slug)}</code>\n\n` +
+          `I'll confirm the moment it's linked ✅`,
+      );
     }
+  }
+
+  // ---------------------------------------------------------------
+  // Premium message templates
+  // ---------------------------------------------------------------
+
+  /** Brand header used at the top of most messages. */
+  private brandHeader(title: string): string {
+    return `${DIV}\n🎓 <b>SYNCOURSE</b> <i>· ${title}</i>\n${DIV}`;
+  }
+
+  private async sendWelcome(chatId: number, threadId?: number | null) {
+    const [courseCount, linkedCount] = await Promise.all([
+      this.prisma.course.count({ where: { deletedAt: null } }),
+      this.prisma.telegramCourseLink.count(),
+    ]);
+    const html =
+      `${this.brandHeader('Premium Course Delivery')}\n\n` +
+      `👋 <b>Welcome to Syncourse!</b>\n\n` +
+      `Complete course files — <b>delivered straight to this chat</b>. No sign-ups, no ads, no waiting. Just tap and learn. 🚀\n\n` +
+      `${DIV}\n` +
+      `📚 <b>${courseCount}</b> courses in the catalog\n` +
+      `📦 <b>${linkedCount}</b> files ready to download\n` +
+      `⭐ Rated by thousands of learners\n` +
+      `${DIV}\n\n` +
+      `<b>How it works:</b>\n` +
+      `1️⃣ Send <code>/courses</code> to browse everything available\n` +
+      `2️⃣ Tap <b>📥 Download</b> on any course\n` +
+      `3️⃣ The file arrives here instantly ⚡\n\n` +
+      `🔗 <a href="${APP_URL}">Open the Syncourse web app →</a>`;
+    await this.sendRich(chatId, html, threadId, [
+      [{ text: '📚 Browse courses', callback_data: 'courses' }],
+      [{ text: '❓ Help', callback_data: 'help' }, { text: '🌐 Web app', url: APP_URL }],
+    ]);
+  }
+
+  private async sendHelp(chatId: number, threadId?: number | null, isAdmin = false) {
+    const html =
+      `${this.brandHeader('Command Center')}\n\n` +
+      `<b>👤 For everyone</b>\n` +
+      `${DIV}\n` +
+      `<code>/start</code> — welcome & quick actions\n` +
+      `<code>/courses</code> — browse courses with files 📚\n` +
+      `<code>/course &lt;slug&gt;</code> — course details card 🎴\n` +
+      `<code>/download &lt;slug&gt;</code> — get a course file ⚡\n\n` +
+      (isAdmin
+        ? `<b>🛡️ Admin tools</b>\n${DIV}\n` +
+          `<code>/link &lt;slug&gt;</code> — attach a file to a course (reply to the ZIP, or forward it first)\n` +
+          `<code>/unlink &lt;slug&gt;</code> — detach the file\n` +
+          `<code>/newcourse</code> — create a course: <i>Title | Instructor | Category | type | price | image</i>\n` +
+          `<code>/broadcast &lt;text&gt;</code> — message all linked users 📢\n` +
+          `<code>/stats</code> — platform dashboard 📊\n\n`
+        : '') +
+      `💡 Tip: on any course, tap <b>📥 Download</b> under its listing.\n` +
+      `🔗 <a href="${APP_URL}">Explore the full catalog on the web →</a>`;
+    await this.sendRich(chatId, html, threadId, [
+      [{ text: '📚 Browse courses', callback_data: 'courses' }],
+      [{ text: '🏠 Home', callback_data: 'home' }, { text: '🌐 Web app', url: APP_URL }],
+    ]);
+  }
+
+  private async sendCourseList(chatId: number, threadId?: number | null) {
+    const links = await this.prisma.telegramCourseLink.findMany({
+      include: { course: { select: { title: true, slug: true, ratingAvg: true, lecturer: { select: { name: true } } } } },
+      orderBy: { createdAt: 'desc' },
+      take: 15,
+    });
+    if (links.length === 0) {
+      return this.sendRich(
+        chatId,
+        `${this.brandHeader('Catalog')}\n\n` +
+          `📭 <b>No courses linked yet.</b>\n\n` +
+          `The team is adding files daily — check back soon, or browse the web app in the meantime.`,
+        threadId,
+        [[{ text: '🌐 Web app', url: APP_URL }]],
+      );
+    }
+    const total = await this.prisma.telegramCourseLink.count();
+    const rows = links
+      .map((l, i) => {
+        const c = l.course;
+        return (
+          `${i + 1}. <b>${esc(c.title)}</b>\n` +
+          `   📦 ${esc(l.fileName ?? 'file')}${l.fileSizeMb ? ` · ${l.fileSizeMb} MB` : ''} · ⭐ ${c.ratingAvg.toFixed(1)}` +
+          (c.lecturer ? ` · 👨‍🏫 ${esc(c.lecturer.name)}` : '')
+        );
+      })
+      .join('\n\n');
+    const kb: KbButton[][] = links.map((l) => [
+      { text: `📥 Download — ${l.course.slug.slice(0, 24)}`, callback_data: `dl:${l.course.slug}` },
+    ]);
+    kb.push([
+      { text: '🏠 Home', callback_data: 'home' },
+      { text: '❓ Help', callback_data: 'help' },
+      { text: '🌐 Web app', url: APP_URL },
+    ]);
+    await this.sendRich(
+      chatId,
+      `${this.brandHeader('Course Catalog')}\n\n${rows}\n\n${DIV}\n<i>Tap a download button below ⬇️</i>` +
+        (total > links.length ? `\n\n<i>+${total - links.length} more — see them all on the <a href="${APP_URL}">web app</a></i>` : ''),
+      threadId,
+      kb,
+    );
+  }
+
+  /** /course <slug> — premium course details card with one-tap actions. */
+  private async sendCourseCard(chatId: number, arg: string, threadId?: number | null) {
+    const slug = arg.split(/\s+/)[0];
+    if (!slug) {
+      return this.sendRich(
+        chatId,
+        `${this.brandHeader('Course Card')}\n\n` +
+          `Usage: <code>/course &lt;course-slug&gt;</code>\n\n` +
+          `Get the slug from <code>/courses</code> or the <a href="${APP_URL}">web app</a>.`,
+        threadId,
+      );
+    }
+    const course = await this.prisma.course.findUnique({
+      where: { slug },
+      select: {
+        id: true,
+        title: true,
+        slug: true,
+        description: true,
+        ratingAvg: true,
+        price: true,
+        originalPrice: true,
+        contentType: true,
+        thumbnailUrl: true,
+        lecturer: { select: { name: true } },
+        level: { select: { name: true } },
+        categories: { include: { category: { select: { name: true } } } },
+        _count: { select: { lessons: true } },
+      },
+    });
+    if (!course) {
+      return this.sendRich(
+        chatId,
+        `${this.brandHeader('Course Card')}\n\n` +
+          `❌ Course <code>${esc(slug)}</code> not found.\n\n` +
+          `Try <code>/courses</code> to see what's available.`,
+        threadId,
+      );
+    }
+    const link = await this.prisma.telegramCourseLink.findUnique({
+      where: { courseId: course.id },
+    });
+    const catNames = course.categories.map((cc) => esc(cc.category.name)).join(', ') || '—';
+    const price =
+      course.price != null
+        ? `💵 <b>$${course.price}</b>${course.originalPrice && course.originalPrice > course.price ? ` <s>$${course.originalPrice}</s>` : ''}`
+        : '💵 <b>Free</b>';
+    const typeMap: Record<string, string> = { course: '📘 Course', 'mini-course': '📗 Mini-course', 'cheat-sheet': '📋 Cheat-sheet', roadmap: '🗺️ Roadmap' };
+    const type = typeMap[course.contentType] ?? '📘 Course';
+    const html =
+      `${this.brandHeader('Course Details')}\n\n` +
+      `🎴 <b>${esc(course.title)}</b>\n` +
+      `${DIV}\n` +
+      `${type} · ${course.level ? esc(course.level.name) : 'All levels'}\n` +
+      `👨‍🏫 ${course.lecturer ? esc(course.lecturer.name) : '—'}\n` +
+      `🏷️ ${catNames}\n` +
+      `⭐ <b>${course.ratingAvg.toFixed(1)}</b> / 5 · ${course._count.lessons} lessons\n` +
+      `${price}\n` +
+      (link ? `📦 <b>File ready:</b> ${esc(link.fileName ?? 'linked')}${link.fileSizeMb ? ` · ${link.fileSizeMb} MB` : ''}` : `📦 <i>File coming soon</i>`) +
+      `\n${DIV}\n` +
+      (course.description ? `${esc(course.description.slice(0, 220))}\n\n` : '') +
+      `🔗 <a href="${APP_URL}/courses/${course.slug}">View on the web →</a>`;
+    const kb: KbButton[][] = [];
+    if (link) kb.push([{ text: '📥 Download now', callback_data: `dl:${course.slug}` }]);
+    kb.push([
+      { text: '📚 All courses', callback_data: 'courses' },
+      { text: '🏠 Home', callback_data: 'home' },
+    ]);
+    await this.sendRich(chatId, html, threadId, kb);
   }
 
   // ---------------------------------------------------------------
@@ -299,10 +514,14 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
   ) {
     const slug = arg.split(/\s+/)[0] ?? '';
     if (!slug || slug.includes('<') || slug.includes('>')) {
-      return this.sendText(
+      return this.sendRich(
         chatId,
-        'Usage (easiest): in the group, REPLY to the ZIP message with:\n/link <course-slug>\n\nor in the DM:\n/link <course-slug> <t.me/group/TOPIC/MESSAGE link>\n\nReplace <course-slug> with a REAL slug from this list:\n\n' +
-          (await this.courseSlugList()),
+        `${this.brandHeader('Link a File')}\n\n` +
+          `<b>Easiest way:</b> in the group, <b>REPLY to the ZIP message</b> with:\n` +
+          `<code>/link &lt;course-slug&gt;</code>\n\n` +
+          `<b>Or in the DM:</b>\n` +
+          `<code>/link &lt;course-slug&gt; &lt;t.me/group/TOPIC/MESSAGE&gt;</code>\n\n` +
+          `Pick a real slug from this list:\n\n${await this.courseSlugList()}`,
         threadId,
       );
     }
@@ -311,9 +530,11 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       select: { id: true, title: true, slug: true, deletedAt: true },
     });
     if (!course || course.deletedAt) {
-      return this.sendText(
+      return this.sendRich(
         chatId,
-        `Course “${slug}” not found. Choose a real slug from this list:\n\n${await this.courseSlugList()}`,
+        `${this.brandHeader('Link a File')}\n\n` +
+          `❌ Course <code>${esc(slug)}</code> not found.\n\n` +
+          `Choose a real slug:\n\n${await this.courseSlugList()}`,
         threadId,
       );
     }
@@ -348,10 +569,19 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
         caption: null,
       });
       await this.logActivity(fromId ?? null, chatId, 'link', `✅ linked ${course.slug} -> ${doc.file_name ?? 'file'}`);
-      return this.sendText(
+      const kb: KbButton[][] = [
+        [{ text: '📥 Test download', callback_data: `dl:${course.slug}` }],
+        [{ text: '📚 Catalog', callback_data: 'courses' }, { text: '📊 Stats', callback_data: 'stats' }],
+      ];
+      return this.sendRich(
         chatId,
-        `✅ Linked “${course.title}” to ${sourceName} (${doc.file_name ?? 'file'}${doc.file_size ? ` · ${(doc.file_size / 1024 / 1024).toFixed(1)} MB` : ''}).\n\nUsers can now get it with /download ${slug} or from the app.`,
+        `${this.brandHeader('File Linked')}\n\n` +
+          `✅ <b>“${esc(course.title)}”</b> is now linked to ${sourceName}.\n\n` +
+          `📦 <b>${esc(doc.file_name ?? 'file')}</b>${doc.file_size ? ` · ${(doc.file_size / 1024 / 1024).toFixed(1)} MB` : ''}\n` +
+          `🔑 <code>/download ${course.slug}</code>\n\n` +
+          `Users can grab it instantly from the bot or the <a href="${APP_URL}/courses/${course.slug}">app</a>.`,
         threadId,
+        kb,
       );
     }
     if (reply) {
@@ -362,12 +592,13 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     const url = arg.split(/\s+/)[1] ?? '';
     if (!url) {
       await this.logActivity(fromId ?? null, chatId, 'link', `no file for ${slug} — guided admin`);
-      return this.sendText(
+      return this.sendRich(
         chatId,
-        'I don\'t have a file for that yet. Two easy ways:\n\n' +
-          '1️⃣ Forward the course ZIP to this bot (any chat), then send /link <slug> again\n' +
-          '2️⃣ Reply to the ZIP message in the group with /link <slug>\n\n' +
-          'Example:\nForward the ZIP → then: /link complete-machine-learning-and-data-science-2021',
+        `${this.brandHeader('Link a File')}\n\n` +
+          `📭 I don't have a file for <code>${esc(slug)}</code> yet. Two easy ways:\n\n` +
+          `1️⃣ <b>Forward the course ZIP</b> to this bot (any chat), then send <code>/link ${slug}</code> again\n` +
+          `2️⃣ <b>Reply to the ZIP message</b> in the group with <code>/link ${slug}</code>\n\n` +
+          `Example: forward the ZIP → then send <code>/link ${slug}</code>`,
         threadId,
       );
     }
@@ -412,10 +643,15 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
         fileSizeMb: doc.file_size ? Number((doc.file_size / 1024 / 1024).toFixed(1)) : null,
         caption: m.caption ?? null,
       });
-      return this.sendText(
+      return this.sendRich(
         chatId,
-        `✅ Linked “${course.title}”\n📦 ${doc.file_name ?? 'file'}${doc.file_size ? ` · ${(doc.file_size / 1024 / 1024).toFixed(1)} MB` : ''}\n\nUsers can now get it with /download ${slug} or from the app.`,
+        `${this.brandHeader('File Linked')}\n\n` +
+          `✅ <b>“${esc(course.title)}”</b> is now linked.\n` +
+          `📦 <b>${esc(doc.file_name ?? 'file')}</b>${doc.file_size ? ` · ${(doc.file_size / 1024 / 1024).toFixed(1)} MB` : ''}\n` +
+          `🔑 <code>/download ${course.slug}</code>\n\n` +
+          `Users can grab it from the bot or the <a href="${APP_URL}/courses/${course.slug}">app</a>.`,
         threadId,
+        [[{ text: '📥 Test download', callback_data: `dl:${course.slug}` }]],
       );
     } catch (err) {
       this.logger.error(`link failed: ${(err as Error).message}`);
@@ -426,9 +662,22 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
   private async unlinkCourse(chatId: number, slug: string, threadId?: number | null) {
     if (!slug) return this.sendText(chatId, 'Usage: /unlink <course-slug>', threadId);
     const course = await this.prisma.course.findUnique({ where: { slug }, select: { id: true, title: true } });
-    if (!course) return this.sendText(chatId, `Course “${slug}” not found.`, threadId);
+    if (!course) {
+      return this.sendRich(
+        chatId,
+        `${this.brandHeader('Unlink')}\n\n❌ Course <code>${esc(slug)}</code> not found.`,
+        threadId,
+      );
+    }
     await this.prisma.telegramCourseLink.deleteMany({ where: { courseId: course.id } });
-    return this.sendText(chatId, `Unlinked “${course.title}” — the Telegram file is no longer served.`, threadId);
+    await this.logActivity(null, chatId, 'link', `unlinked ${slug}`);
+    return this.sendRich(
+      chatId,
+      `${this.brandHeader('Unlinked')}\n\n` +
+        `🗑️ <b>“${esc(course.title)}”</b> — the Telegram file is no longer served.\n` +
+        `Re-link anytime with <code>/link ${slug}</code>.`,
+      threadId,
+    );
   }
 
   /**
@@ -439,9 +688,12 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     const parts = arg.split('|').map((p) => p.trim());
     const [title, instructor, category, contentType, price, imageUrl] = parts;
     if (!title || !instructor) {
-      return this.sendText(
+      return this.sendRich(
         chatId,
-        'Usage:\n/newcourse Course Title | Instructor Name | Category | course|mini-course|cheat-sheet|roadmap | price | image-url\n\nOnly Title and Instructor are required.',
+        `${this.brandHeader('New Course')}\n\n` +
+          `<b>Usage:</b>\n<code>/newcourse Title | Instructor | Category | type | price | image-url</code>\n\n` +
+          `<b>Example:</b>\n<code>/newcourse Complete ML | Andrei Neagoie | Data Science | course | 64.99 | https://…/cover.jpg</code>\n\n` +
+          `<i>Only Title and Instructor are required. Type: course | mini-course | cheat-sheet | roadmap</i>`,
         threadId,
       );
     }
@@ -476,10 +728,16 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
             : {}),
         },
       });
-      return this.sendText(
+      await this.logActivity(null, chatId, 'course', `created ${slug}`);
+      return this.sendRich(
         chatId,
-        `✅ Course created: “${course.title}”\n🔗 ${process.env.PUBLIC_APP_URL || 'https://syncourse.pages.dev'}/courses/${course.slug}\n\nNow attach the file with:\n/link ${course.slug} <t.me group link>`,
+        `${this.brandHeader('Course Created')}\n\n` +
+          `✅ <b>“${esc(course.title)}”</b> is live on the site!\n\n` +
+          `👨‍🏫 ${esc(instructor)}${category ? ` · 🏷️ ${esc(category)}` : ''}${price ? ` · 💵 $${price}` : ''}\n` +
+          `🔗 <a href="${APP_URL}/courses/${course.slug}">Open the course →</a>\n\n` +
+          `<b>Next:</b> attach the file — reply to the ZIP with:\n<code>/link ${course.slug}</code>`,
         threadId,
+        [[{ text: '🔗 Link a file', callback_data: `link:${course.slug}` }], [{ text: '📊 Stats', callback_data: 'stats' }]],
       );
     } catch (err) {
       this.logger.error(`newCourse failed: ${(err as Error).message}`);
@@ -494,45 +752,115 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       select: { telegramId: true },
       take: 500,
     });
+    const html =
+      `${this.brandHeader('Announcement')}\n\n` +
+      `${esc(text)}\n\n` +
+      `${DIV}\n` +
+      `🎓 <b>Syncourse</b> · <a href="${APP_URL}">Open the app →</a>`;
     let sent = 0;
     for (const u of users) {
       try {
         const res = await this.api('sendMessage', {
           chat_id: String(u.telegramId),
-          text: `📢 ${text}`,
+          text: html,
+          parse_mode: 'HTML',
+          disable_web_page_preview: true,
         });
         if ((await res.json()).ok) sent++;
       } catch {
         /* skip */
       }
     }
-    return this.sendText(chatId, `Broadcast sent to ${sent}/${users.length} linked users.`, threadId);
+    await this.logActivity(null, chatId, 'broadcast', `sent ${sent}/${users.length}`);
+    return this.sendRich(
+      chatId,
+      `${this.brandHeader('Broadcast')}\n\n` +
+        `📢 Sent to <b>${sent}/${users.length}</b> linked users.\n\n` +
+        `${esc(text.slice(0, 120))}${text.length > 120 ? '…' : ''}`,
+      threadId,
+    );
+  }
+
+  /** /stats — admin platform dashboard. */
+  private async sendStats(chatId: number, threadId?: number | null) {
+    const [courses, users, links, downloads, lessons, reviews] = await Promise.all([
+      this.prisma.course.count({ where: { deletedAt: null } }),
+      this.prisma.user.count(),
+      this.prisma.telegramCourseLink.count(),
+      this.prisma.downloadEvent.count(),
+      this.prisma.lesson.count(),
+      this.prisma.review.count(),
+    ]);
+    const recentLinks = await this.prisma.telegramCourseLink.findMany({
+      include: { course: { select: { title: true, slug: true } } },
+      orderBy: { createdAt: 'desc' },
+      take: 5,
+    });
+    const recent = recentLinks.length
+      ? recentLinks.map((l) => `• <b>${esc(l.course.title)}</b> — <code>/download ${l.course.slug}</code>`).join('\n')
+      : '• <i>No files linked yet.</i>';
+    const html =
+      `${this.brandHeader('Platform Dashboard')}\n\n` +
+      `📚 <b>${courses}</b> courses\n` +
+      `👥 <b>${users}</b> users\n` +
+      `📦 <b>${links}</b> files linked\n` +
+      `⬇️ <b>${downloads}</b> bot downloads\n` +
+      `🎬 <b>${lessons}</b> lessons\n` +
+      `⭐ <b>${reviews}</b> reviews\n` +
+      `${DIV}\n` +
+      `<b>Recently linked:</b>\n${recent}\n` +
+      `${DIV}\n` +
+      `🔗 <a href="${APP_URL}/admin">Open the admin console →</a>`;
+    await this.sendRich(chatId, html, threadId, [
+      [{ text: '📚 Catalog', callback_data: 'courses' }, { text: '🏠 Home', callback_data: 'home' }],
+    ]);
   }
 
   // ---------------------------------------------------------------
   // User-facing download flow
   // ---------------------------------------------------------------
 
-  /** Send the course file (or forward it) to a chat. */
+  /** Send the course file (or forward it) to a chat — premium caption + actions. */
   private async sendCourseFile(chatId: number, slug: string, threadId?: number | null) {
     const course = await this.prisma.course.findUnique({
       where: { slug },
-      select: { id: true, title: true, slug: true, ratingAvg: true, lecturer: { select: { name: true } } },
+      select: {
+        id: true,
+        title: true,
+        slug: true,
+        ratingAvg: true,
+        price: true,
+        lecturer: { select: { name: true } },
+      },
     });
     if (!course) return this.sendText(chatId, `Course “${slug}” not found. Try /courses.`);
     const link = await this.prisma.telegramCourseLink.findUnique({
       where: { courseId: course.id },
     });
     if (!link) {
-      return this.sendText(chatId, 'This course has no Telegram file linked yet. Try again later — the team is adding files daily.');
+      return this.sendRich(
+        chatId,
+        `${this.brandHeader('Download')}\n\n` +
+          `📭 <b>“${esc(course.title)}”</b> has no Telegram file linked yet.\n` +
+          `Try again later — the team adds files daily.`,
+        threadId,
+        [[{ text: '📚 All courses', callback_data: 'courses' }]],
+      );
     }
-    const caption = courseCaption(course, link.fileName);
+    const caption =
+      `🎓 <b>${esc(course.title)}</b>\n` +
+      `${DIV}\n` +
+      `⭐ <b>${course.ratingAvg.toFixed(1)}</b> / 5${course.lecturer ? ` · 👨‍🏫 ${esc(course.lecturer.name)}` : ''}\n` +
+      (link.fileSizeMb ? `📦 ${esc(link.fileName ?? 'file')} · ${link.fileSizeMb} MB\n` : '') +
+      `${DIV}\n` +
+      `Happy learning! 🚀 More at <a href="${APP_URL}/courses/${course.slug}">syncourse.pages.dev</a>`;
     try {
       if (link.fileId) {
         const body: Record<string, unknown> = {
           chat_id: chatId,
           document: link.fileId,
           caption,
+          parse_mode: 'HTML',
         };
         if (threadId) body.message_thread_id = threadId;
         const res = await this.api('sendDocument', body);
@@ -560,6 +888,18 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
           },
         })
         .catch(() => undefined);
+      // Follow-up card after the file lands
+      await this.sendRich(
+        chatId,
+        `${this.brandHeader('Enjoy!')}\n\n` +
+          `✅ File delivered — <b>“${esc(course.title)}”</b> is all yours.\n` +
+          `Want more? Browse the full catalog below. 👇`,
+        threadId,
+        [
+          [{ text: '📚 All courses', callback_data: 'courses' }],
+          [{ text: '🏠 Home', callback_data: 'home' }, { text: '❓ Help', callback_data: 'help' }],
+        ],
+      );
     } catch {
       return this.sendText(
         chatId,
@@ -575,8 +915,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       include: { course: true },
     });
     if (!lesson) return this.sendText(chatId, 'Lesson not found.', threadId);
-    const appUrl = process.env.PUBLIC_APP_URL || 'https://syncourse.pages.dev';
-    const text = `📚 Syncourse\n\n${lesson.course.title}\n${lesson.title}\n\n${appUrl}/courses/${lesson.course.slug}/lessons/${lesson.id}`;
+    const text = `📚 Syncourse\n\n${lesson.course.title}\n${lesson.title}\n\n${APP_URL}/courses/${lesson.course.slug}/lessons/${lesson.id}`;
     await this.sendText(chatId, text, threadId);
   }
 
@@ -589,7 +928,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       take: 60,
     });
     if (courses.length === 0) return 'No courses yet — create one with /newcourse.\n';
-    return courses.map((c) => `• ${c.slug}`).join('\n') + '\n';
+    return courses.map((c) => `• <code>${esc(c.slug)}</code>`).join('\n') + '\n';
   }
 
   /** Upsert a course↔Telegram-file mapping. */
@@ -620,23 +959,6 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
-  private async sendCourseList(chatId: number, threadId?: number | null) {
-    const links = await this.prisma.telegramCourseLink.findMany({
-      include: { course: { select: { title: true, slug: true, ratingAvg: true } } },
-      take: 50,
-    });
-    if (links.length === 0) {
-      return this.sendText(chatId, 'No courses linked yet. Ask an admin to link files with /link.', threadId);
-    }
-    const rows = links
-      .map(
-        (l, i) =>
-          `${i + 1}. ${l.course.title} — /download ${l.course.slug}${l.fileName ? ` (${l.fileName})` : ''}`,
-      )
-      .join('\n');
-    await this.sendText(chatId, `📚 Courses with Telegram files:\n\n${rows}`, threadId);
-  }
-
   // ---------------------------------------------------------------
   // Helpers
   // ---------------------------------------------------------------
@@ -661,15 +983,53 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
+  /**
+   * Premium rich-text sender: parse_mode HTML + optional inline keyboard.
+   * All dynamic content MUST be passed through esc() before reaching here —
+   * raw <angle brackets> in user data would otherwise break the message.
+   */
+  private async sendRich(
+    chatId: number,
+    html: string,
+    threadId?: number | null,
+    keyboard?: KbButton[][],
+  ) {
+    if (!this.enabled) return;
+    try {
+      const body: Record<string, unknown> = {
+        chat_id: chatId,
+        text: html,
+        parse_mode: 'HTML',
+        disable_web_page_preview: true,
+      };
+      if (threadId) body.message_thread_id = threadId;
+      if (keyboard && keyboard.length) {
+        body.reply_markup = { inline_keyboard: keyboard };
+      }
+      const res = await this.api('sendMessage', body);
+      const json = (await res.json()) as { ok: boolean; description?: string };
+      if (!json.ok) {
+        this.logger.error(`sendRich rejected (${chatId}): ${json.description} — text: ${html.slice(0, 200)}`);
+        // Fall back to plain text so the user always gets an answer
+        const plain = html
+          .replace(/<b>(.*?)<\/b>/g, '$1')
+          .replace(/<i>(.*?)<\/i>/g, '$1')
+          .replace(/<s>(.*?)<\/s>/g, '$1')
+          .replace(/<code>(.*?)<\/code>/g, '$1')
+          .replace(/<a href="[^"]*">(.*?)<\/a>/g, '$1');
+        await this.sendText(chatId, plain, threadId);
+      }
+    } catch (err) {
+      this.logger.error(`sendRich failed: ${(err as Error).message}`);
+    }
+  }
+
   private async sendText(chatId: number, text: string, threadId?: number | null) {
     if (!this.enabled) return;
     try {
       const body: Record<string, unknown> = {
         chat_id: chatId,
         text,
-        // IMPORTANT: no parse_mode. Telegram rejects messages containing raw
-        // <angle brackets> when parse_mode=HTML, which made every /link reply
-        // fail silently. Plain text is bulletproof.
         disable_web_page_preview: true,
       };
       if (threadId) body.message_thread_id = threadId;
@@ -757,42 +1117,13 @@ function parseTelegramLink(
   }
 }
 
-function courseCaption(
-  course: { title: string; slug: string; ratingAvg: number; lecturer: { name: string } | null },
-  fileName: string | null,
-): string {
-  const lines = [
-    `🔰 ${course.title}`,
-    `⭐ ${course.ratingAvg.toFixed(1)} / 5`,
-    course.lecturer ? `👨‍🏫 Taught by ${course.lecturer.name}` : null,
-    fileName ? `📦 ${fileName}` : null,
-    ``,
-    `More at syncourse.pages.dev/courses/${course.slug}`,
-  ].filter(Boolean);
-  return lines.join('\n');
-}
-
-function welcomeMessage(): string {
-  return (
-    `👋 Welcome to Syncourse!\n\n` +
-    `I send you course files straight to this chat.\n\n` +
-    `• Get a course: send /courses to see what's available\n` +
-    `• Download one: /download <slug>\n\n` +
-    `Find the whole catalog at syncourse.pages.dev`
-  );
-}
-
-function helpMessage(): string {
-  return (
-    `Syncourse bot\n\n` +
-    `For everyone:\n` +
-    `/courses — list courses with files\n` +
-    `/download <slug> — get a course file\n\n` +
-    `For admins:\n` +
-    `/link <slug> <t.me link> — attach the file in a group topic to a course\n` +
-    `/unlink <slug> — detach the file\n` +
-    `/newcourse Title | Instructor | Category | type | price | image — create a course\n` +
-    `/broadcast <text> — message all linked users\n\n` +
-    `Example link: https://t.me/syncourse/2/41 (group → topic → message)`
-  );
+/** Escape user/course-provided text for safe use inside HTML parse_mode messages. */
+function esc(s: string | null | undefined): string {
+  if (s == null) return '';
+  return s
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
