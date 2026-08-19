@@ -204,7 +204,7 @@ function BrowseRow({ course }: { course: CourseSummary }) {
     .join(" · ");
   return (
     <Link href={`/courses/${course.slug}`} asChild>
-      <View style={styles.row}>
+      <Pressable style={styles.row}>
         <View style={styles.thumb}>
           <Text style={{ color: colors.dim, fontSize: 18 }}>▶</Text>
         </View>
@@ -219,7 +219,7 @@ function BrowseRow({ course }: { course: CourseSummary }) {
           </View>
         </View>
         <Text style={{ color: colors.dim }}>›</Text>
-      </View>
+      </Pressable>
     </Link>
   );
 }
@@ -227,7 +227,7 @@ function BrowseRow({ course }: { course: CourseSummary }) {
 function GridCard({ course }: { course: CourseSummary }) {
   return (
     <Link href={`/courses/${course.slug}`} asChild>
-      <View style={styles.gridCard}>
+      <Pressable style={styles.gridCard}>
         {course.thumbnailUrl ? (
           <Image source={{ uri: cloudinaryUrl(course.thumbnailUrl, { width: 300, height: 450 }) ?? undefined }} style={styles.gridThumb} resizeMode="cover" />
         ) : (
@@ -239,7 +239,7 @@ function GridCard({ course }: { course: CourseSummary }) {
           {course.title}
         </Text>
         <Text style={styles.rowMeta}>{course.level}</Text>
-      </View>
+      </Pressable>
     </Link>
   );
 }

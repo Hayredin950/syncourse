@@ -59,7 +59,7 @@ export default function DownloadsScreen() {
           }
           renderItem={({ item }) => (
             <Link href={`/courses/${item.slug}`} asChild>
-              <View style={styles.card}>
+              <Pressable style={styles.card}>
                 <View style={{ flex: 1 }}>
                   <Text numberOfLines={1} style={styles.title}>
                     {item.title}
@@ -69,7 +69,7 @@ export default function DownloadsScreen() {
                 <View style={styles.progressTrack}>
                   <View style={[styles.progressFill, { width: `${Math.min(item.progressPct, 100)}%` }]} />
                 </View>
-              </View>
+              </Pressable>
             </Link>
           )}
         />

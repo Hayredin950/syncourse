@@ -4,6 +4,7 @@ import React, { useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
+  Pressable,
   StyleSheet,
   Text,
   View,
@@ -72,7 +73,7 @@ export default function LearningScreen() {
 function LearningRow({ item }: { item: MyLearningItem }) {
   return (
     <Link href={`/courses/${item.slug}`} asChild>
-      <View style={styles.card}>
+      <Pressable style={styles.card}>
         <View style={styles.thumb}>
           <Text style={{ color: colors.dim, fontSize: 14 }}>▶</Text>
         </View>
@@ -85,7 +86,7 @@ function LearningRow({ item }: { item: MyLearningItem }) {
           </View>
           <Text style={styles.progressText}>{item.progressPct}% complete</Text>
         </View>
-      </View>
+      </Pressable>
     </Link>
   );
 }

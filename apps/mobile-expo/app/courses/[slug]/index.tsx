@@ -120,17 +120,19 @@ export default function CourseDetailScreen() {
     coverMut.mutate({ imageUrl: coverUrl.trim() });
   };
 
-  if (isLoading || !data) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator color={colors.accent} size="large" />
-      </View>
-    );
-  }
+  // error before !data: on failure data is undefined, so checking !data first
+  // made this branch unreachable and left a permanent spinner
   if (error) {
     return (
       <View style={styles.center}>
         <Text style={styles.muted}>Could not load this course</Text>
+      </View>
+    );
+  }
+  if (isLoading || !data) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator color={colors.accent} size="large" />
       </View>
     );
   }
@@ -205,10 +207,18 @@ export default function CourseDetailScreen() {
       <View style={styles.body}>
         <Text style={styles.title}>{c.title}</Text>
         <View style={styles.metaRow}>
-          <Stars value={c.ratingAvg} />
-          <Text style={styles.metaText}> · {c.ratingCount} ratings</Text>
+          {/* single-ZIP courses have no lessons and no ratings; printing the
+              zeros made a complete course look empty (web guards these too) */}
+          {c.ratingCount > 0 ? (
+            <>
+              <Stars value={c.ratingAvg} />
+              <Text style={styles.metaText}> · {c.ratingCount} ratings</Text>
+            </>
+          ) : (
+            <Text style={styles.metaText}>Not yet rated</Text>
+          )}
           <View style={{ flex: 1 }} />
-          <Text style={styles.metaText}>{c.lessonCount} lessons</Text>
+          {c.lessonCount > 0 && <Text style={styles.metaText}>{c.lessonCount} lessons</Text>}
         </View>
         <Text style={styles.metaText}>
           {c.level} · {c.language} · {c.enrollmentCount.toLocaleString()} enrolled
@@ -304,30 +314,36 @@ export default function CourseDetailScreen() {
           </>
         )}
 
-        <Text style={styles.heading}>Curriculum</Text>
-        {c.sections.map((section) => (
-          <View key={section.id} style={styles.section}>
-            <Text style={styles.sectionTitle}>
-              {section.title}{" "}
-              <Text style={styles.muted}>
-                · {section.lessons.length} lessons · {formatDurationSec(section.lessons.reduce((s, l) => s + l.durationSec, 0))}
-              </Text>
-            </Text>
-            {section.lessons.map((lesson) => (
-              <Link
-                key={lesson.id}
-                href={`/courses/${c.slug}/lessons/${lesson.id}`}
-                style={styles.lessonRow}
-              >
-                <Text style={{ color: colors.dim }}>{lesson.type === "video" ? "▶" : "📄"}</Text>
-                <Text style={styles.lessonTitle} numberOfLines={1}>
-                  {lesson.title}
+        {/* hidden for single-ZIP courses, which have no sections at all — a bare
+            "Curriculum" heading over blank space read as broken */}
+        {c.sections.length > 0 && (
+          <>
+            <Text style={styles.heading}>Curriculum</Text>
+            {c.sections.map((section) => (
+              <View key={section.id} style={styles.section}>
+                <Text style={styles.sectionTitle}>
+                  {section.title}{" "}
+                  <Text style={styles.muted}>
+                    · {section.lessons.length} lessons · {formatDurationSec(section.lessons.reduce((s, l) => s + l.durationSec, 0))}
+                  </Text>
                 </Text>
-                <Text style={styles.muted}>{formatDurationSec(lesson.durationSec)}</Text>
-              </Link>
+                {section.lessons.map((lesson) => (
+                  <Link
+                    key={lesson.id}
+                    href={`/courses/${c.slug}/lessons/${lesson.id}`}
+                    style={styles.lessonRow}
+                  >
+                    <Text style={{ color: colors.dim }}>{lesson.type === "video" ? "▶" : "📄"}</Text>
+                    <Text style={styles.lessonTitle} numberOfLines={1}>
+                      {lesson.title}
+                    </Text>
+                    <Text style={styles.muted}>{formatDurationSec(lesson.durationSec)}</Text>
+                  </Link>
+                ))}
+              </View>
             ))}
-          </View>
-        ))}
+          </>
+        )}
 
         <Text style={styles.heading}>How it&apos;s rated</Text>
         <View style={styles.ratingCard}>
@@ -414,6 +430,17 @@ export default function CourseDetailScreen() {
               </Pressable>
               <Text style={styles.muted}>{r.replyCount} repl{r.replyCount === 1 ? "y" : "ies"}</Text>
             </View>
+            {/* the API nests reply bodies under each review — render them instead
+                of only a counter the reader can never open */}
+            {(r.replies ?? []).map((rep) => (
+              <View key={rep.id} style={styles.replyRow}>
+                <Text style={styles.replyAuthor}>
+                  {rep.userName}
+                  {rep.isStaff ? " · staff" : ""}
+                </Text>
+                {rep.body && <Text style={styles.replyBody}>{rep.body}</Text>}
+              </View>
+            ))}
           </View>
         ))}
 
@@ -492,7 +519,7 @@ export default function CourseDetailScreen() {
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.similarRow}>
               {similarQ.data.map((sc) => (
                 <Link key={sc.id} href={`/courses/${sc.slug}`} asChild>
-                  <View style={{ width: 132 }}>
+                  <Pressable style={{ width: 132 }}>
                     {sc.thumbnailUrl ? (
                       <Image source={{ uri: cloudinaryUrl(sc.thumbnailUrl, { width: 264, height: 300 }) ?? undefined }} style={styles.similarThumb} resizeMode="cover" />
                     ) : (
@@ -501,7 +528,7 @@ export default function CourseDetailScreen() {
                       </View>
                     )}
                     <Text numberOfLines={2} style={styles.similarTitle}>{sc.title}</Text>
-                  </View>
+                  </Pressable>
                 </Link>
               ))}
             </ScrollView>
@@ -781,6 +808,15 @@ const styles = StyleSheet.create({
   actionIcon: { color: colors.muted, fontSize: 11 },
   actionLabel: { color: colors.muted, fontSize: 12 },
   upvoted: { color: colors.accent },
+  replyRow: {
+    marginTop: 8,
+    marginLeft: 12,
+    paddingLeft: 10,
+    borderLeftWidth: 2,
+    borderLeftColor: "rgba(244,244,245,0.14)",
+  },
+  replyAuthor: { color: colors.text, fontSize: 12, fontWeight: "700" },
+  replyBody: { color: "rgba(244,244,245,0.7)", fontSize: 12, marginTop: 2 },
   downloadsBox: {
     backgroundColor: colors.surface,
     borderRadius: radius.md,

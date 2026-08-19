@@ -138,7 +138,7 @@ export default function SearchScreen() {
 function SearchRow({ course }: { course: CourseSummary }) {
   return (
     <Link href={`/courses/${course.slug}`} asChild>
-      <View style={styles.row}>
+      <Pressable style={styles.row}>
         <View style={styles.thumb}>
           <Text style={{ color: colors.dim, fontSize: 14 }}>▶</Text>
         </View>
@@ -151,7 +151,7 @@ function SearchRow({ course }: { course: CourseSummary }) {
           </Text>
         </View>
         <Text style={{ color: colors.dim }}>▢</Text>
-      </View>
+      </Pressable>
     </Link>
   );
 }

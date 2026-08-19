@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useLocalSearchParams } from "expo-router";
 import React from "react";
-import { ActivityIndicator, Image, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Image, ScrollView, StyleSheet, Text, View, Pressable } from "react-native";
 import * as api from "../../lib/api";
 import { cloudinaryUrl } from "../../lib/cloudinary";
 import { colors, radius } from "../../lib/tokens";
@@ -54,7 +54,7 @@ export default function PathDetail() {
       <Text style={styles.sectionTitle}>Courses in this path</Text>
       {data.courses.map((c, i) => (
         <Link key={c.id} href={`/courses/${c.slug}`} asChild>
-          <View style={styles.row}>
+          <Pressable style={styles.row}>
             <Text style={styles.rank}>{i + 1}</Text>
             <View style={styles.rowBody}>
               <Text style={styles.rowTitle} numberOfLines={1}>{c.title}</Text>
@@ -63,7 +63,7 @@ export default function PathDetail() {
               </Text>
             </View>
             <Text style={styles.chevron}>›</Text>
-          </View>
+          </Pressable>
         </Link>
       ))}
     </ScrollView>

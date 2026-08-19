@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useRouter } from "expo-router";
 import React from "react";
-import { ActivityIndicator, Image, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Image, ScrollView, StyleSheet, Text, View, Pressable } from "react-native";
 import * as api from "../../lib/api";
 import { useAuth } from "../../lib/auth";
 import { colors } from "../../lib/tokens";
@@ -97,11 +97,11 @@ export default function MeScreen() {
 function MenuRow({ icon, label, href }: { icon: string; label: string; href: string }) {
   return (
     <Link href={href} asChild>
-      <View style={styles.menuRow}>
+      <Pressable style={styles.menuRow}>
         <Text style={{ color: colors.accent, fontSize: 18 }}>{icon}</Text>
         <Text style={styles.menuLabel}>{label}</Text>
         <Text style={{ color: colors.dim }}>›</Text>
-      </View>
+      </Pressable>
     </Link>
   );
 }

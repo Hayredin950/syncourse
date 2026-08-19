@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "expo-router";
 import React from "react";
-import { ActivityIndicator, FlatList, Image, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, FlatList, Image, StyleSheet, Text, View, Pressable } from "react-native";
 import * as api from "../../lib/api";
 import { cloudinaryUrl } from "../../lib/cloudinary";
 import { colors, radius } from "../../lib/tokens";
@@ -34,7 +34,7 @@ export default function LecturersIndex() {
       }
       renderItem={({ item }) => (
         <Link href={`/lecturers/${item.slug}`} asChild>
-          <View style={styles.card}>
+          <Pressable style={styles.card}>
             <View style={styles.avatar}>
               {item.photoUrl ? (
                 <Image
@@ -54,7 +54,7 @@ export default function LecturersIndex() {
               <Text style={styles.muted}>{item.courseCount ?? 0} courses</Text>
             </View>
             <Text style={styles.chevron}>›</Text>
-          </View>
+          </Pressable>
         </Link>
       )}
     />

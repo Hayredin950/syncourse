@@ -1,6 +1,6 @@
 import { Link } from "expo-router";
 import React from "react";
-import { Image, StyleSheet, Text, View } from "react-native";
+import { Image, StyleSheet, Text, View, Pressable } from "react-native";
 import { colors, radius } from "../lib/tokens";
 import { formatDuration, type CourseSummary } from "../lib/types";
 import { cloudinaryUrl } from "../lib/cloudinary";
@@ -41,7 +41,7 @@ export function CourseCard({ course, width = 132 }: { course: CourseSummary; wid
 
   return (
     <Link href={`/courses/${course.slug}`} asChild>
-      <View style={{ width }}>
+      <Pressable style={{ width }}>
         {course.thumbnailUrl ? (
           <Image
             source={{
@@ -88,7 +88,7 @@ export function CourseCard({ course, width = 132 }: { course: CourseSummary; wid
         <Text style={styles.votes} numberOfLines={1}>
           {course.ratingCount.toLocaleString()} votes
         </Text>
-      </View>
+      </Pressable>
     </Link>
   );
 }

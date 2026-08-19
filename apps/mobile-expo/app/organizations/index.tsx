@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link } from "expo-router";
 import React from "react";
-import { ActivityIndicator, FlatList, Image, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, FlatList, Image, StyleSheet, Text, View, Pressable } from "react-native";
 import * as api from "../../lib/api";
 import { cloudinaryUrl } from "../../lib/cloudinary";
 import { colors, radius } from "../../lib/tokens";
@@ -34,7 +34,7 @@ export default function OrganizationsIndex() {
       }
       renderItem={({ item }) => (
         <Link href={`/organizations/${item.slug}`} asChild>
-          <View style={styles.card}>
+          <Pressable style={styles.card}>
             <View style={styles.logo}>
               {item.logoUrl ? (
                 <Image
@@ -56,7 +56,7 @@ export default function OrganizationsIndex() {
               </Text>
             </View>
             <Text style={styles.chevron}>›</Text>
-          </View>
+          </Pressable>
         </Link>
       )}
     />

@@ -82,7 +82,7 @@ export default function ListsScreen() {
         }
         renderItem={({ item }) => (
           <Link href={`/lists/${item.id}`} asChild>
-            <View style={styles.card}>
+            <Pressable style={styles.card}>
               <Text style={{ fontSize: 18 }}>{item.visibility === "public" ? "🌐" : "🔒"}</Text>
               <View style={{ flex: 1 }}>
                 <Text style={styles.cardTitle}>{item.name}</Text>
@@ -92,7 +92,7 @@ export default function ListsScreen() {
                 </Text>
               </View>
               <Text style={{ color: colors.dim }}>›</Text>
-            </View>
+            </Pressable>
           </Link>
         )}
       />

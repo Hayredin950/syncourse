@@ -42,6 +42,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   });
 
   const refresh = async () => {
+    // Reload the token from storage too: after login()/register() write the
+    // accessToken to AsyncStorage, this context's `token` state is still null,
+    // so the "me" query stays disabled and the UI never reflects being signed
+    // in. Re-reading here makes login/logout/Google flow all line up.
+    const t = await api.getToken();
+    setTokenState(t);
     await queryClient.invalidateQueries({ queryKey: ["me"] });
   };
 

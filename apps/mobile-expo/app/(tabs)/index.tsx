@@ -86,7 +86,7 @@ export default function HomeScreen() {
       {/* hero — featured course banner */}
       {hero && (
         <Link href={`/courses/${hero.slug}`} asChild>
-          <View style={styles.hero}>
+          <Pressable style={styles.hero}>
             {hero.thumbnailUrl ? (
               <Image
                 source={{ uri: cloudinaryUrl(hero.thumbnailUrl, { width: 720, height: 500 }) ?? undefined }}
@@ -107,7 +107,7 @@ export default function HomeScreen() {
                 <Text style={styles.heroCtaText}>Start learning free →</Text>
               </View>
             </View>
-          </View>
+          </Pressable>
         </Link>
       )}
 
@@ -156,7 +156,7 @@ export default function HomeScreen() {
             keyExtractor={(p) => p.id}
             renderItem={({ item }) => (
               <Link href={`/paths/${item.id}`} asChild>
-                <View style={styles.pathCard}>
+                <Pressable style={styles.pathCard}>
                   <View style={styles.pathStrip}>
                     {item.courses.slice(0, 4).map((c, i) =>
                       c.thumbnailUrl ? (
@@ -176,7 +176,7 @@ export default function HomeScreen() {
                   <Text style={styles.muted} numberOfLines={1}>
                     ★ {item.ratingAvg.toFixed(1)} · {item.courseCount} courses · {item.totalVotes} votes
                   </Text>
-                </View>
+                </Pressable>
               </Link>
             )}
           />
@@ -193,11 +193,11 @@ export default function HomeScreen() {
           <View style={styles.catGrid}>
             {feed.categories.map((c) => (
               <Link key={c.slug} href={`/browse?category=${c.slug}`} asChild>
-                <View style={styles.catTile}>
+                <Pressable style={styles.catTile}>
                   <Text style={styles.catIcon}>{c.icon ?? "🎓"}</Text>
                   <Text style={styles.catName} numberOfLines={1}>{c.name}</Text>
                   <Text style={styles.catCount}>{c.courseCount} courses</Text>
-                </View>
+                </Pressable>
               </Link>
             ))}
           </View>
@@ -308,7 +308,7 @@ function PersonRow({
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
         {people.map((p) => (
           <Link key={p.id} href={href(p)} asChild>
-            <View style={styles.person}>
+            <Pressable style={styles.person}>
               {image(p) ? (
                 <Image source={{ uri: cloudinaryUrl(image(p), { width: 96, height: 96 }) ?? undefined }} style={styles.personPhoto} resizeMode="cover" />
               ) : (
@@ -318,7 +318,7 @@ function PersonRow({
               )}
               <Text style={styles.personName} numberOfLines={1}>{p.name}</Text>
               <Text style={styles.muted} numberOfLines={1}>{sub(p)}</Text>
-            </View>
+            </Pressable>
           </Link>
         ))}
       </ScrollView>

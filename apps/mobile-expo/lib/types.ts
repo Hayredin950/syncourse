@@ -65,11 +65,15 @@ export interface Review {
   rating: number;
   body: string | null;
   containsSpoilers: boolean;
+  editedAt?: string | null;
   createdAt: string;
   replyCount: number;
   isStaff: boolean;
   upvotes?: number;
   upvoted?: boolean;
+  // the API nests replies under each review; without this field mobile showed a
+  // "3 replies" counter with no way to read them
+  replies?: Review[];
 }
 
 export interface TelegramFile {

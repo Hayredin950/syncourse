@@ -1,7 +1,7 @@
 import { useQuery } from "@tanstack/react-query";
 import { Link, useLocalSearchParams } from "expo-router";
 import React from "react";
-import { ActivityIndicator, FlatList, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, FlatList, StyleSheet, Text, View, Pressable } from "react-native";
 import * as api from "../../lib/api";
 import { colors } from "../../lib/tokens";
 
@@ -45,7 +45,7 @@ export default function ListDetailScreen() {
       }
       renderItem={({ item }) => (
         <Link href={`/courses/${item.slug}`} asChild>
-          <View style={styles.card}>
+          <Pressable style={styles.card}>
             <View style={styles.thumb}>
               <Text style={{ color: colors.dim, fontSize: 14 }}>▶</Text>
             </View>
@@ -56,7 +56,7 @@ export default function ListDetailScreen() {
               <Text style={styles.muted}>{item.progressPct}% · {item.status}</Text>
             </View>
             <Text style={{ color: colors.dim }}>›</Text>
-          </View>
+          </Pressable>
         </Link>
       )}
     />
