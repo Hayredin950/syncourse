@@ -1,4 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
+import * as nodemailer from 'nodemailer';
+import type { Transporter } from 'nodemailer';
 
 function escapeHtml(value: string): string {
   return value
@@ -11,23 +13,51 @@ function escapeHtml(value: string): string {
 
 /**
  * Brevo (formerly Sendinblue) transactional email — free tier: 300 emails/day.
- * Uses plain fetch (Node 18+) — no SDK dependency required.
- * Fails soft: when BREVO_API_KEY is unset, sending is skipped and logged.
+ *
+ * Brevo hands out two different credentials and they are NOT interchangeable:
+ *
+ *   xkeysib-…   REST API v3 key  -> api.brevo.com, sent with the `api-key` header
+ *   xsmtpsib-…  SMTP relay key   -> smtp-relay.brevo.com, used as an SMTP password
+ *                                   together with the relay LOGIN (xxxxx@smtp-brevo.com),
+ *                                   which is not your account email
+ *
+ * So both paths are supported and picked in this order:
+ *   1. BREVO_API_KEY set                      -> HTTP API (no socket to keep open)
+ *   2. BREVO_SMTP_KEY + BREVO_SMTP_USER set   -> SMTP relay via nodemailer
+ *   3. neither                                -> sending is skipped and logged
+ *
+ * Fails soft everywhere: callers get { sent: false } instead of an exception, and
+ * registration falls back to auto-verify so a dead mailbox cannot brick signups.
  */
 @Injectable()
 export class EmailService {
   private readonly logger = new Logger(EmailService.name);
   private readonly apiKey = process.env.BREVO_API_KEY ?? '';
+  private readonly smtpHost = process.env.BREVO_SMTP_HOST ?? 'smtp-relay.brevo.com';
+  private readonly smtpPort = Number(process.env.BREVO_SMTP_PORT ?? 465);
+  private readonly smtpUser = process.env.BREVO_SMTP_USER ?? '';
+  private readonly smtpKey = process.env.BREVO_SMTP_KEY ?? '';
   private readonly senderEmail = process.env.BREVO_SENDER_EMAIL ?? 'noreply@syncourse.app';
   private readonly senderName = process.env.BREVO_SENDER_NAME ?? 'Syncourse';
+  private transporter: Transporter | null = null;
+
+  private get smtpConfigured(): boolean {
+    return this.smtpKey.length > 0 && this.smtpUser.length > 0;
+  }
 
   get enabled(): boolean {
-    return this.apiKey.length > 0;
+    return this.apiKey.length > 0 || this.smtpConfigured;
+  }
+
+  /** Which path a send would take — surfaced by the /admin/email-status probe. */
+  get transport(): 'api' | 'smtp' | 'none' {
+    if (this.apiKey.length > 0) return 'api';
+    if (this.smtpConfigured) return 'smtp';
+    return 'none';
   }
 
   /**
-   * Send a transactional email via Brevo's SMTP API (v3).
-   * Returns { sent: boolean } — never throws to the caller.
+   * Send a transactional email. Returns { sent: boolean } — never throws to the caller.
    */
   async send(input: {
     to: string;
@@ -35,10 +65,21 @@ export class EmailService {
     text: string;
     html?: string;
   }): Promise<{ sent: boolean }> {
-    if (!this.enabled) {
-      this.logger.debug(`Email skipped (BREVO_API_KEY not set): ${input.subject} -> ${input.to}`);
-      return { sent: false };
-    }
+    if (this.apiKey.length > 0) return this.sendViaApi(input);
+    if (this.smtpConfigured) return this.sendViaSmtp(input);
+    this.logger.debug(
+      `Email skipped (no BREVO_API_KEY and no BREVO_SMTP_KEY/USER): ${input.subject} -> ${input.to}`,
+    );
+    return { sent: false };
+  }
+
+  /** Brevo REST API v3 (needs an xkeysib-… key). */
+  private async sendViaApi(input: {
+    to: string;
+    subject: string;
+    text: string;
+    html?: string;
+  }): Promise<{ sent: boolean }> {
     try {
       const res = await fetch('https://api.brevo.com/v3/smtp/email', {
         method: 'POST',
@@ -57,13 +98,74 @@ export class EmailService {
       });
       if (!res.ok) {
         const body = await res.text().catch(() => '');
-        this.logger.warn(`Brevo send failed (${res.status}): ${body.slice(0, 200)}`);
+        this.logger.warn(`Brevo API send failed (${res.status}): ${body.slice(0, 200)}`);
         return { sent: false };
       }
       return { sent: true };
     } catch (err) {
-      this.logger.warn(`Brevo request error: ${(err as Error).message}`);
+      this.logger.warn(`Brevo API request error: ${(err as Error).message}`);
       return { sent: false };
+    }
+  }
+
+  /**
+   * Brevo SMTP relay (needs an xsmtpsib-… key + the relay login).
+   *
+   * The transporter is built once and reused — nodemailer pools the connection,
+   * so we are not paying a TLS handshake per verification code.
+   */
+  private async sendViaSmtp(input: {
+    to: string;
+    subject: string;
+    text: string;
+    html?: string;
+  }): Promise<{ sent: boolean }> {
+    try {
+      if (!this.transporter) {
+        this.transporter = nodemailer.createTransport({
+          host: this.smtpHost,
+          port: this.smtpPort,
+          secure: this.smtpPort === 465, // 465 = implicit TLS, 587 = STARTTLS
+          auth: { user: this.smtpUser, pass: this.smtpKey },
+          pool: true,
+          maxConnections: 2,
+        });
+      }
+      await this.transporter.sendMail({
+        from: `"${this.senderName}" <${this.senderEmail}>`,
+        replyTo: this.senderEmail,
+        to: input.to,
+        subject: input.subject,
+        text: input.text,
+        ...(input.html ? { html: input.html } : {}),
+      });
+      return { sent: true };
+    } catch (err) {
+      // Most common failure here is an unverified sender: Brevo rejects a "from"
+      // address that is not a verified sender/domain on the account.
+      this.logger.warn(`Brevo SMTP send failed (from ${this.senderEmail}): ${(err as Error).message}`);
+      return { sent: false };
+    }
+  }
+
+  /** Prove the SMTP credentials authenticate without sending anything. */
+  async verifyTransport(): Promise<{ ok: boolean; detail: string }> {
+    if (this.transport !== 'smtp') {
+      return { ok: this.transport === 'api', detail: `transport=${this.transport}` };
+    }
+    try {
+      if (!this.transporter) {
+        this.transporter = nodemailer.createTransport({
+          host: this.smtpHost,
+          port: this.smtpPort,
+          secure: this.smtpPort === 465,
+          auth: { user: this.smtpUser, pass: this.smtpKey },
+        });
+      }
+      await this.transporter.verify();
+      return { ok: true, detail: `${this.smtpHost}:${this.smtpPort} as ${this.smtpUser}` };
+    } catch (err) {
+      return { ok: false, detail: (err as Error).message };
     }
   }
 
