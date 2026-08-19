@@ -15,7 +15,8 @@
     "db:seed": "ts-node prisma/seed.ts",
     "db:seed:feed": "ts-node prisma/seed-feed.ts",
     "test:parser": "ts-node src/telegram-ingest/parser.test.ts",
-    "test:import": "tsx --env-file=.env prisma/import-check.ts"
+    "test:import": "tsx --env-file=.env prisma/import-check.ts",
+    "test:verify": "tsx --env-file=.env prisma/verify-check.ts"
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"

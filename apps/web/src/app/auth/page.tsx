@@ -184,7 +184,8 @@ function AuthInner() {
                 disabled={resendBusy}
                 className="w-full text-center text-xs text-muted hover:text-text"
               >
-                {resendBusy ? "Sending…" : "Didn&apos;t get it? Resend the code"}
+                {/* plain apostrophe: this is a JS string, not JSX text — &apos; would render literally */}
+                {resendBusy ? "Sending…" : "Didn't get it? Resend the code"}
               </button>
               <button
                 onClick={() => {
