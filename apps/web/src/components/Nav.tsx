@@ -92,7 +92,7 @@ export function TopNav() {
                   // eslint-disable-next-line @next/next/no-img-element
                   <img src={user.avatarUrl} alt="" className="h-full w-full object-cover" />
                 ) : (
-                  <span className="text-xs font-bold">{user.name.charAt(0).toUpperCase()}</span>
+                  <span className="text-xs font-bold">{(user.name || "?").charAt(0).toUpperCase()}</span>
                 )}
               </span>
               Me

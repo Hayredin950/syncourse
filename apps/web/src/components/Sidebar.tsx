@@ -80,12 +80,12 @@ export function Sidebar() {
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={user.avatarUrl} alt="" className="h-full w-full object-cover" />
               ) : (
-                <span className="text-sm font-semibold text-accent">{user.name.charAt(0).toUpperCase()}</span>
+                <span className="text-sm font-semibold text-accent">{(user.name || "?").charAt(0).toUpperCase()}</span>
               )}
             </span>
             <span className="min-w-0 flex-1">
               <span className="block truncate text-sm font-medium text-text">{user.name}</span>
-              <span className="block text-[11px] text-dim">@{user.username || user.name.toLowerCase().replace(/\s+/g, "")}</span>
+              <span className="block text-[11px] text-dim">@{user.username || (user.name ? user.name.toLowerCase().replace(/\s+/g, "") : "user")}</span>
             </span>
           </Link>
         ) : (

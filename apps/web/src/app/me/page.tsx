@@ -308,7 +308,7 @@ export default function MePage() {
                 // eslint-disable-next-line @next/next/no-img-element
                 <img src={user.avatarUrl} alt="" className="h-full w-full rounded-[20px] object-cover" />
               ) : (
-                user.name.charAt(0).toUpperCase()
+                (user.name || "?").charAt(0).toUpperCase()
               )}
             </div>
             <div>

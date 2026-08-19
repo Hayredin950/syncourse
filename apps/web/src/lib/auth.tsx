@@ -30,9 +30,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const profile = await get<UserProfile>("/users/me");
       setUser(profile);
-    } catch {
-      setToken(null);
-      setUser(null);
+    } catch (e) {
+      // Only treat a definitive 401 as "logged out". A transient network /
+      // server error right after login should NOT clear the stored token —
+      // otherwise a moment of flakiness logs the user straight back out.
+      const status = (e as { status?: number })?.status;
+      if (status === 401) {
+        setToken(null);
+        setUser(null);
+      } else {
+        setUser(null);
+      }
     } finally {
       setLoading(false);
     }
