@@ -46,17 +46,19 @@ export default function LessonScreen() {
     onError: (e: any) => Alert.alert("Telegram", e?.message ?? "Could not send to Telegram"),
   });
 
-  if (isLoading || !data) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator color={colors.accent} />
-      </View>
-    );
-  }
+  // error must be checked BEFORE `!data`: on failure data is always undefined,
+  // so the old order made this branch unreachable and left a permanent spinner
   if (error) {
     return (
       <View style={styles.center}>
         <Text style={styles.muted}>Could not load this lesson</Text>
+      </View>
+    );
+  }
+  if (isLoading || !data) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator color={colors.accent} />
       </View>
     );
   }

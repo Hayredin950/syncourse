@@ -140,9 +140,12 @@ export async function login(email: string, password: string) {
   await setToken(data.accessToken);
 }
 
-export async function register(name: string, email: string, password: string) {
+export async function register(name: string, username: string, email: string, password: string) {
+  // username is required by the API's RegisterDto — omitting it made every
+  // mobile signup fail with a 400 from the global ValidationPipe
   const data = await post<{ accessToken: string }>("/auth/register", {
     name,
+    username,
     email,
     password,
   });

@@ -714,9 +714,14 @@ export function CourseDetailView({ slug }: { slug: string }) {
                       {s.lessons.length} lessons
                     </span>
                   </span>
-                  <Link href={`/courses/${course.slug}/lessons/${s.lessons[0]?.id ?? ""}?bulk=1`} className="btn primary" style={{ padding: "7px 13px", fontSize: 11 }}>
-                    Download module
-                  </Link>
+                  {/* `?bulk=1` was read by nothing — there is no bulk-download
+                      route — and an empty lessons[0] produced a broken href.
+                      Link to the module's first lesson only when one exists. */}
+                  {s.lessons[0] && (
+                    <Link href={`/courses/${course.slug}/lessons/${s.lessons[0].id}`} className="btn primary" style={{ padding: "7px 13px", fontSize: 11 }}>
+                      Open module
+                    </Link>
+                  )}
                   <span className="badge" title="Fast, full-speed delivery requires Premium">
                     <ZapInline /> Fast
                   </span>

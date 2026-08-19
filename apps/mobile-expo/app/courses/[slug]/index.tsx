@@ -434,12 +434,13 @@ export default function CourseDetailScreen() {
                 Module {si + 1} — {s.title}
               </Text>
               <Text style={styles.muted}>{s.lessons.length} lessons</Text>
-              <Link
-                href={`/courses/${c.slug}/lessons/${s.lessons[0]?.id ?? ""}?bulk=1`}
-                style={styles.bulkBtn}
-              >
-                <Text style={styles.bulkBtnLabel}>⬇ Module</Text>
-              </Link>
+              {/* `?bulk=1` was read by nothing and an empty lessons[0] navigated
+                  to /lessons/ with a blank id, which hung on a spinner */}
+              {s.lessons[0] && (
+                <Link href={`/courses/${c.slug}/lessons/${s.lessons[0].id}`} style={styles.bulkBtn}>
+                  <Text style={styles.bulkBtnLabel}>Open</Text>
+                </Link>
+              )}
             </View>
           ))}
         </View>
@@ -469,11 +470,10 @@ export default function CourseDetailScreen() {
                 <Pressable
                   style={styles.bulkBtn}
                   onPress={() => {
-                    if (file.chatUsername) {
-                      Linking.openURL(`https://t.me/${file.chatUsername}`);
-                    } else {
-                      Linking.openURL(`https://t.me/syncourse_bot?start=dl_${c.slug}`);
-                    }
+                    // always go through the bot: it delivers the actual file and
+                    // shows a module picker. Opening t.me/<channel> just dropped
+                    // the user at the channel root with nothing downloaded.
+                    Linking.openURL(`https://t.me/syncourse_bot?start=dl_${c.slug}`);
                   }}
                 >
                   <Text style={styles.bulkBtnLabel}>⬇</Text>
@@ -564,7 +564,7 @@ export default function CourseDetailScreen() {
                     }}
                   >
                     <Link
-                      href={`/courses/${c.slug}/lessons/${s.lessons[0]?.id ?? ""}?bulk=1`}
+                      href={s.lessons[0] ? `/courses/${c.slug}/lessons/${s.lessons[0].id}` : `/courses/${c.slug}`}
                       style={{ flexDirection: "row", alignItems: "center", gap: 10, flex: 1 }}
                     >
                       <Text style={{ color: colors.accent, fontWeight: "800" }}>⬇</Text>

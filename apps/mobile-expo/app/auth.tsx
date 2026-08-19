@@ -18,6 +18,7 @@ export default function AuthScreen() {
   const { refresh } = useAuth();
   const [mode, setMode] = useState<"login" | "register">("login");
   const [name, setName] = useState("");
+  const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -66,7 +67,7 @@ export default function AuthScreen() {
     setError(null);
     setBusy(true);
     try {
-      if (mode === "register") await api.register(name, email, password);
+      if (mode === "register") await api.register(name, username.trim(), email, password);
       else await api.login(email, password);
       await refresh();
       router.replace("/");
@@ -109,6 +110,17 @@ export default function AuthScreen() {
             placeholder="Name"
             placeholderTextColor={colors.dim}
             style={styles.input}
+          />
+        )}
+        {mode === "register" && (
+          <TextInput
+            value={username}
+            onChangeText={setUsername}
+            placeholder="Username (letters, numbers, _)"
+            placeholderTextColor={colors.dim}
+            style={styles.input}
+            autoCapitalize="none"
+            autoCorrect={false}
           />
         )}
         <TextInput

@@ -51,7 +51,7 @@ export default function HomePage() {
 
   // Signed-in users get real progress numbers in "Your Next Course"
   useEffect(() => {
-    if (user) get<LearningData>("/learning").then(setLearning).catch(() => undefined);
+    if (user) get<LearningData>("/me/learning").then(setLearning).catch(() => undefined);
   }, [user]);
 
   if (error) {
