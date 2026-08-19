@@ -3,7 +3,7 @@
     "name": "Syncourse",
     "slug": "syncourse",
     "version": "1.1.0",
-    "runtimeVersion": "1.1.0",
+    "runtimeVersion": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "syncourse",
