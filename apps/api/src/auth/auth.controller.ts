@@ -10,7 +10,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
-import { GoogleExchangeDto, LinkTelegramDto, LoginDto, RegisterDto } from './dto';
+import { GoogleExchangeDto, LinkTelegramDto, LoginDto, RegisterDto, ResendVerificationDto, VerifyDto } from './dto';
 import { Public } from '../common/public.decorator';
 import { CurrentUser } from '../common/current-user.decorator';
 import { AuthUser } from '../common/jwt-auth.guard';
@@ -30,6 +30,20 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   login(@Body() dto: LoginDto) {
     return this.auth.login(dto.email, dto.password);
+  }
+
+  @Public()
+  @Post('verify')
+  @HttpCode(HttpStatus.OK)
+  verify(@Body() dto: VerifyDto) {
+    return this.auth.verify(dto.email, dto.code);
+  }
+
+  @Public()
+  @Post('resend-verification')
+  @HttpCode(HttpStatus.OK)
+  resendVerification(@Body() dto: ResendVerificationDto) {
+    return this.auth.resendVerification(dto.email);
   }
 
   @Public()

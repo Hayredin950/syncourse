@@ -1,4 +1,13 @@
-import { BadRequestException, ConflictException, Injectable, UnauthorizedException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  HttpException,
+  HttpStatus,
+  Injectable,
+  ServiceUnavailableException,
+  UnauthorizedException,
+} from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
@@ -13,6 +22,13 @@ interface GoogleProfile {
   picture?: string;
   email_verified?: boolean;
 }
+
+/** A verification code is valid for 15 minutes. */
+const VERIFY_TTL_MS = 15 * 60 * 1000;
+/** Max wrong attempts before the code is invalidated. */
+const MAX_VERIFY_ATTEMPTS = 5;
+/** Minimum gap between resend requests. */
+const RESEND_MIN_MS = 60 * 1000;
 
 @Injectable()
 export class AuthService {
@@ -190,15 +206,33 @@ export class AuthService {
         username: dto.username,
         email: dto.email.toLowerCase(),
         passwordHash,
-        isVerified: true, // dev: auto-verify; wire email OTP in production
+        isVerified: false,
       },
     });
-    await this.prisma.session.create({
-      data: { userId: user.id, device: 'registration', ip: 'n/a', active: true },
+
+    const code = this.newVerificationCode();
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: { verifyCode: code, verifyExpiresAt: new Date(Date.now() + VERIFY_TTL_MS), verifySentAt: new Date() },
     });
-    // Best-effort welcome email — skipped until BREVO_API_KEY is configured
-    void this.email.sendWelcome(user.email, user.name);
-    return this.buildAuthResponse(user);
+
+    const sent = await this.email.sendVerificationCode(user.email, user.name, code);
+    if (!sent.sent) {
+      // Email is not configured (BREVO_API_KEY missing) or the send failed.
+      // Falling back to auto-verify keeps signups working instead of bricking
+      // every new account on a dead mailbox — the previous "hard verify"
+      // outage. The moment a real key is configured, hard verify kicks in.
+      await this.prisma.user.update({
+        where: { id: user.id },
+        data: { isVerified: true, verifyCode: null, verifyExpiresAt: null, verifyAttempts: 0, verifySentAt: null },
+      });
+      await this.prisma.session.create({
+        data: { userId: user.id, device: 'registration', ip: 'n/a', active: true },
+      });
+      return this.buildAuthResponse(user);
+    }
+
+    return { requiresVerification: true, email: user.email.toLowerCase() };
   }
 
   async login(email: string, password: string) {
@@ -208,10 +242,82 @@ export class AuthService {
     }
     const ok = await bcrypt.compare(password, user.passwordHash);
     if (!ok) throw new UnauthorizedException('Invalid credentials');
+    if (!user.isVerified) {
+      throw new ForbiddenException(
+        'Please verify your email first — check your inbox for the 6-digit code.',
+      );
+    }
     await this.prisma.session.create({
       data: { userId: user.id, device: 'login', ip: 'n/a', active: true },
     });
     return this.buildAuthResponse(user);
+  }
+
+  /** Confirm a registration with the emailed 6-digit code, then sign in. */
+  async verify(email: string, code: string) {
+    const user = await this.prisma.user.findUnique({ where: { email: email.toLowerCase() } });
+    if (!user) throw new BadRequestException('No account found for that email.');
+    if (user.isVerified) {
+      await this.prisma.session.create({
+        data: { userId: user.id, device: 'verify', ip: 'n/a', active: true },
+      });
+      return this.buildAuthResponse(user);
+    }
+    if (!user.verifyCode) {
+      throw new BadRequestException('No verification code is pending — request a new one.');
+    }
+    if (user.verifyExpiresAt && user.verifyExpiresAt.getTime() < Date.now()) {
+      throw new BadRequestException('That code has expired — request a new one.');
+    }
+    if (user.verifyAttempts >= MAX_VERIFY_ATTEMPTS) {
+      throw new BadRequestException('Too many wrong attempts — request a new code.');
+    }
+    const clean = code.trim().replace(/\D/g, '');
+    if (clean !== user.verifyCode) {
+      const attempts = user.verifyAttempts + 1;
+      await this.prisma.user.update({
+        where: { id: user.id },
+        data: { verifyAttempts: attempts, ...(attempts >= MAX_VERIFY_ATTEMPTS ? { verifyCode: null } : {}) },
+      });
+      throw new BadRequestException(`Wrong code — ${MAX_VERIFY_ATTEMPTS - attempts} attempts left.`);
+    }
+    const verified = await this.prisma.user.update({
+      where: { id: user.id },
+      data: { isVerified: true, verifyCode: null, verifyExpiresAt: null, verifyAttempts: 0, verifySentAt: null },
+    });
+    await this.prisma.session.create({
+      data: { userId: user.id, device: 'verify', ip: 'n/a', active: true },
+    });
+    return this.buildAuthResponse(verified);
+  }
+
+  /** Re-send the verification code, rate-limited to one per minute. */
+  async resendVerification(email: string) {
+    const user = await this.prisma.user.findUnique({ where: { email: email.toLowerCase() } });
+    // Never reveal whether the account exists.
+    if (!user || user.isVerified) return { sent: true };
+    if (user.verifySentAt && Date.now() - user.verifySentAt.getTime() < RESEND_MIN_MS) {
+      throw new HttpException('Wait a minute before requesting another code.', HttpStatus.TOO_MANY_REQUESTS);
+    }
+    const code = this.newVerificationCode();
+    const sent = await this.email.sendVerificationCode(user.email, user.name, code);
+    if (!sent.sent) {
+      throw new ServiceUnavailableException('Could not send the code right now — please try again.');
+    }
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        verifyCode: code,
+        verifyExpiresAt: new Date(Date.now() + VERIFY_TTL_MS),
+        verifySentAt: new Date(),
+        verifyAttempts: 0,
+      },
+    });
+    return { sent: true };
+  }
+
+  private newVerificationCode(): string {
+    return String(Math.floor(100000 + Math.random() * 900000));
   }
 
   async me(userId: string) {

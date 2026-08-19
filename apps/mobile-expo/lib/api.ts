@@ -143,14 +143,22 @@ export async function login(email: string, password: string) {
 export async function register(name: string, username: string, email: string, password: string) {
   // username is required by the API's RegisterDto — omitting it made every
   // mobile signup fail with a 400 from the global ValidationPipe
-  const data = await post<{ accessToken: string }>("/auth/register", {
+  const data = await post<{ requiresVerification?: boolean; accessToken?: string }>("/auth/register", {
     name,
     username,
     email,
     password,
   });
-  await setToken(data.accessToken);
+  if (data.requiresVerification) return true;
+  if (data.accessToken) await setToken(data.accessToken);
+  return false;
 }
+
+export const verifyEmail = (email: string, code: string) =>
+  post<{ accessToken: string }>("/auth/verify", { email, code });
+
+export const resendVerification = (email: string) =>
+  post<{ sent: boolean }>("/auth/resend-verification", { email });
 
 export const googleExchange = (code: string, redirectUri: string) =>
   post<{ accessToken: string }>("/auth/google/exchange", { code, redirectUri });

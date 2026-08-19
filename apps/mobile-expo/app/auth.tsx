@@ -27,6 +27,13 @@ export default function AuthScreen() {
   const [forgotEmail, setForgotEmail] = useState("");
   const [forgotBusy, setForgotBusy] = useState(false);
 
+  // email verification (hard verify: sign-in blocked until confirmed)
+  const [verifying, setVerifying] = useState(false);
+  const [verifyEmail, setVerifyEmail] = useState("");
+  const [verifyCode, setVerifyCode] = useState("");
+  const [verifyMsg, setVerifyMsg] = useState<string | null>(null);
+  const [resendBusy, setResendBusy] = useState(false);
+
   // eslint-disable-next-line react-hooks/rules-of-hooks
   const [googleRequest, googleResponse, googlePrompt] = Google.useAuthRequest({
     clientId: GOOGLE_CLIENT_ID,
@@ -67,14 +74,62 @@ export default function AuthScreen() {
     setError(null);
     setBusy(true);
     try {
-      if (mode === "register") await api.register(name, username.trim(), email, password);
-      else await api.login(email, password);
+      if (mode === "register") {
+        const needsVerify = await api.register(name, username.trim(), email, password);
+        if (needsVerify) {
+          setVerifying(true);
+          setVerifyEmail(email);
+          setVerifyMsg("We emailed you a 6-digit code. Enter it below to finish creating your account.");
+          setBusy(false);
+          return;
+        }
+      } else {
+        await api.login(email, password);
+      }
       await refresh();
       router.replace("/");
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Something went wrong");
+      const status = e instanceof api.ApiError ? e.status : null;
+      if (status === 403) {
+        setVerifying(true);
+        setVerifyEmail(email);
+        setVerifyMsg("Please confirm your email with the 6-digit code we sent you.");
+        setError(null);
+      } else {
+        setError(e instanceof Error ? e.message : "Something went wrong");
+      }
     } finally {
       setBusy(false);
+    }
+  };
+
+  const confirmCode = async () => {
+    setError(null);
+    setVerifyMsg(null);
+    setBusy(true);
+    try {
+      const res = await api.verifyEmail(verifyEmail, verifyCode);
+      await api.setToken(res.accessToken);
+      await refresh();
+      router.replace("/");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not verify the code");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const resendCode = async () => {
+    setResendBusy(true);
+    setError(null);
+    setVerifyMsg(null);
+    try {
+      await api.resendVerification(verifyEmail);
+      setVerifyMsg("A new code is on its way — check your inbox (and spam).");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not resend the code");
+    } finally {
+      setResendBusy(false);
     }
   };
 
@@ -101,8 +156,46 @@ export default function AuthScreen() {
       <ScrollView contentContainerStyle={styles.content}>
         <Text style={styles.logo}>🎓</Text>
         <Text style={styles.title}>Syncourse</Text>
-        <Text style={styles.subtitle}>One account across web, app and Telegram</Text>
+        <Text style={styles.subtitle}>
+          {verifying ? "Check your email" : "One account across web, app and Telegram"}
+        </Text>
 
+        {verifying ? (
+          <>
+            <Text style={styles.muted}>{verifyEmail}</Text>
+            <TextInput
+              value={verifyCode}
+              onChangeText={(t) => setVerifyCode(t.replace(/\D/g, "").slice(0, 6))}
+              placeholder="6-digit code"
+              placeholderTextColor={colors.dim}
+              style={[styles.input, { letterSpacing: 6, fontWeight: "700", fontSize: 18, textAlign: "center" }]}
+              keyboardType="number-pad"
+              autoFocus
+            />
+            {verifyMsg && <Text style={[styles.muted, { color: "#6fe0a4" }]}>{verifyMsg}</Text>}
+            {error && <Text style={styles.error}>{error}</Text>}
+            <Text
+              style={[styles.submitBtn, (busy || verifyCode.length !== 6) && { opacity: 0.4 }]}
+              onPress={busy || verifyCode.length !== 6 ? undefined : confirmCode}
+            >
+              {busy ? "Checking…" : "Verify & sign in"}
+            </Text>
+            <Text style={styles.forgot} onPress={resendBusy ? undefined : resendCode}>
+              {resendBusy ? "Sending…" : "Didn't get it? Resend the code"}
+            </Text>
+            <Text
+              style={styles.switch}
+              onPress={() => {
+                setVerifying(false);
+                setError(null);
+                setVerifyMsg(null);
+              }}
+            >
+              Back to sign in
+            </Text>
+          </>
+        ) : (
+          <>
         {mode === "register" && (
           <TextInput
             value={name}
@@ -163,6 +256,8 @@ export default function AuthScreen() {
         <Text style={styles.google} onPress={busy ? undefined : startGoogle}>
           {busy ? "Signing in…" : "Continue with Google"}
         </Text>
+        </>
+        )}
       </ScrollView>
 
       <Modal visible={forgotOpen} transparent animationType="fade" onRequestClose={() => setForgotOpen(false)}>

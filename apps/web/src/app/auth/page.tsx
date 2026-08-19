@@ -22,6 +22,13 @@ function AuthInner() {
   const [busy, setBusy] = useState(false);
   const [googleBusy, setGoogleBusy] = useState(false);
 
+  // email verification (hard verify: sign-in blocked until confirmed)
+  const [verifying, setVerifying] = useState(false);
+  const [verifyEmail, setVerifyEmail] = useState("");
+  const [verifyCode, setVerifyCode] = useState("");
+  const [verifyMsg, setVerifyMsg] = useState("");
+  const [resendBusy, setResendBusy] = useState(false);
+
   // forgot-password modal
   const [forgotOpen, setForgotOpen] = useState(false);
   const [forgotEmail, setForgotEmail] = useState("");
@@ -52,12 +59,58 @@ function AuthInner() {
     setError("");
     try {
       if (mode === "login") await login(email, password);
-      else await register(name, username, email, password);
+      else if (await register(name, username, email, password)) {
+        setVerifying(true);
+        setVerifyEmail(email);
+        setVerifyMsg("We emailed you a 6-digit code. Enter it below to finish creating your account.");
+        setBusy(false);
+        return;
+      }
       router.push(next);
     } catch (e: any) {
-      setError(e.message || "Something went wrong");
+      if (e?.status === 403) {
+        setVerifying(true);
+        setVerifyEmail(email);
+        setVerifyMsg("Please confirm your email with the 6-digit code we sent you.");
+        setError("");
+      } else {
+        setError(e.message || "Something went wrong");
+      }
     } finally {
       setBusy(false);
+    }
+  };
+
+  const confirmCode = async () => {
+    setBusy(true);
+    setError("");
+    setVerifyMsg("");
+    try {
+      const res = await post<{ accessToken: string }>("/auth/verify", {
+        email: verifyEmail,
+        code: verifyCode,
+      });
+      setToken(res.accessToken);
+      await refresh();
+      router.push(next);
+    } catch (e: any) {
+      setError(e.message || "Could not verify the code");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const resendCode = async () => {
+    setResendBusy(true);
+    setError("");
+    setVerifyMsg("");
+    try {
+      await post("/auth/resend-verification", { email: verifyEmail });
+      setVerifyMsg("A new code is on its way — check your inbox (and spam).");
+    } catch (e: any) {
+      setError(e.message || "Could not resend the code");
+    } finally {
+      setResendBusy(false);
     }
   };
 
@@ -95,13 +148,57 @@ function AuthInner() {
 
         <div className="auth-card">
           <h2 className="display" style={{ fontSize: 24, margin: "0 0 4px" }}>
-            {mode === "login" ? "Welcome back" : "Create your account"}
+            {verifying ? "Check your email" : mode === "login" ? "Welcome back" : "Create your account"}
           </h2>
           <p className="muted" style={{ fontSize: 12, margin: "0 0 20px" }}>
-            Use the same account on web and mobile — ratings, lists and learning history come with you.
+            {verifying
+              ? "A 6-digit code was sent to your email. It expires in 15 minutes."
+              : "Use the same account on web and mobile — ratings, lists and learning history come with you."}
           </p>
 
-          <div className="space-y-3">
+          {verifying ? (
+            <div className="space-y-3">
+              <div className="muted" style={{ fontSize: 13, wordBreak: "break-all" }}>{verifyEmail}</div>
+              <div className="auth-input">
+                <Mail size={15} />
+                <input
+                  value={verifyCode}
+                  onChange={(e) => setVerifyCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  placeholder="6-digit code"
+                  inputMode="numeric"
+                  autoFocus
+                  style={{ letterSpacing: 6, fontWeight: 700 }}
+                />
+              </div>
+              {verifyMsg && <div className="muted" style={{ fontSize: 12, color: "#6fe0a4" }}>{verifyMsg}</div>}
+              {error && <div className="rounded-lg border border-danger/40 bg-danger/10 px-3 py-2 text-xs text-danger">{error}</div>}
+              <button
+                onClick={confirmCode}
+                disabled={busy || verifyCode.length !== 6}
+                className="w-full rounded-full bg-accent py-2.5 text-sm font-bold text-black hover:bg-accent-hover disabled:opacity-40"
+              >
+                {busy ? "Checking…" : "Verify & sign in"}
+              </button>
+              <button
+                onClick={resendCode}
+                disabled={resendBusy}
+                className="w-full text-center text-xs text-muted hover:text-text"
+              >
+                {resendBusy ? "Sending…" : "Didn&apos;t get it? Resend the code"}
+              </button>
+              <button
+                onClick={() => {
+                  setVerifying(false);
+                  setError("");
+                  setVerifyMsg("");
+                }}
+                className="w-full text-center text-xs text-muted hover:text-text"
+              >
+                Back to sign in
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-3">
             {mode === "register" && (
               <>
                 <div className="auth-input">
@@ -179,7 +276,8 @@ function AuthInner() {
             >
               {mode === "login" ? "No account yet? Create one" : "Already have an account? Sign in"}
             </button>
-          </div>
+            </div>
+          )}
         </div>
       </div>
 

@@ -28,6 +28,20 @@ export class LoginDto {
   password: string;
 }
 
+export class VerifyDto {
+  @IsEmail()
+  email: string;
+
+  @IsString()
+  @Matches(/^\d{6}$/, { message: 'Code must be 6 digits' })
+  code: string;
+}
+
+export class ResendVerificationDto {
+  @IsEmail()
+  email: string;
+}
+
 export class LinkTelegramDto {
   @IsString()
   @MinLength(3)

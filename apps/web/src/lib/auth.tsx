@@ -10,7 +10,7 @@ interface AuthContextValue {
   loading: boolean;
   isPremium: boolean;
   login: (email: string, password: string) => Promise<void>;
-  register: (name: string, username: string, email: string, password: string) => Promise<void>;
+  register: (name: string, username: string, email: string, password: string) => Promise<boolean>;
   logout: () => void;
   refresh: () => Promise<void>;
 }
@@ -66,13 +66,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const register = useCallback(
     async (name: string, username: string, email: string, password: string) => {
-      const res = await api<{ accessToken: string }>("/auth/register", {
+      const res = await api<{ requiresVerification?: boolean; accessToken?: string }>("/auth/register", {
         method: "POST",
         body: JSON.stringify({ name, username, email, password }),
       });
-      setToken(res.accessToken);
-      setTokenState(res.accessToken);
-      await refresh();
+      if (res.requiresVerification) return true;
+      if (res.accessToken) {
+        setToken(res.accessToken);
+        setTokenState(res.accessToken);
+        await refresh();
+      }
+      return false;
     },
     [refresh],
   );

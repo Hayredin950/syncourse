@@ -242,6 +242,12 @@ model User {
   avatarUrl        String?
   gender           String?
   isVerified       Boolean   @default(false)
+  // Email verification: a 6-digit code is emailed at registration and the
+  // account cannot sign in until it is confirmed. Cleared once verified.
+  verifyCode       String?
+  verifyExpiresAt  DateTime?
+  verifyAttempts   Int       @default(0)
+  verifySentAt     DateTime? // rate-limits "resend"
   isStaff          Boolean   @default(false)
   planType         String    @default("free") // free | premium
   planExpiresAt    DateTime?
