@@ -240,6 +240,9 @@ export class CatalogService {
       include: {
         ...courseInclude,
         sections: { orderBy: { orderIndex: 'asc' }, include: { lessons: { orderBy: { orderIndex: 'asc' } } } },
+        telegramFiles: {
+          orderBy: [{ moduleOrder: 'asc' }, { partIndex: 'asc' }],
+        },
       },    });
 
     if (!course || course.deletedAt) throw new NotFoundException('Course not found');
@@ -336,6 +339,17 @@ export class CatalogService {
         })),
       })),
       downloads: downloadStats,
+      // Telegram-linked files — the actual course content delivered via Telegram
+      telegramFiles: course.telegramFiles.map((f) => ({
+        id: f.id,
+        moduleTitle: f.moduleTitle,
+        moduleOrder: f.moduleOrder,
+        partIndex: f.partIndex,
+        fileName: f.fileName,
+        fileSizeMb: f.fileSizeMb,
+        chatUsername: f.chatUsername,
+        caption: f.caption,
+      })),
     };
   }
 

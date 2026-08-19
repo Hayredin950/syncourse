@@ -62,6 +62,17 @@ export interface ReviewRow {
   replies?: ReviewRow[];
 }
 
+export interface TelegramFile {
+  id: string;
+  moduleTitle: string | null;
+  moduleOrder: number;
+  partIndex: number;
+  fileName: string | null;
+  fileSizeMb: number | null;
+  chatUsername: string | null;
+  caption: string | null;
+}
+
 export interface CourseDetail extends CourseSummary {
   bannerUrl: string | null;
   previewVideoUrl: string | null;
@@ -77,6 +88,7 @@ export interface CourseDetail extends CourseSummary {
   ratings: RatingBlock;
   reviews: ReviewRow[];
   downloads: { total: number; last30: number; last7: number; today: number; sparkline?: number[] };
+  telegramFiles: TelegramFile[];
 }
 
 export interface LecturerRow {

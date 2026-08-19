@@ -476,6 +476,58 @@ export function CourseDetailView({ slug }: { slug: string }) {
               </div>
             </div>
           </section>
+
+          {/* telegram files — the actual course content delivered via Telegram */}
+          {course.telegramFiles && course.telegramFiles.length > 0 && (
+            <section className="rail">
+              <div className="section-head">
+                <h2>📦 Course Files</h2>
+                <span className="muted mono">{course.telegramFiles.length} file{course.telegramFiles.length !== 1 ? "s" : ""}</span>
+              </div>
+              <div className="dark-panel" style={{ padding: 14 }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {course.telegramFiles
+                    .sort((a, b) => (a.moduleOrder ?? 0) - (b.moduleOrder ?? 0) || a.partIndex - b.partIndex)
+                    .map((file) => (
+                      <div
+                        key={file.id}
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 10,
+                          padding: "8px 10px",
+                          border: "1px solid hsl(var(--border))",
+                          borderRadius: 6,
+                        }}
+                      >
+                        <Download size={16} className="muted" />
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{ fontWeight: 600, fontSize: 12, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                            {file.moduleTitle ? `${file.moduleTitle} — Part ${file.partIndex + 1}` : `Part ${file.partIndex + 1}`}
+                          </div>
+                          {file.fileName && (
+                            <div className="muted mono" style={{ fontSize: 10, marginTop: 1 }}>
+                              {file.fileName}{file.fileSizeMb ? ` · ${file.fileSizeMb} MB` : ""}
+                            </div>
+                          )}
+                        </div>
+                        <button
+                          className="btn primary"
+                          style={{ whiteSpace: "nowrap", padding: "6px 12px", fontSize: 11 }}
+                          onClick={() => {
+                            const botUrl = `https://t.me/syncourse_bot?start=dl_${course.slug}`;
+                            window.open(botUrl, "_blank");
+                            setToast("Opening Telegram to download");
+                          }}
+                        >
+                          Download
+                        </button>
+                      </div>
+                    ))}
+                </div>
+              </div>
+            </section>
+          )}
         </div>
 
         <aside>
@@ -535,7 +587,7 @@ export function CourseDetailView({ slug }: { slug: string }) {
             {course.reviews.slice(0, 8).map((r) => (
               <ReviewCard key={r.id} review={r} onUpvote={onUpvote} onReply={onReplyToReview} />
             ))}
-          </div>
+            </div>
 
           {/* review composer */}
           <div id="review-box" className="dark-panel" style={{ padding: 18, marginTop: 22 }}>
@@ -615,6 +667,32 @@ export function CourseDetailView({ slug }: { slug: string }) {
               </span>
               <ChevronRight size={14} className="muted" />
             </a>
+
+            {/* Telegram-linked files — surfaced when the bot has attached files to this course */}
+            {course.telegramFiles && course.telegramFiles.length > 0 && (
+              <div style={{ marginTop: 16 }}>
+                <h4 style={{ fontSize: 12, fontWeight: 700, marginBottom: 8, color: "hsl(var(--muted-foreground))" }}>Linked files from Telegram</h4>
+                {course.telegramFiles.map((f) => (
+                  <a
+                    key={f.id}
+                    href={`https://t.me/syncourse_bot?start=dl_${course.slug}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="dark-panel"
+                    style={{ padding: 12, display: "flex", alignItems: "center", gap: 10, marginTop: 6 }}
+                  >
+                    <Download size={14} className="rating" />
+                    <span style={{ flex: 1 }}>
+                      {f.moduleTitle ? `${f.moduleTitle} · Part ${f.partIndex + 1}` : `Part ${f.partIndex + 1}`}
+                      {f.fileName && <span className="muted mono" style={{ marginLeft: 6, fontSize: 10 }}>{f.fileName}</span>}
+                      {f.fileSizeMb && <span className="muted mono" style={{ marginLeft: 4, fontSize: 10 }}>{f.fileSizeMb} MB</span>}
+                    </span>
+                    <ChevronRight size={14} className="muted" />
+                  </a>
+                ))}
+              </div>
+            )}
+
             {course.sections.map((s, si) => (
               <div key={s.id} style={{ marginTop: 12 }}>
                 {/* bulk download — whole module in one click (phonofilm "Season [Download]") */}

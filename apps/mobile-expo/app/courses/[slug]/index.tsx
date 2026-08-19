@@ -444,6 +444,45 @@ export default function CourseDetailScreen() {
           ))}
         </View>
 
+        {/* Telegram files — the actual course materials linked via the bot */}
+        {c.telegramFiles && c.telegramFiles.length > 0 && (
+          <View style={{ marginTop: 22 }}>
+            <View style={styles.downloadsHead}>
+              <Text style={styles.heading}>Course Materials</Text>
+              <Text style={styles.muted}>{c.telegramFiles.length} file{c.telegramFiles.length !== 1 ? 's' : ''}</Text>
+            </View>
+            {c.telegramFiles.map((file) => (
+              <View key={file.id} style={styles.lessonDownload}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ fontSize: 11, color: colors.dim, marginBottom: 2 }}>
+                    {file.moduleTitle ? `Module ${file.moduleOrder + 1}: ${file.moduleTitle}` : `Part ${file.partIndex + 1}`}
+                  </Text>
+                  <Text style={{ color: colors.text, fontWeight: "600", fontSize: 13 }} numberOfLines={2}>
+                    {file.fileName || "Course material"}
+                  </Text>
+                  {file.fileSizeMb && (
+                    <Text style={{ fontSize: 11, color: colors.dim, marginTop: 2 }}>
+                      {file.fileSizeMb} MB
+                    </Text>
+                  )}
+                </View>
+                <Pressable
+                  style={styles.bulkBtn}
+                  onPress={() => {
+                    if (file.chatUsername) {
+                      Linking.openURL(`https://t.me/${file.chatUsername}`);
+                    } else {
+                      Linking.openURL(`https://t.me/syncourse_bot?start=dl_${c.slug}`);
+                    }
+                  }}
+                >
+                  <Text style={styles.bulkBtnLabel}>⬇</Text>
+                </Pressable>
+              </View>
+            ))}
+          </View>
+        )}
+
         {/* More like this (phonofilm: 12-item related rail) */}
         {similarQ.data && similarQ.data.length > 0 && (
           <View style={{ marginTop: 22 }}>
@@ -494,6 +533,28 @@ export default function CourseDetailScreen() {
                 </Text>
                 <Text style={styles.muted}>sent to your chat</Text>
               </Pressable>
+
+              {/* Telegram-linked files */}
+              {c.telegramFiles && c.telegramFiles.length > 0 && (
+                <View style={{ marginTop: 14 }}>
+                  <Text style={{ color: colors.muted, fontSize: 11, fontWeight: "700", marginBottom: 6 }}>LINKED FROM TELEGRAM</Text>
+                  {c.telegramFiles.map((f) => (
+                    <Pressable
+                      key={f.id}
+                      style={styles.lessonDownload}
+                      onPress={() => Linking.openURL(`https://t.me/syncourse_bot?start=dl_${c.slug}`)}
+                    >
+                      <Text style={{ color: colors.dim }}>⬇</Text>
+                      <Text style={{ color: colors.text, fontSize: 13, flex: 1 }} numberOfLines={2}>
+                        {f.moduleTitle ? `${f.moduleTitle} · Part ${f.partIndex + 1}` : `Part ${f.partIndex + 1}`}
+                        {f.fileName && <Text style={{ color: colors.muted, fontSize: 10 }}> {f.fileName}</Text>}
+                        {f.fileSizeMb && <Text style={{ color: colors.muted, fontSize: 10 }}>{f.fileSizeMb} MB</Text>}
+                      </Text>
+                    </Pressable>
+                  ))}
+                </View>
+              )}
+
               {c.sections.map((s, si) => (
                 <View key={s.id} style={{ marginTop: 14 }}>
                   <Pressable

@@ -72,6 +72,17 @@ export interface Review {
   upvoted?: boolean;
 }
 
+export interface TelegramFile {
+  id: string;
+  moduleTitle: string | null;
+  moduleOrder: number;
+  partIndex: number;
+  fileName: string | null;
+  fileSizeMb: number | null;
+  chatUsername: string | null;
+  caption: string | null;
+}
+
 export interface CourseDetail extends CourseSummary {
   bannerUrl: string | null;
   previewVideoUrl: string | null;
@@ -87,6 +98,7 @@ export interface CourseDetail extends CourseSummary {
   ratings: { avg: number; count: number; distribution: Record<number, number> };
   reviews: Review[];
   downloads: { total: number; last30: number; last7: number; today: number };
+  telegramFiles: TelegramFile[];
 }
 
 export interface Note {
