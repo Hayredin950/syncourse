@@ -85,6 +85,7 @@ model Course {
   ratingCount      Int       @default(0)
   enrollmentCount  Int       @default(0)
   downloadCount    Int       @default(0)
+  sourceUrl        String?   // where the course content lives (e.g. t.me/…/id) — set by feed ingestion
   publishedAt      DateTime  @default(now())
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
@@ -180,6 +181,7 @@ model Lesson {
   durationSec   Int     @default(0)
   videoUrl      String? // private storage URL — served via signed URL only
   isPreview     Boolean @default(false)
+  sourceUrl     String? // t.me message link for this lesson/part — set by feed ingestion
   course        Course  @relation(fields: [courseId], references: [id], onDelete: Cascade)
   section       Section? @relation(fields: [sectionId], references: [id], onDelete: Cascade)
 

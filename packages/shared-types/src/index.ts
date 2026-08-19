@@ -70,6 +70,7 @@ export interface Lesson {
   durationSec: number;
   type: LessonType;
   videoUrl: string | null;
+  sourceUrl: string | null; // t.me message link for this lesson/part — set by feed ingestion
   isPreview: boolean;
   notes: Note[];
   files: LessonFile[];
@@ -107,6 +108,7 @@ export interface CourseSummary {
 export interface CourseDetail extends CourseSummary {
   bannerUrl: string | null;
   previewVideoUrl: string | null;
+  sourceUrl: string | null; // where the course content lives (e.g. t.me link) — set by feed ingestion
   language: string;
   originalPrice: number | null;
   price: number | null;

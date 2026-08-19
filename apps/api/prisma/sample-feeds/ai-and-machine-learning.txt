@@ -1,0 +1,255 @@
+[4/28/21 5:09 AM] AI and Machine Learning: [ Photo ]
+🔰 Complete Machine Learning and Data Science 2021
+⏱️43 Hours  📦 371 Lessons
+Learn Data Science, Data Analysis, Machine Learning (Artificial Intelligence) and Python with Tensorflow, Pandas & more!
+[4/28/21 5:17 AM] AI and Machine Learning: [ 1. Introduction.zip ]
+[4/28/21 5:18 AM] AI and Machine Learning: [ 2. Machine Learning 101.zip ]
+[4/28/21 5:20 AM] AI and Machine Learning: [ 3. Machine Learning and Data Science Framework.zip ]
+[4/28/21 5:32 AM] AI and Machine Learning: [ 4. The 2 Paths.zip ]
+[4/28/21 5:35 AM] AI and Machine Learning: [ 5. Data Science Environment Setup.zip ]
+[4/28/21 5:38 AM] AI and Machine Learning: [ 6. Pandas Data Analysis.zip ]
+[4/28/21 5:40 AM] AI and Machine Learning: [ 7. NumPy.zip ]
+[4/29/21 8:09 PM] AI and Machine Learning: [ 8. Matplotlib Plotting and Data Visualization - Part 01.zip ]
+[4/29/21 8:10 PM] AI and Machine Learning: [ 8. Matplotlib Plotting and Data Visualization - Part 02.zip ]
+[4/29/21 8:11 PM] AI and Machine Learning: [ 8. Matplotlib Plotting and Data Visualization - Part 03.zip ]
+[5/1/21 4:20 PM] AI and Machine Learning: [ 9. Scikit-learn Creating Machine Learning Models - Part 01.zip ]
+[5/1/21 4:22 PM] AI and Machine Learning: [ 9. Scikit-learn Creating Machine Learning Models - Part 02.zip ]
+[5/1/21 4:27 PM] AI and Machine Learning: [ 9. Scikit-learn Creating Machine Learning Models - Part 03.zip ]
+[5/1/21 4:30 PM] AI and Machine Learning: [ 9. Scikit-learn Creating Machine Learning Models - Part 04.zip ]
+[5/1/21 4:33 PM] AI and Machine Learning: [ 9. Scikit-learn Creating Machine Learning Models - Part 05.zip ]
+[5/1/21 4:35 PM] AI and Machine Learning: [ 9. Scikit-learn Creating Machine Learning Models - Part 06.zip ]
+[5/1/21 5:13 PM] AI and Machine Learning: [ 10. Supervised Learning Classification + Regression.zip ]
+[5/4/21 12:50 PM] AI and Machine Learning: [ 11. Milestone Project 1 Supervised Learning - Part 01.zip ]
+[5/4/21 12:54 PM] AI and Machine Learning: [ 11. Milestone Project 1 Supervised Learning - Part 02.zip ]
+[5/4/21 12:55 PM] AI and Machine Learning: [ 11. Milestone Project 1 Supervised Learning - Part 03.zip ]
+[5/9/21 2:53 AM] AI and Machine Learning: [ 12. Milestone Project 2 Supervised Learning - Part 01.zip ]
+[5/9/21 2:55 AM] AI and Machine Learning: [ 12. Milestone Project 2 Supervised Learning - Part 02.zip ]
+[5/9/21 2:57 AM] AI and Machine Learning: [ 12. Milestone Project 2 Supervised Learning - Part 03.zip ]
+[5/10/21 2:21 AM] AI and Machine Learning: [ 13. Data Engineering.zip ]
+[5/10/21 5:23 AM] AI and Machine Learning: [ 14_Neural_Networks_Deep_Learning,_Transfer_Learning_and_TensorFlow.zip ]
+[5/10/21 5:25 AM] AI and Machine Learning: [ 14_Neural_Networks_Deep_Learning,_Transfer_Learning_and_TensorFlow.zip ]
+[5/10/21 5:27 AM] AI and Machine Learning: [ 14_Neural_Networks_Deep_Learning,_Transfer_Learning_and_TensorFlow.zip ]
+[5/10/21 5:29 AM] AI and Machine Learning: [ 14_Neural_Networks_Deep_Learning,_Transfer_Learning_and_TensorFlow.zip ]
+[5/10/21 5:31 AM] AI and Machine Learning: [ 14_Neural_Networks_Deep_Learning,_Transfer_Learning_and_TensorFlow.zip ]
+[5/10/21 5:33 AM] AI and Machine Learning: [ 14_Neural_Networks_Deep_Learning,_Transfer_Learning_and_TensorFlow.zip ]
+[5/12/21 3:33 PM] AI and Machine Learning: [ 15. Storytelling + Communication How To Present Your Work.zip ]
+[5/12/21 3:36 PM] AI and Machine Learning: [ 16. Career Advice + Extra Bits.zip ]
+[5/12/21 4:09 PM] AI and Machine Learning: [ Where To Go From Here.zip ]
+
+[5/8/23 3:58 PM] AI and Machine Learning: [ Photo ]
+🔰 TensorFlow Developer Certificate in 2023: Zero to Mastery
+🌟 4.6 - 7119 votes  💰 Original Price: $74.99
+Pass the TensorFlow Developer Certification Exam by Google. Become an AI, Machine Learning, and Deep Learning expert!
+Taught By: Andrei Neagoie, Daniel Bourke
+Download Full Course: https://t.me/machine_learning_courses/78
+[5/8/23 3:59 PM] AI and Machine Learning: [ 01 Introduction.zip ]
+[5/8/23 3:59 PM] AI and Machine Learning: [ 02 Deep Learning and TensorFlow Fundamentals - Part 01.zip ]
+[5/8/23 3:59 PM] AI and Machine Learning: [ 02 Deep Learning and TensorFlow Fundamentals - Part 02.zip ]
+[5/8/23 3:59 PM] AI and Machine Learning: [ 02 Deep Learning and TensorFlow Fundamentals - Part 03.zip ]
+[5/8/23 3:59 PM] AI and Machine Learning: [ 03 Neural network regression with TensorFlow - Part 01.zip ]
+[5/8/23 3:59 PM] AI and Machine Learning: [ 03 Neural network regression with TensorFlow - Part 02.zip ]
+[5/8/23 3:59 PM] AI and Machine Learning: [ 03 Neural network regression with TensorFlow - Part 03.zip ]
+[5/8/23 3:59 PM] AI and Machine Learning: [ 03 Neural network regression with TensorFlow - Part 04.zip ]
+[5/8/23 3:59 PM] AI and Machine Learning: [ 04 Neural network classification in TensorFlow - Part 01.zip ]
+[5/8/23 3:59 PM] AI and Machine Learning: [ 04 Neural network classification in TensorFlow - Part 02.zip ]
+[5/8/23 3:59 PM] AI and Machine Learning: [ 04 Neural network classification in TensorFlow - Part 03.zip ]
+[5/8/23 3:59 PM] AI and Machine Learning: [ 04 Neural network classification in TensorFlow - Part 04.zip ]
+[5/8/23 3:59 PM] AI and Machine Learning: [ 04 Neural network classification in TensorFlow - Part 05.zip ]
+[5/8/23 3:59 PM] AI and Machine Learning: [ 05_Computer_Vision_and_Convolutional_Neural_Networks_in_TensorFlow.zip ]
+[5/8/23 3:59 PM] AI and Machine Learning: [ 05_Computer_Vision_and_Convolutional_Neural_Networks_in_TensorFlow.zip ]
+[5/8/23 3:59 PM] AI and Machine Learning: [ 05_Computer_Vision_and_Convolutional_Neural_Networks_in_TensorFlow.zip ]
+[5/8/23 3:59 PM] AI and Machine Learning: [ 05_Computer_Vision_and_Convolutional_Neural_Networks_in_TensorFlow.zip ]
+[5/8/23 3:59 PM] AI and Machine Learning: [ 05_Computer_Vision_and_Convolutional_Neural_Networks_in_TensorFlow.zip ]
+[5/8/23 3:59 PM] AI and Machine Learning: [ 05_Computer_Vision_and_Convolutional_Neural_Networks_in_TensorFlow.zip ]
+[5/8/23 3:59 PM] AI and Machine Learning: [ 06_Transfer_Learning_in_TensorFlow_Part_1_Feature_extraction_Part.zip ]
+[5/8/23 3:59 PM] AI and Machine Learning: [ 06_Transfer_Learning_in_TensorFlow_Part_1_Feature_extraction_Part.zip ]
+[5/8/23 3:59 PM] AI and Machine Learning: [ 07_Transfer_Learning_in_TensorFlow_Part_2_Fine_tuning_Part_01.zip ]
+[5/8/23 3:59 PM] AI and Machine Learning: [ 07_Transfer_Learning_in_TensorFlow_Part_2_Fine_tuning_Part_02.zip ]
+[5/8/23 3:59 PM] AI and Machine Learning: [ 07_Transfer_Learning_in_TensorFlow_Part_2_Fine_tuning_Part_03.zip ]
+[5/8/23 3:59 PM] AI and Machine Learning: [ 07_Transfer_Learning_in_TensorFlow_Part_2_Fine_tuning_Part_04.zip ]
+[5/8/23 3:59 PM] AI and Machine Learning: [ 08_Transfer_Learning_with_TensorFlow_Part_3_Scaling_Up_Part_01.zip ]
+[5/8/23 3:59 PM] AI and Machine Learning: [ 08_Transfer_Learning_with_TensorFlow_Part_3_Scaling_Up_Part_02.zip ]
+[5/8/23 3:59 PM] AI and Machine Learning: [ 08_Transfer_Learning_with_TensorFlow_Part_3_Scaling_Up_Part_03.zip ]
+[5/8/23 3:59 PM] AI and Machine Learning: [ 09 Milestone Project 1 Food Vision Big - Part 01.zip ]
+[5/8/23 3:59 PM] AI and Machine Learning: [ 09 Milestone Project 1 Food Vision Big - Part 02.zip ]
+[5/8/23 3:59 PM] AI and Machine Learning: [ 10 NLP Fundamentals in TensorFlow - Part 01.zip ]
+[5/8/23 3:59 PM] AI and Machine Learning: [ 10 NLP Fundamentals in TensorFlow - Part 02.zip ]
+[5/8/23 3:59 PM] AI and Machine Learning: [ 10 NLP Fundamentals in TensorFlow - Part 03.zip ]
+[5/8/23 3:59 PM] AI and Machine Learning: [ 10 NLP Fundamentals in TensorFlow - Part 04.zip ]
+[5/8/23 3:59 PM] AI and Machine Learning: [ 10 NLP Fundamentals in TensorFlow - Part 05.zip ]
+[5/8/23 3:59 PM] AI and Machine Learning: [ 10 NLP Fundamentals in TensorFlow - Part 06.zip ]
+[5/8/23 3:59 PM] AI and Machine Learning: [ 10 NLP Fundamentals in TensorFlow - Part 07.zip ]
+[5/8/23 3:59 PM] AI and Machine Learning: [ 11 Milestone Project 2 SkimLit - Part 01.zip ]
+[5/8/23 3:59 PM] AI and Machine Learning: [ 11 Milestone Project 2 SkimLit - Part 02.zip ]
+[5/8/23 3:59 PM] AI and Machine Learning: [ 11 Milestone Project 2 SkimLit - Part 03.zip ]
+[5/8/23 3:59 PM] AI and Machine Learning: [ 11 Milestone Project 2 SkimLit - Part 04.zip ]
+[5/8/23 3:59 PM] AI and Machine Learning: [ 11 Milestone Project 2 SkimLit - Part 05.zip ]
+[5/8/23 3:59 PM] AI and Machine Learning: [ 11 Milestone Project 2 SkimLit - Part 06.zip ]
+[5/8/23 3:59 PM] AI and Machine Learning: [ 11 Milestone Project 2 SkimLit - Part 07.zip ]
+[5/8/23 3:59 PM] AI and Machine Learning: [ 12 Time Series fundamentals in TensorFlow.zip ]
+[5/8/23 3:59 PM] AI and Machine Learning: [ 13 Milestone Project 3 BitPredict.zip ]
+[5/8/23 3:59 PM] AI and Machine Learning: [ 14 Passing the TensorFlow Developer Certificate Exam.zip ]
+[5/8/23 3:59 PM] AI and Machine Learning: [ 15 Where To Go From Here.zip ]
+[5/8/23 3:59 PM] AI and Machine Learning: [ 16 Appendix - Machine Learning Primer.zip ]
+[5/8/23 3:59 PM] AI and Machine Learning: [ 17 Appendix - Machine Learning and Data Science Framework.zip ]
+[5/8/23 3:59 PM] AI and Machine Learning: [ 18 Appendix - Pandas for Data Analysis - Part 01.zip ]
+[5/8/23 3:59 PM] AI and Machine Learning: [ 18 Appendix - Pandas for Data Analysis - Part 02.zip ]
+[5/8/23 3:59 PM] AI and Machine Learning: [ 19 Appendix - NumPy - Part 01.zip ]
+[5/8/23 3:59 PM] AI and Machine Learning: [ 19 Appendix - NumPy - Part 02.zip ]
+
+[1/25/24 4:10 AM] AI and Machine Learning: [ Photo ]
+🔰 Modern Computer Vision™ PyTorch, Tensorflow2 Keras & OpenCV4
+🌟 4.2 - 1170 votes  💰 Original Price: $74.99
+Using Python Learn OpenCV4, CNNs, Detectron2, YOLOv5, GANs, Tracking, Segmentation, Face Recognition & Siamese Networks
+Taught By: Rajeev D. Ratan
+Download Full Course: https://t.me/machine_learning_courses/185
+
+[1/25/24 4:10 AM] AI and Machine Learning: [ 10 files ]
+
+01. Introduction
+
+02. Download Code and Setup Colab
+
+03. OpenCV - Image Operations - Part 01
+
+03. OpenCV - Image Operations - Part 02
+
+04. OpenCV - Image Segmentation
+
+05. OpenCV - Haar Cascade Classifiers
+
+06. OpenCV - Image Analysis and Transformation
+
+07. OpenCV - Motion and Object Tracking
+
+08. OpenCV - Facial Landmark Detection & Face Swaps
+
+09. OpenCV Projects - Part 01
+
+
+[1/25/24 4:10 AM] AI and Machine Learning: [ 10 files ]
+
+09. OpenCV Projects - Part 02
+
+09. OpenCV Projects - Part 03
+
+10. OpenCV - Working With Video
+
+11. Deep Learning in Computer Vision Introduction - Part 01
+
+11. Deep Learning in Computer Vision Introduction - Part 02
+
+12. Building CNNs in PyTorch
+
+13. Building CNNs in TensorFlow with Keras
+
+14. Assessing Model Performance
+
+15. Improving Models and Advanced CNN Design - Part 01
+
+15. Improving Models and Advanced CNN Design - Part 02
+
+
+[1/25/24 4:10 AM] AI and Machine Learning: [ 10 files ]
+
+16. Visualizing What CNN's Learn
+
+17. Advamced Convolutional Neural Networks
+
+18. Building and Loading Advanced CNN Archiectures and Rank-N Accuracy - Part 01
+
+18. Building and Loading Advanced CNN Archiectures and Rank-N Accuracy - Part 02
+
+19. Using Callbacks in Keras and PyTorch
+
+20. PyTorch Lightning
+
+21. Transfer Learning and Fine Tuning - Part 01
+
+21. Transfer Learning and Fine Tuning - Part 02
+
+22. Google DeepStream and Neural Style Transfer
+
+23. Autoencoders
+
+
+[1/25/24 4:10 AM] AI and Machine Learning: [ 10 files ]
+
+24. Generative Adversarial Networks (GANs) - Part 01
+
+24. Generative Adversarial Networks (GANs) - Part 02
+
+25. Siamese Network
+
+26. Face Recognition (Age, Gender, Emotion and Ethnicity) with Deep Learning
+
+27. Object Detection
+
+28. Modern Object Detectors - YOLO, EfficientDet, Detectron2
+
+29. Gun Detector - Scaled-YoloV4
+
+30. Mask Detector TFODAPI MobileNetV2_SSD
+
+31. Sign Language Detector TFODAPI EfficentDet
+
+32. Pothole Detector - TinyYOLOv4
+
+
+[1/25/24 4:10 AM] AI and Machine Learning: [ 10 files ]
+
+33. Mushroom Detector Detectron2
+
+34. Website Region Detector YOLOv4 Darknet
+
+35. Drone Maritime Detector R-CNN
+
+36. Chess Piece YOLOv3
+
+37. Bloodcell Detector YOLOv5
+
+38. Hard Hat Detector EfficentDet
+
+39. Plant Doctor Detector YOLOv5
+
+40. Deep Segmentation - U-Net, SegNet, DeeplabV3 and Mask R-CNN
+
+41. Body Pose Estimation
+
+42. Tracking with DeepSORT
+
+
+[1/25/24 4:10 AM] AI and Machine Learning: [ 10 files ]
+
+43. Deep Fakes
+
+44. Vision Transformers - ViTs
+
+45. BiT BigTransfer Classifier Keras
+
+46. Depth Estimation
+
+47. Image Similarity using Metric Learning
+
+48. Image Captioning with Keras
+
+49. Video Classification usign CNN+RNN
+
+50. Video Classification with Transformers
+
+51. Point Cloud Classification PointNet
+
+52. Point Cloud Segmentation Using PointNet
+
+
+[1/25/24 4:10 AM] AI and Machine Learning: [ 5 files ]
+
+53. Medical Project - X-Ray Pneumonia Prediction
+
+54. Medical Project - 3D CT Scan Classification
+
+55. Low Light Image Enhancement MIRNet
+
+56. Deploy your CV App using Flask RestFUL API & Web App
+
+57. OCR Captcha Cracker

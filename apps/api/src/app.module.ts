@@ -21,6 +21,7 @@ import { EmailModule } from './email/email.module';
 import { CloudinaryModule } from './cloudinary/cloudinary.module';
 import { AdminModule } from './admin/admin.module';
 import { TelegramModule } from './telegram/telegram.module';
+import { TelegramIngestModule } from './telegram-ingest/telegram-ingest.module';
 
 @Module({
   imports: [
@@ -43,6 +44,7 @@ import { TelegramModule } from './telegram/telegram.module';
     CloudinaryModule,
     AdminModule,
     TelegramModule,
+    TelegramIngestModule,
   ],
   controllers: [AppController],
   providers: [

@@ -14,7 +14,8 @@
     "typecheck": "npm run typecheck -w apps/api && npm run typecheck -w apps/web",
     "db:generate": "npm run db:generate -w apps/api",
     "db:migrate": "npm run db:migrate -w apps/api",
-    "db:seed": "npm run db:seed -w apps/api"
+    "db:seed": "npm run db:seed -w apps/api",
+    "db:seed:feed": "npm run db:seed:feed -w apps/api"
   },
   "engines": {
     "node": ">=20"

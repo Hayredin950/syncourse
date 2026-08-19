@@ -12,7 +12,9 @@
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev --name init",
     "db:push": "prisma db push",
-    "db:seed": "ts-node prisma/seed.ts"
+    "db:seed": "ts-node prisma/seed.ts",
+    "db:seed:feed": "ts-node prisma/seed-feed.ts",
+    "test:parser": "ts-node src/telegram-ingest/parser.test.ts"
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"
