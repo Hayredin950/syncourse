@@ -106,7 +106,7 @@ model Course {
   savedBy         SavedCourse[]
   likedBy         LikedCourse[]
   downloadEvents  DownloadEvent[]
-  telegramLink    TelegramCourseLink?
+  telegramFiles   TelegramCourseLink[]
 }
 
 model CourseCategory {
@@ -168,7 +168,8 @@ model Section {
   orderIndex Int     @default(0)
   course     Course  @relation(fields: [courseId], references: [id], onDelete: Cascade)
 
-  lessons Lesson[]
+  lessons       Lesson[]
+  telegramFiles TelegramCourseLink[]
 }
 
 model Lesson {
@@ -180,8 +181,8 @@ model Lesson {
   type          String  @default("video") // video | article | quiz | notes
   durationSec   Int     @default(0)
   videoUrl      String? // private storage URL — served via signed URL only
-  isPreview     Boolean @default(false)
   sourceUrl     String? // t.me message link for this lesson/part — set by feed ingestion
+  isPreview     Boolean @default(false)
   course        Course  @relation(fields: [courseId], references: [id], onDelete: Cascade)
   section       Section? @relation(fields: [sectionId], references: [id], onDelete: Cascade)
 
@@ -530,9 +531,16 @@ model AppVersion {
 // Telegram bot — group topic → course file serving
 // ---------------------------------------------------------------
 
+// One row per Telegram file attached to a course. A real course is published as
+// many ZIPs — one (or several "Part 01/02/03" files) per module — so this is a
+// LIST per course, optionally grouped by the Section it belongs to.
 model TelegramCourseLink {
   id              String   @id @default(cuid())
-  courseId        String   @unique
+  courseId        String
+  sectionId       String? // the module this file belongs to (null = ungrouped)
+  moduleTitle     String? // module name parsed from the filename, kept for display
+  moduleOrder     Int      @default(0) // module position within the course
+  partIndex       Int      @default(1) // 1-based part within the module
   chatId          BigInt
   chatUsername    String?
   messageThreadId BigInt? // forum topic id
@@ -544,6 +552,10 @@ model TelegramCourseLink {
   createdById     String?
   createdAt       DateTime @default(now())
   course          Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  section         Section? @relation(fields: [sectionId], references: [id], onDelete: SetNull)
+
+  @@index([courseId, moduleOrder, partIndex])
+  @@index([sectionId])
 }
 
 // Persisted "last file this Telegram user sent/forwarded to the bot" so

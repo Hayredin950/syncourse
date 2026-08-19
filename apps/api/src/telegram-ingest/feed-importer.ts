@@ -356,9 +356,22 @@ export class FeedImporter {
     const m = sourceUrl.match(/t\.me\/([a-zA-Z0-9_]{3,})\/(\d+)/);
     if (!m) return false;
     const [, chatUsername, messageId] = m;
-    await this.prisma.telegramCourseLink.upsert({
-      where: { courseId },
-      create: {
+    // A course now has many files, so identity is the source message rather
+    // than the course — re-importing the same feed updates that row instead of
+    // creating duplicates, and other files stay attached.
+    const existing = await this.prisma.telegramCourseLink.findFirst({
+      where: { courseId, fileMessageId: BigInt(messageId) },
+      select: { id: true },
+    });
+    if (existing) {
+      await this.prisma.telegramCourseLink.update({
+        where: { id: existing.id },
+        data: { chatUsername },
+      });
+      return true;
+    }
+    await this.prisma.telegramCourseLink.create({
+      data: {
         courseId,
         chatId: BigInt(0), // unknown for public links — resolve via getChat when the bot joins
         chatUsername,
@@ -367,7 +380,6 @@ export class FeedImporter {
         fileName: null,
         fileSizeMb: null,
       },
-      update: { chatUsername, fileMessageId: BigInt(messageId) },
     });
     return true;
   }

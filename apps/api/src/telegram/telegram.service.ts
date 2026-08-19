@@ -1,6 +1,11 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import type { TelegramCourseLink } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CloudinaryService } from '../cloudinary/cloudinary.service';
+import { partFromFile, organizeParts } from '../telegram-ingest/telegram-feed.parser';
+
+/** One attached Telegram file row — a course has many (one per module part). */
+type TelegramFileRow = TelegramCourseLink;
 
 interface TelegramUpdate {
   update_id: number;
@@ -599,6 +604,13 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
           await this.sendText(chatId, '⛔ This command is for admins only.', threadId);
         }
         break;
+      case '/import':
+        if (await this.isAdmin(fromId)) {
+          await this.importRange(chatId, arg, threadId);
+        } else {
+          await this.sendText(chatId, '⛔ This command is for admins only.', threadId);
+        }
+        break;
       case '/newcourse':
         if (await this.isAdmin(fromId)) {
           if (arg.split('|').length >= 2 && arg.split('|')[0]?.trim() && arg.split('|')[1]?.trim()) {
@@ -671,6 +683,14 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       // sending a file is a new message by nature (can't edit into a document)
       await this.sendCourseFile(chatId, await this.slugFromPayload(data.slice(3)));
       // a download tap completes the interactive download picker
+      await this.clearWizard(uid);
+    } else if (data.startsWith('dlm:')) {
+      // dlm:<courseId>:<moduleIndex> — send one module's parts
+      const [, courseId, idx] = data.split(':');
+      await this.sendCourseModule(chatId, courseId, Number(idx));
+      await this.clearWizard(uid);
+    } else if (data.startsWith('dlall:')) {
+      await this.sendCourseModule(chatId, data.slice(6), null);
       await this.clearWizard(uid);
     } else if (data === 'nav:back') {
       await this.navBack(chatId, uid, msgId);
@@ -804,6 +824,8 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
           `<code>/newcourse</code> — create a course (guided wizard, 7 steps)\n` +
           `<b>One line:</b> <code>/newcourse Title | Instructor | Category | type | price | image-url</code>\n` +
           `<code>/link &lt;slug&gt;</code> — attach a file to a course (reply to the ZIP, or forward it first)\n` +
+          `<code>/import &lt;channel&gt; &lt;from&gt;-&lt;to&gt; &lt;slug&gt;</code> — attach a whole course at once 📦\n` +
+          `<i>e.g. <code>/import @machine_learning_courses 4-38 complete-machine-learning</code></i>\n` +
           `<code>/unlink &lt;slug&gt;</code> — detach the file\n` +
           `<code>/broadcast &lt;text&gt;</code> — message all linked users 📢\n` +
           `<code>/stats</code> — platform dashboard 📊\n\n`
@@ -922,11 +944,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       take: TelegramService.CATALOG_PAGE,
       select: { id: true, title: true, slug: true, ratingAvg: true, ratingCount: true, lecturer: { select: { name: true } } },
     });
-    const links = await this.prisma.telegramCourseLink.findMany({
-      where: { courseId: { in: courses.map((c) => c.id) } },
-      select: { courseId: true, fileName: true, fileSizeMb: true },
-    });
-    const linkByCourse = new Map(links.map((l) => [l.courseId, l]));
+    const linkByCourse = await this.fileSummaryByCourse(courses.map((c) => c.id));
     const deepLinkBase = `https://t.me/${BOT_USERNAME}?start=dl_`;
     const rows = courses
       .map((c, i) => {
@@ -942,7 +960,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
           `${startIdx + i + 1}. ${title}\n` +
           `   🔑 <code>${esc(c.slug)}</code>\n` +
           (l
-            ? `   📦 ${esc(l.fileName ?? 'file')}${l.fileSizeMb ? ` · ${l.fileSizeMb} MB` : ''} · ${stars}`
+            ? `   📦 ${l.count > 1 ? `${l.count} files · ${fmtSize(l.sizeMb)}` : `${esc(l.firstName ?? 'file')}${l.sizeMb ? ` · ${fmtSize(l.sizeMb)}` : ''}`} · ${stars}`
             : `   📭 <i>no file yet</i> · ${stars}`) +
           (c.lecturer ? ` · 👨‍🏫 ${esc(c.lecturer.name)}` : '')
         );
@@ -1003,9 +1021,13 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
         threadId,
       );
     }
-    const link = await this.prisma.telegramCourseLink.findUnique({
+    const files = await this.prisma.telegramCourseLink.findMany({
       where: { courseId: course.id },
+      orderBy: [{ moduleOrder: 'asc' }, { partIndex: 'asc' }],
     });
+    const link = files[0] ?? null;
+    const totalMb = files.reduce((n, f) => n + (f.fileSizeMb ?? 0), 0);
+    const moduleCount = new Set(files.map((f) => f.moduleTitle).filter(Boolean)).size;
     const catNames = course.categories.map((cc) => esc(cc.category.name)).join(', ') || '—';
     const price =
       course.price != null
@@ -1027,7 +1049,11 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       `🏷️ ${catNames}\n` +
       `${stars}${lessons}\n` +
       `${price}\n` +
-      (link ? `📦 <b>File ready:</b> ${esc(link.fileName ?? 'linked')}${link.fileSizeMb ? ` · ${link.fileSizeMb} MB` : ''}` : `📦 <i>File coming soon</i>`) +
+      (files.length > 1
+        ? `📦 <b>${files.length} files ready</b> · ${fmtSize(totalMb)}${moduleCount > 1 ? ` · ${moduleCount} modules` : ''}`
+        : link
+          ? `📦 <b>File ready:</b> ${esc(link.fileName ?? 'linked')}${link.fileSizeMb ? ` · ${link.fileSizeMb} MB` : ''}`
+          : `📦 <i>File coming soon</i>`) +
       `\n${DIV}\n` +
       (course.description ? `${esc(course.description.slice(0, 220))}\n\n` : '') +
       `🔗 <a href="${APP_URL}/courses/${course.slug}">View on the web →</a>`;
@@ -1510,14 +1536,19 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
 
   /** Buttons for the interactive download picker (only courses with files). */
   private async downloadPickerButtons(): Promise<KbButton[][]> {
-    const links = await this.prisma.telegramCourseLink.findMany({
-      include: { course: { select: { title: true, slug: true } } },
+    // group by course — a multi-part course would otherwise render one
+    // identical button per file
+    const courses = await this.prisma.course.findMany({
+      where: { deletedAt: null, telegramFiles: { some: {} } },
+      select: { id: true, title: true, _count: { select: { telegramFiles: true } } },
       orderBy: { createdAt: 'desc' },
       take: 20,
     });
-    if (links.length === 0) return [];
-    return links.map((l) => [
-      { text: `📥 ${l.course.title.slice(0, 40)}`, callback_data: `dl:${l.courseId}` },
+    return courses.map((c) => [
+      {
+        text: `📥 ${c.title.slice(0, 36)}${c._count.telegramFiles > 1 ? ` (${c._count.telegramFiles})` : ''}`,
+        callback_data: `dl:${c.id}`,
+      },
     ]);
   }
 
@@ -1603,12 +1634,14 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
 
   /** /unlink with no args — pick a linked course to detach. */
   private async startUnlinkWizard(chatId: number, userId: number, threadId?: number | null) {
-    const links = await this.prisma.telegramCourseLink.findMany({
-      include: { course: { select: { title: true, slug: true } } },
+    // group by course, else a 35-part course fills the picker with itself
+    const courses = await this.prisma.course.findMany({
+      where: { deletedAt: null, telegramFiles: { some: {} } },
+      select: { id: true, title: true, _count: { select: { telegramFiles: true } } },
       orderBy: { createdAt: 'desc' },
       take: 20,
     });
-    if (links.length === 0) {
+    if (courses.length === 0) {
       return this.sendRich(
         chatId,
         `${this.brandHeader('Unlink')}\n\n` +
@@ -1616,14 +1649,17 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
         threadId,
       );
     }
-    const kb: KbButton[][] = links.map((l) => [
-      { text: `🗑️ ${l.course.title.slice(0, 42)}`, callback_data: `ul:${l.courseId}` },
+    const kb: KbButton[][] = courses.map((c) => [
+      {
+        text: `🗑️ ${c.title.slice(0, 36)}${c._count.telegramFiles > 1 ? ` (${c._count.telegramFiles} files)` : ''}`,
+        callback_data: `ul:${c.id}`,
+      },
     ]);
     kb.push([{ text: '🏠 Home', callback_data: 'home' }]);
     await this.sendRich(
       chatId,
       `${this.brandHeader('Unlink')}\n\n` +
-        `🗑️ Which course should have its file <b>detached</b>?`,
+        `🗑️ Which course should have its file${courses.some((c) => c._count.telegramFiles > 1) ? '(s)' : ''} <b>detached</b>?`,
       threadId,
       kb,
     );
@@ -2379,13 +2415,20 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       this.prisma.lesson.count(),
       this.prisma.review.count(),
     ]);
-    const recentLinks = await this.prisma.telegramCourseLink.findMany({
-      include: { course: { select: { title: true, slug: true } } },
-      orderBy: { createdAt: 'desc' },
+    // distinct courses — a 35-part import would otherwise fill this with one title
+    const recentCourses = await this.prisma.course.findMany({
+      where: { deletedAt: null, telegramFiles: { some: {} } },
+      select: { title: true, slug: true, _count: { select: { telegramFiles: true } } },
+      orderBy: { updatedAt: 'desc' },
       take: 5,
     });
-    const recent = recentLinks.length
-      ? recentLinks.map((l) => `• <b>${esc(l.course.title)}</b> — <code>/download ${l.course.slug}</code>`).join('\n')
+    const recent = recentCourses.length
+      ? recentCourses
+          .map(
+            (c) =>
+              `• <b>${esc(c.title)}</b>${c._count.telegramFiles > 1 ? ` <i>(${c._count.telegramFiles} files)</i>` : ''} — <code>/download ${c.slug}</code>`,
+          )
+          .join('\n')
       : '• <i>No files linked yet.</i>';
     const html =
       `${this.brandHeader('Platform Dashboard')}\n\n` +
@@ -2428,10 +2471,9 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       },
     });
     if (!course) return this.sendText(chatId, `Course “${slug}” not found. Try /courses.`);
-    const link = await this.prisma.telegramCourseLink.findUnique({
-      where: { courseId: course.id },
-    });
-    if (!link) {
+    const modules = await this.courseModules(course.id);
+    const fileCount = modules.reduce((n, m) => n + m.files.length, 0);
+    if (fileCount === 0) {
       return this.sendRich(
         chatId,
         `${this.brandHeader('Download')}\n\n` +
@@ -2441,65 +2483,396 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
         [[{ text: '📚 All courses', callback_data: 'courses' }]],
       );
     }
-    const caption =
-      `🎓 <b>${esc(course.title)}</b>\n` +
-      `${DIV}\n` +
-      `⭐ <b>${course.ratingAvg.toFixed(1)}</b> / 5${course.lecturer ? ` · 👨‍🏫 ${esc(course.lecturer.name)}` : ''}\n` +
-      (link.fileSizeMb ? `📦 ${esc(link.fileName ?? 'file')} · ${link.fileSizeMb} MB\n` : '') +
-      `${DIV}\n` +
-      `Happy learning! 🚀 More at <a href="${APP_URL}/courses/${course.slug}">syncourse.pages.dev</a>`;
-    try {
-      if (link.fileId) {
-        const body: Record<string, unknown> = {
-          chat_id: chatId,
-          document: link.fileId,
-          caption,
-          parse_mode: 'HTML',
-        };
-        if (threadId) body.message_thread_id = threadId;
-        const res = await this.api('sendDocument', body);
-        if (!(await res.json()).ok) throw new Error('sendDocument failed');
-      } else {
-        const res = await this.api('forwardMessage', {
-          chat_id: chatId,
-          from_chat_id: String(link.chatId),
-          message_id: Number(link.fileMessageId),
-        });
-        if (!(await res.json()).ok) throw new Error('forwardMessage failed');
-        await this.sendText(chatId, caption, threadId);
-      }
-      await this.prisma.course.update({
-        where: { id: course.id },
-        data: { downloadCount: { increment: 1 } },
-      });
-      const firstLesson = await this.prisma.lesson.findFirst({ where: { courseId: course.id }, select: { id: true } });
-      await this.prisma.downloadEvent
-        .create({
-          data: {
-            courseId: course.id,
-            lessonId: firstLesson?.id ?? '',
-            method: 'bot',
-          },
-        })
-        .catch(() => undefined);
-      // Follow-up card after the file lands
-      await this.sendRich(
-        chatId,
-        `${this.brandHeader('Enjoy!')}\n\n` +
-          `✅ File delivered — <b>“${esc(course.title)}”</b> is all yours.\n` +
-          `Want more? Browse the full catalog below. 👇`,
-        threadId,
-        [
-          [{ text: '📚 All courses', callback_data: 'courses' }],
-          [{ text: '🏠 Home', callback_data: 'home' }, { text: '❓ Help', callback_data: 'help' }],
-        ],
-      );
-    } catch {
+    // A single ungrouped file (a plain /link) still goes straight out — no
+    // point making someone tap a picker to choose from one option.
+    if (fileCount === 1) {
+      return this.deliverFiles(chatId, course, modules[0].files, threadId);
+    }
+    // Multi-part course: offer a module per button rather than dumping several
+    // GB into the chat unasked.
+    const totalMb = modules.reduce((n, m) => n + m.sizeMb, 0);
+    const kb: KbButton[][] = modules.map((m, i) => [
+      {
+        text: `${m.title ? m.title.slice(0, 36) : 'Files'} · ${m.files.length > 1 ? `${m.files.length} parts` : fmtSize(m.sizeMb)}`,
+        callback_data: `dlm:${course.id}:${i}`,
+      },
+    ]);
+    kb.push([{ text: `⬇️ Send everything (${fmtSize(totalMb)})`, callback_data: `dlall:${course.id}` }]);
+    kb.push([{ text: '📚 All courses', callback_data: 'courses' }, { text: '🏠 Home', callback_data: 'home' }]);
+    return this.sendRich(
+      chatId,
+      `${this.brandHeader('Download')}\n\n` +
+        `🎴 <b>${esc(course.title)}</b>\n` +
+        `${DIV}\n` +
+        `📦 <b>${fileCount}</b> files · ${fmtSize(totalMb)} · <b>${modules.length}</b> modules\n\n` +
+        `Pick a module below, or grab the whole course at once.`,
+      threadId,
+      kb,
+    );
+  }
+
+  /**
+   * Send a set of files in order.
+   *
+   * Telegram rate-limits messages to a chat, so a 6-part module sent in a tight
+   * loop draws a 429 and the tail is silently lost. Files go out one at a time
+   * with a gap between them, and a 429 is honoured by waiting out `retry_after`.
+   */
+  private async deliverFiles(
+    chatId: number,
+    course: { id: string; title: string; slug: string; ratingAvg: number; lecturer: { name: string } | null },
+    files: TelegramFileRow[],
+    threadId?: number | null,
+    moduleTitle?: string | null,
+  ) {
+    let sent = 0;
+    for (const [i, f] of files.entries()) {
+      const partLabel = files.length > 1 ? ` · part ${i + 1}/${files.length}` : '';
+      const caption =
+        `🎓 <b>${esc(course.title)}</b>\n` +
+        (moduleTitle ? `📂 ${esc(moduleTitle)}${partLabel}\n` : '') +
+        `${DIV}\n` +
+        (f.fileSizeMb ? `📦 ${esc(f.fileName ?? 'file')} · ${f.fileSizeMb} MB\n` : '') +
+        `${DIV}\n` +
+        `More at <a href="${APP_URL}/courses/${course.slug}">syncourse.pages.dev</a>`;
+      const ok = await this.sendOneFile(chatId, f, caption, threadId);
+      if (ok) sent++;
+      else this.logger.error(`delivery failed for ${f.fileName} (course ${course.slug})`);
+      if (i < files.length - 1) await sleep(1200);
+    }
+    if (sent === 0) {
       return this.sendText(
         chatId,
-        'Could not send the file. The bot may have lost access to the group — please contact support.',
+        'Could not send the file. The bot may have lost access to the source chat — please contact support.',
+        threadId,
       );
     }
+    await this.prisma.course
+      .update({ where: { id: course.id }, data: { downloadCount: { increment: 1 } } })
+      .catch(() => undefined);
+    const firstLesson = await this.prisma.lesson.findFirst({ where: { courseId: course.id }, select: { id: true } });
+    // DownloadEvent.lessonId is a required FK, so single-ZIP courses (no
+    // lessons) can't be recorded — skip rather than write a bogus empty id.
+    if (firstLesson) {
+      await this.prisma.downloadEvent
+        .create({ data: { courseId: course.id, lessonId: firstLesson.id, method: 'bot' } })
+        .catch(() => undefined);
+    }
+    const missing = files.length - sent;
+    await this.sendRich(
+      chatId,
+      `${this.brandHeader('Enjoy!')}\n\n` +
+        `✅ <b>${sent}</b>${files.length > 1 ? ` of ${files.length}` : ''} file${sent === 1 ? '' : 's'} delivered — ` +
+        `<b>“${esc(course.title)}”</b>${moduleTitle ? ` · ${esc(moduleTitle)}` : ''}.\n` +
+        (missing > 0 ? `⚠️ ${missing} could not be sent — try that module again.\n` : '') +
+        `Want more? Browse the full catalog below. 👇`,
+      threadId,
+      [
+        [{ text: '📚 All courses', callback_data: 'courses' }],
+        [{ text: '🏠 Home', callback_data: 'home' }, { text: '❓ Help', callback_data: 'help' }],
+      ],
+    );
+  }
+
+  /** Send one attached file, honouring Telegram's 429 back-off. Returns success. */
+  private async sendOneFile(
+    chatId: number,
+    f: TelegramFileRow,
+    caption: string,
+    threadId?: number | null,
+  ): Promise<boolean> {
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        let res: Response;
+        if (f.fileId) {
+          const body: Record<string, unknown> = {
+            chat_id: chatId,
+            document: f.fileId,
+            caption,
+            parse_mode: 'HTML',
+          };
+          if (threadId) body.message_thread_id = threadId;
+          res = await this.api('sendDocument', body);
+        } else {
+          const body: Record<string, unknown> = {
+            chat_id: chatId,
+            from_chat_id: String(f.chatId),
+            message_id: Number(f.fileMessageId),
+          };
+          // the old code dropped this, landing forum files in the wrong topic
+          if (threadId) body.message_thread_id = threadId;
+          res = await this.api('forwardMessage', body);
+        }
+        const json = (await res.json()) as { ok: boolean; description?: string; parameters?: { retry_after?: number } };
+        if (json.ok) {
+          if (!f.fileId) await this.sendText(chatId, caption, threadId);
+          return true;
+        }
+        const wait = json.parameters?.retry_after;
+        if (wait) {
+          this.logger.warn(`rate limited sending ${f.fileName}; waiting ${wait}s`);
+          await sleep((wait + 1) * 1000);
+          continue;
+        }
+        this.logger.error(`send failed for ${f.fileName}: ${json.description}`);
+        return false;
+      } catch (err) {
+        this.logger.error(`send threw for ${f.fileName}: ${(err as Error).message}`);
+        await sleep(1000);
+      }
+    }
+    return false;
+  }
+
+  /**
+   * Deliver one module of a course, or the whole course when `moduleIndex` is
+   * null. Called from the picker buttons.
+   */
+  private async sendCourseModule(chatId: number, courseId: string, moduleIndex: number | null, threadId?: number | null) {
+    const course = await this.prisma.course.findUnique({
+      where: { id: courseId },
+      select: { id: true, title: true, slug: true, ratingAvg: true, lecturer: { select: { name: true } } },
+    });
+    if (!course) return this.sendText(chatId, 'That course is no longer available.', threadId);
+    const modules = await this.courseModules(course.id);
+    if (modules.length === 0) return this.sendText(chatId, 'No files are attached to that course yet.', threadId);
+
+    if (moduleIndex === null) {
+      const all = modules.flatMap((m) => m.files);
+      await this.sendRich(
+        chatId,
+        `${this.brandHeader('Download')}\n\n` +
+          `⬇️ Sending <b>${all.length}</b> files for <b>“${esc(course.title)}”</b>…\n` +
+          `<i>They arrive one at a time — give it a minute.</i>`,
+        threadId,
+      );
+      return this.deliverFiles(chatId, course, all, threadId);
+    }
+    const mod = modules[moduleIndex];
+    if (!mod) return this.sendText(chatId, 'That module no longer exists — open the course again.', threadId);
+    return this.deliverFiles(chatId, course, mod.files, threadId, mod.title);
+  }
+
+  /**
+   * Per-course file summary for list views. A course has many files, so this
+   * aggregates them — collapsing the rows into a Map keyed by courseId would
+   * silently report only one of them.
+   */
+  private async fileSummaryByCourse(
+    courseIds: string[],
+  ): Promise<Map<string, { count: number; sizeMb: number; firstName: string | null }>> {
+    const rows = await this.prisma.telegramCourseLink.findMany({
+      where: { courseId: { in: courseIds } },
+      select: { courseId: true, fileName: true, fileSizeMb: true, moduleOrder: true, partIndex: true },
+      orderBy: [{ moduleOrder: 'asc' }, { partIndex: 'asc' }],
+    });
+    const out = new Map<string, { count: number; sizeMb: number; firstName: string | null }>();
+    for (const r of rows) {
+      const cur = out.get(r.courseId);
+      if (cur) {
+        cur.count++;
+        cur.sizeMb += r.fileSizeMb ?? 0;
+      } else {
+        out.set(r.courseId, { count: 1, sizeMb: r.fileSizeMb ?? 0, firstName: r.fileName });
+      }
+    }
+    return out;
+  }
+
+  // ----- bulk import (/import) -----
+
+  /**
+   * `/import <channel> <from>-<to> <course-slug>`
+   *
+   * Attaches a whole range of channel messages to one course. The Bot API has
+   * no way to read an existing message, so each one is forwarded here, its file
+   * read off the copy, and the copy deleted (see linkCourse for the same trick).
+   * That means the bot must be a MEMBER of the source chat — admin for channels.
+   *
+   * Filenames are grouped into modules + parts by the feed parser, so
+   * "9. Scikit-learn … - Part 01/02/03.zip" becomes one module with three parts.
+   */
+  private async importRange(chatId: number, arg: string, threadId?: number | null) {
+    const parts = arg.trim().split(/\s+/);
+    if (parts.length < 3) {
+      return this.sendRich(
+        chatId,
+        `${this.brandHeader('Bulk Import')}\n\n` +
+          `📥 <b>Import a whole course at once.</b>\n\n` +
+          `<code>/import &lt;channel&gt; &lt;from&gt;-&lt;to&gt; &lt;course-slug&gt;</code>\n\n` +
+          `Example:\n<code>/import @machine_learning_courses 4-38 complete-machine-learning</code>\n\n` +
+          `${DIV}\n` +
+          `• I must be in that chat — <b>admin</b> if it's a channel\n` +
+          `• Non-file messages in the range are skipped\n` +
+          `• Module names and Part 01/02/03 are read from the filenames\n` +
+          `• Re-running the same range updates instead of duplicating`,
+        threadId,
+      );
+    }
+    const channel = parts[0].replace(/^@/, '').replace(/^https?:\/\/t\.me\//, '');
+    const rangeMatch = parts[1].match(/^(\d+)\s*-\s*(\d+)$/);
+    const slug = parts.slice(2).join(' ');
+    if (!rangeMatch) {
+      return this.sendText(chatId, 'The range should look like 4-38 (first message id to last).', threadId);
+    }
+    const from = Number(rangeMatch[1]);
+    const to = Number(rangeMatch[2]);
+    if (to < from) return this.sendText(chatId, 'The range end must not be before the start.', threadId);
+    const MAX_RANGE = 200;
+    if (to - from + 1 > MAX_RANGE) {
+      return this.sendText(chatId, `That range is ${to - from + 1} messages — please import at most ${MAX_RANGE} at a time.`, threadId);
+    }
+
+    const course = await this.resolveCourseByArg(slug);
+    if (!course) {
+      return this.sendRich(
+        chatId,
+        `${this.brandHeader('Bulk Import')}\n\n` +
+          `❌ No course matches <code>${esc(slug)}</code>.\n\n` +
+          `Choose a real slug:\n\n${await this.courseSlugList()}`,
+        threadId,
+      );
+    }
+
+    const chatRes = await this.api('getChat', { chat_id: `@${channel}` });
+    const chatJson = (await chatRes.json()) as { ok: boolean; result?: { id: number }; description?: string };
+    if (!chatJson.ok || !chatJson.result) {
+      return this.sendText(chatId, `Could not resolve @${channel}: ${chatJson.description ?? 'unknown error'}`, threadId);
+    }
+    const sourceChatId = chatJson.result.id;
+
+    const progressId = await this.sendRich(
+      chatId,
+      `${this.brandHeader('Bulk Import')}\n\n` +
+        `⏳ Reading <b>${to - from + 1}</b> messages from <b>@${esc(channel)}</b>…\n` +
+        `<i>This takes a moment — I read them one at a time.</i>`,
+      threadId,
+    );
+
+    type Found = { fileName: string; fileId: string; fileSizeMb: number | null; messageId: number; threadId: number | null };
+    const found: Found[] = [];
+    let skipped = 0;
+    let unreadable = 0;
+
+    for (let id = from; id <= to; id++) {
+      const fwd = await this.api('forwardMessage', {
+        chat_id: chatId,
+        from_chat_id: sourceChatId,
+        message_id: id,
+        disable_notification: true,
+      });
+      const json = (await fwd.json()) as TelegramMessage & { parameters?: { retry_after?: number } };
+      if (!json.ok || !json.result) {
+        if (json.parameters?.retry_after) {
+          await sleep((json.parameters.retry_after + 1) * 1000);
+          id--; // retry this id
+          continue;
+        }
+        unreadable++;
+        continue;
+      }
+      const m = json.result;
+      if (m.message_id) await this.deleteMessage(chatId, m.message_id);
+      const doc = m.document ?? m.video ?? m.audio;
+      if (!doc || (m.document && isCoverImage(m.document))) {
+        skipped++;
+      } else {
+        found.push({
+          fileName: doc.file_name ?? `file-${id}`,
+          fileId: doc.file_id,
+          fileSizeMb: doc.file_size ? Number((doc.file_size / 1024 / 1024).toFixed(1)) : null,
+          messageId: id,
+          threadId: m.message_thread_id ?? null,
+        });
+      }
+      await sleep(900); // stay well under Telegram's per-chat rate limit
+    }
+
+    if (found.length === 0) {
+      const html =
+        `${this.brandHeader('Bulk Import')}\n\n` +
+        `❌ Found no files in <b>@${esc(channel)}</b> messages ${from}–${to}.\n\n` +
+        (unreadable > 0
+          ? `<b>${unreadable}</b> messages were unreadable — I'm probably not in that chat.\n` +
+            `Add <b>@${BOT_USERNAME}</b> as an admin and try again.\n\n`
+          : `<b>${skipped}</b> messages had no attached file.\n\n`) +
+        `Check the ids by tapping a ZIP → Copy link.`;
+      if (progressId) await this.editRich(chatId, progressId, html);
+      else await this.sendRich(chatId, html, threadId);
+      return;
+    }
+
+    // group into modules using the feed parser, so /import and the feed
+    // importer agree on how a filename maps to a module + part.
+    // Index by orderIndex, NOT filename: channels post the same filename more
+    // than once (the 6 identical 14_Neural_Networks uploads), and a filename
+    // key would collapse those into one row and silently drop files.
+    const sections = organizeParts(found.map((f, i) => partFromFile(f.fileName, i, null, null)));
+
+    // Only build Sections when the course has none. A seeded or feed-imported
+    // course already has a curriculum, and adding module rows next to it would
+    // duplicate the outline — courseModules() groups on moduleTitle anyway, so
+    // sectionId is a convenience, not a requirement.
+    const hasCurriculum = (await this.prisma.section.count({ where: { courseId: course.id } })) > 0;
+
+    let created = 0;
+    let updated = 0;
+    for (const [order, section] of sections.entries()) {
+      let sectionId: string | null = null;
+      if (!hasCurriculum) {
+        const deterministicId = `${course.id}-m${order}`; // keeps re-imports idempotent
+        const dbSection = await this.prisma.section.upsert({
+          where: { id: deterministicId },
+          create: { id: deterministicId, courseId: course.id, title: section.title, orderIndex: order },
+          update: { title: section.title, orderIndex: order },
+        });
+        sectionId = dbSection.id;
+      }
+      for (const [pi, part] of section.parts.entries()) {
+        const f = found[part.orderIndex];
+        if (!f) continue;
+        const res = await this.saveLink({
+          courseId: course.id,
+          chatId: BigInt(sourceChatId),
+          chatUsername: channel,
+          messageThreadId: f.threadId ? BigInt(f.threadId) : null,
+          fileMessageId: BigInt(f.messageId),
+          fileId: f.fileId,
+          fileName: f.fileName,
+          fileSizeMb: f.fileSizeMb,
+          caption: null,
+          sectionId,
+          moduleTitle: section.title,
+          moduleOrder: order,
+          partIndex: part.partNo ?? pi + 1,
+        });
+        if (res.created) created++;
+        else updated++;
+      }
+    }
+
+    const totalMb = found.reduce((n, f) => n + (f.fileSizeMb ?? 0), 0);
+    await this.logActivity(null, chatId, 'link', `imported ${found.length} files -> ${course.slug}`);
+    const summary =
+      `${this.brandHeader('Bulk Import')}\n\n` +
+      `✅ <b>“${esc(course.title)}”</b> now has <b>${found.length}</b> files.\n` +
+      `${DIV}\n` +
+      `📂 <b>${sections.length}</b> modules · ${fmtSize(totalMb)}\n` +
+      `🆕 ${created} added${updated ? ` · ♻️ ${updated} updated` : ''}` +
+      (skipped ? ` · ⏭️ ${skipped} non-file skipped` : '') +
+      (unreadable ? ` · ⚠️ ${unreadable} unreadable` : '') +
+      `\n${DIV}\n` +
+      sections
+        .slice(0, 12)
+        .map((s, i) => `${String(i + 1).padStart(2, '0')}. ${esc(s.title.slice(0, 44))}${s.parts.length > 1 ? ` <i>(${s.parts.length} parts)</i>` : ''}`)
+        .join('\n') +
+      (sections.length > 12 ? `\n<i>…and ${sections.length - 12} more</i>` : '');
+    const kb: KbButton[][] = [
+      [{ text: '📥 Test download', callback_data: `dl:${course.id}` }],
+      [{ text: '📚 Catalog', callback_data: 'courses' }, { text: '📊 Stats', callback_data: 'stats' }],
+    ];
+    if (progressId) await this.editRich(chatId, progressId, summary, kb);
+    else await this.sendRich(chatId, summary, threadId, kb);
   }
 
   /** start=download_<lessonId> — legacy flow: send the lesson link text. */
@@ -2634,11 +3007,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       else await this.sendRich(chatId, html, threadId);
       return;
     }
-    const links = await this.prisma.telegramCourseLink.findMany({
-      where: { courseId: { in: matches.map((m) => m.id) } },
-      select: { courseId: true, fileName: true, fileSizeMb: true },
-    });
-    const linkByCourse = new Map(links.map((l) => [l.courseId, l]));
+    const linkByCourse = await this.fileSummaryByCourse(matches.map((m) => m.id));
     const deepLinkBase = `https://t.me/${BOT_USERNAME}?start=dl_`;
     const rows = matches
       .map((c, i) => {
@@ -2648,7 +3017,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
           : `<b>${esc(c.title)}</b>`;
         return (
           `${i + 1}. ${title}\n` +
-          `   🔑 <code>${esc(c.slug)}</code>${l ? ` · 📦 ${esc(l.fileName ?? 'file')}${l.fileSizeMb ? ` · ${l.fileSizeMb} MB` : ''}` : ' · 📭 no file yet'}` +
+          `   🔑 <code>${esc(c.slug)}</code>${l ? ` · 📦 ${l.count > 1 ? `${l.count} files · ${fmtSize(l.sizeMb)}` : `${esc(l.firstName ?? 'file')}${l.sizeMb ? ` · ${fmtSize(l.sizeMb)}` : ''}`}` : ' · 📭 no file yet'}` +
           (c.lecturer ? ` · 👨‍🏫 ${esc(c.lecturer.name)}` : '') +
           ` · ⭐ ${c.ratingAvg.toFixed(1)}`
         );
@@ -2703,7 +3072,14 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     }
   }
 
-  /** Upsert a course↔Telegram-file mapping. */
+  /**
+   * Attach a Telegram file to a course.
+   *
+   * A real course is published as many ZIPs, so this APPENDS rather than
+   * replacing. Identity is (courseId, chatId, fileMessageId) — re-running an
+   * import updates the existing row instead of creating duplicates, while a
+   * genuinely new file is added alongside the others.
+   */
   private async saveLink(input: {
     courseId: string;
     chatId: bigint;
@@ -2714,21 +3090,51 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     fileName: string | null;
     fileSizeMb: number | null;
     caption: string | null;
+    sectionId?: string | null;
+    moduleTitle?: string | null;
+    moduleOrder?: number;
+    partIndex?: number;
   }) {
-    await this.prisma.telegramCourseLink.upsert({
-      where: { courseId: input.courseId },
-      create: input,
-      update: {
+    const existing = await this.prisma.telegramCourseLink.findFirst({
+      where: {
+        courseId: input.courseId,
         chatId: input.chatId,
-        chatUsername: input.chatUsername,
-        messageThreadId: input.messageThreadId,
         fileMessageId: input.fileMessageId,
-        fileId: input.fileId,
-        fileName: input.fileName,
-        fileSizeMb: input.fileSizeMb,
-        caption: input.caption,
       },
+      select: { id: true },
     });
+    if (existing) {
+      await this.prisma.telegramCourseLink.update({ where: { id: existing.id }, data: input });
+      return { created: false };
+    }
+    await this.prisma.telegramCourseLink.create({ data: input });
+    return { created: true };
+  }
+
+  /**
+   * A course's files grouped into modules, ordered for display and delivery.
+   * Files with no module (a plain single-ZIP `/link`) fall into one unnamed
+   * group so callers can treat both shapes the same way.
+   */
+  private async courseModules(courseId: string): Promise<
+    { title: string | null; order: number; sizeMb: number; files: TelegramFileRow[] }[]
+  > {
+    const files = await this.prisma.telegramCourseLink.findMany({
+      where: { courseId },
+      orderBy: [{ moduleOrder: 'asc' }, { partIndex: 'asc' }, { createdAt: 'asc' }],
+    });
+    const groups = new Map<string, { title: string | null; order: number; sizeMb: number; files: TelegramFileRow[] }>();
+    for (const f of files) {
+      const key = f.moduleTitle ?? '__ungrouped__';
+      let g = groups.get(key);
+      if (!g) {
+        g = { title: f.moduleTitle, order: f.moduleOrder, sizeMb: 0, files: [] };
+        groups.set(key, g);
+      }
+      g.files.push(f);
+      g.sizeMb += f.fileSizeMb ?? 0;
+    }
+    return [...groups.values()].sort((a, b) => a.order - b.order);
   }
 
   // ---------------------------------------------------------------
@@ -2923,8 +3329,17 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
 
   /** Bot status + linked courses + recent activity — /telegram/status endpoint. */
   async status() {
-    const links = await this.prisma.telegramCourseLink.findMany({
-      include: { course: { select: { title: true, slug: true } } },
+    // one entry per course, not per file
+    const linked = await this.prisma.course.findMany({
+      where: { deletedAt: null, telegramFiles: { some: {} } },
+      select: {
+        title: true,
+        slug: true,
+        telegramFiles: {
+          select: { fileName: true, chatUsername: true, fileSizeMb: true },
+          orderBy: [{ moduleOrder: 'asc' }, { partIndex: 'asc' }],
+        },
+      },
     });
     const activity = await this.prisma.telegramActivity
       .findMany({ orderBy: { at: 'desc' }, take: 15 })
@@ -2939,11 +3354,13 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       pollErrors: this.pollErrors,
       lastError: this.lastError,
       filesCached,
-      linkedCourses: links.map((l) => ({
-        slug: l.course.slug,
-        title: l.course.title,
-        fileName: l.fileName,
-        chatUsername: l.chatUsername,
+      linkedCourses: linked.map((c) => ({
+        slug: c.slug,
+        title: c.title,
+        fileName: c.telegramFiles[0]?.fileName ?? null,
+        fileCount: c.telegramFiles.length,
+        totalSizeMb: Math.round(c.telegramFiles.reduce((n, f) => n + (f.fileSizeMb ?? 0), 0)),
+        chatUsername: c.telegramFiles[0]?.chatUsername ?? null,
       })),
       recentActivity: activity.map((a) => ({
         at: a.at.toISOString(),
@@ -2964,6 +3381,17 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
 function isCoverImage(doc: { file_name?: string; mime_type?: string }): boolean {
   if (doc.mime_type?.startsWith('image/')) return true;
   return /\.(jpe?g|png|gif|webp|bmp|heic|heif|avif|tiff?)$/i.test(doc.file_name ?? '');
+}
+
+/** Pause between Telegram sends so a multi-part module doesn't trip a 429. */
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/** "6.2 GB" / "133 MB" — course archives get large enough for MB to read badly. */
+function fmtSize(mb: number): string {
+  if (!mb) return '—';
+  return mb >= 1024 ? `${(mb / 1024).toFixed(1)} GB` : `${Math.round(mb)} MB`;
 }
 
 function slugify(s: string): string {
