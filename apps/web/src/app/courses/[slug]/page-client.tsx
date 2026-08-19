@@ -276,10 +276,13 @@ export function CourseDetailView({ slug }: { slug: string }) {
           <p>{course.description}</p>
           <div className="detail-meta">
             <span>
-              <Star size={14} fill="currentColor" className="rating" /> {course.ratingAvg.toFixed(1)} · {compact(course.ratingCount)} ratings
+              <Star size={14} fill="currentColor" className="rating" />{" "}
+              {course.ratingCount > 0
+                ? `${course.ratingAvg.toFixed(1)} · ${compact(course.ratingCount)} ratings`
+                : "Not yet rated"}
             </span>
-            <span>{formatDuration(course.durationMin)}</span>
-            <span>{course.lessonCount} lessons</span>
+            {course.durationMin > 0 && <span>{formatDuration(course.durationMin)}</span>}
+            {course.lessonCount > 0 && <span>{course.lessonCount} lessons</span>}
             <span>{course.language || "English"}</span>
           </div>
         </div>
@@ -408,7 +411,9 @@ export function CourseDetailView({ slug }: { slug: string }) {
             </section>
           )}
 
-          {/* curriculum */}
+          {/* curriculum — hidden for single-ZIP courses, which have no sections
+              at all; an empty "Curriculum · 0 modules" accordion read as broken */}
+          {course.sections.length > 0 && (
           <section className="rail">
             <div className="section-head">
               <h2>
@@ -443,6 +448,7 @@ export function CourseDetailView({ slug }: { slug: string }) {
               ))}
             </div>
           </section>
+          )}
 
           {/* downloads analytics */}
           <section className="rail">

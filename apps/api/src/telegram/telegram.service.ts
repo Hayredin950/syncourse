@@ -920,7 +920,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       orderBy: [{ createdAt: 'desc' }, { title: 'asc' }],
       skip: safePage * TelegramService.CATALOG_PAGE,
       take: TelegramService.CATALOG_PAGE,
-      select: { id: true, title: true, slug: true, ratingAvg: true, lecturer: { select: { name: true } } },
+      select: { id: true, title: true, slug: true, ratingAvg: true, ratingCount: true, lecturer: { select: { name: true } } },
     });
     const links = await this.prisma.telegramCourseLink.findMany({
       where: { courseId: { in: courses.map((c) => c.id) } },
@@ -937,12 +937,13 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
         const title = l
           ? `<a href="${deepLinkBase}${c.slug}">${esc(c.title)}</a>`
           : `<b>${esc(c.title)}</b>`;
+        const stars = c.ratingCount > 0 ? `⭐ ${c.ratingAvg.toFixed(1)}` : `⭐ <i>new</i>`;
         return (
           `${startIdx + i + 1}. ${title}\n` +
           `   🔑 <code>${esc(c.slug)}</code>\n` +
           (l
-            ? `   📦 ${esc(l.fileName ?? 'file')}${l.fileSizeMb ? ` · ${l.fileSizeMb} MB` : ''} · ⭐ ${c.ratingAvg.toFixed(1)}`
-            : `   📭 <i>no file yet</i> · ⭐ ${c.ratingAvg.toFixed(1)}`) +
+            ? `   📦 ${esc(l.fileName ?? 'file')}${l.fileSizeMb ? ` · ${l.fileSizeMb} MB` : ''} · ${stars}`
+            : `   📭 <i>no file yet</i> · ${stars}`) +
           (c.lecturer ? ` · 👨‍🏫 ${esc(c.lecturer.name)}` : '')
         );
       })
@@ -1012,6 +1013,11 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
         : '💵 <b>Free</b>';
     const typeMap: Record<string, string> = { course: '📘 Course', 'mini-course': '📗 Mini-course', 'cheat-sheet': '📋 Cheat-sheet', roadmap: '🗺️ Roadmap' };
     const type = typeMap[course.contentType] ?? '📘 Course';
+    // Courses added through /newcourse are delivered as one ZIP — they have no
+    // sections or lessons, so "0.0 / 5 · 0 lessons" read as broken on a course
+    // that was actually complete. Show each figure only when it means something.
+    const stars = course.ratingCount > 0 ? `⭐ <b>${course.ratingAvg.toFixed(1)}</b> / 5` : `⭐ <i>Not yet rated</i>`;
+    const lessons = course._count.lessons > 0 ? ` · ${course._count.lessons} lessons` : '';
     const html =
       `${this.brandHeader('Course Details')}\n\n` +
       `🎴 <b>${esc(course.title)}</b>\n` +
@@ -1019,7 +1025,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       `${type} · ${course.level ? esc(course.level.name) : 'All levels'}\n` +
       `👨‍🏫 ${course.lecturer ? esc(course.lecturer.name) : '—'}\n` +
       `🏷️ ${catNames}\n` +
-      `⭐ <b>${course.ratingAvg.toFixed(1)}</b> / 5 · ${course._count.lessons} lessons\n` +
+      `${stars}${lessons}\n` +
       `${price}\n` +
       (link ? `📦 <b>File ready:</b> ${esc(link.fileName ?? 'linked')}${link.fileSizeMb ? ` · ${link.fileSizeMb} MB` : ''}` : `📦 <i>File coming soon</i>`) +
       `\n${DIV}\n` +
@@ -2518,6 +2524,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       slug: true,
       description: true,
       ratingAvg: true,
+      ratingCount: true,
       price: true,
       originalPrice: true,
       contentType: true,
