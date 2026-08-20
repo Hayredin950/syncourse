@@ -138,10 +138,6 @@ export default function CourseDetailScreen() {
   }
 
   const c = data;
-  // Captured as consts so the null check still narrows inside the onPress
-  // closures below — TS drops the narrowing on `c.lecturer` across a callback.
-  const lecturer = c.lecturer;
-  const organization = c.organization;
   const desc =
     c.description.length > 200 && !expanded
       ? `${c.description.slice(0, 200)}…`

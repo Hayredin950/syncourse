@@ -22,9 +22,13 @@ function escapeHtml(value: string): string {
  *                                   which is not your account email
  *
  * So both paths are supported and picked in this order:
- *   1. BREVO_API_KEY set                      -> HTTP API (no socket to keep open)
+ *   1. a real xkeysib-… REST key              -> HTTP API (no socket to keep open)
  *   2. BREVO_SMTP_KEY + BREVO_SMTP_USER set   -> SMTP relay via nodemailer
  *   3. neither                                -> sending is skipped and logged
+ *
+ * Keys are classified by PREFIX, not by which variable they arrived in: pasting
+ * an xsmtpsib-… key into BREVO_API_KEY is the easy mistake to make, and it used to
+ * mean every send 401'd against the REST API instead of falling through to SMTP.
  *
  * Fails soft everywhere: callers get { sent: false } instead of an exception, and
  * registration falls back to auto-verify so a dead mailbox cannot brick signups.
@@ -32,14 +36,34 @@ function escapeHtml(value: string): string {
 @Injectable()
 export class EmailService {
   private readonly logger = new Logger(EmailService.name);
-  private readonly apiKey = process.env.BREVO_API_KEY ?? '';
+  private readonly apiKey: string;
+  private readonly smtpKey: string;
   private readonly smtpHost = process.env.BREVO_SMTP_HOST ?? 'smtp-relay.brevo.com';
   private readonly smtpPort = Number(process.env.BREVO_SMTP_PORT ?? 465);
   private readonly smtpUser = process.env.BREVO_SMTP_USER ?? '';
-  private readonly smtpKey = process.env.BREVO_SMTP_KEY ?? '';
   private readonly senderEmail = process.env.BREVO_SENDER_EMAIL ?? 'noreply@syncourse.app';
   private readonly senderName = process.env.BREVO_SENDER_NAME ?? 'Syncourse';
   private transporter: Transporter | null = null;
+
+  constructor() {
+    const rawApi = (process.env.BREVO_API_KEY ?? '').trim();
+    const rawSmtp = (process.env.BREVO_SMTP_KEY ?? '').trim();
+
+    // Sort by prefix so a key in the wrong variable still works.
+    this.apiKey = rawApi.startsWith('xkeysib-') ? rawApi : '';
+    this.smtpKey = rawSmtp.startsWith('xsmtpsib-')
+      ? rawSmtp
+      : rawApi.startsWith('xsmtpsib-')
+        ? rawApi
+        : rawSmtp;
+
+    if (rawApi && !rawApi.startsWith('xkeysib-')) {
+      this.logger.warn(
+        `BREVO_API_KEY does not look like a REST key (expected xkeysib-…); ` +
+          `${rawApi.startsWith('xsmtpsib-') ? 'treating it as an SMTP relay key' : 'ignoring it'}.`,
+      );
+    }
+  }
 
   private get smtpConfigured(): boolean {
     return this.smtpKey.length > 0 && this.smtpUser.length > 0;
@@ -207,6 +231,35 @@ export class EmailService {
       `<p style="color:#888;font-size:12px">Syncourse — complete courses, delivered.</p>` +
       `</div>`;
     return this.send({ to, subject: `Your Syncourse code: ${code}`, text, html });
+  }
+
+  /**
+   * Password-reset code.
+   *
+   * A code rather than a magic link on purpose: links get mangled by mail
+   * clients, are awkward to tap on a phone, and are far more likely to be
+   * flagged than six plain digits.
+   */
+  async sendResetCode(to: string, name: string, code: string): Promise<{ sent: boolean }> {
+    const text =
+      `Hi ${name},\n\n` +
+      `Your Syncourse password reset code is: ${code}\n\n` +
+      `Enter it in the app to choose a new password. It expires in 15 minutes.\n\n` +
+      `If you didn't ask to reset your password, ignore this email — your ` +
+      `current password still works.\n\n— The Syncourse team`;
+    const html =
+      `<div style="font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;max-width:480px">` +
+      `<h2 style="margin:0 0 4px">Reset your password</h2>` +
+      `<p style="color:#555;margin:0 0 18px">Hi ${escapeHtml(name)}, enter the code below to choose a new password.</p>` +
+      `<div style="border:1px dashed #d0d0d0;border-radius:10px;padding:18px;text-align:center">` +
+      `<div style="font-size:11px;letter-spacing:2px;color:#777;text-transform:uppercase">Reset code</div>` +
+      `<div style="font-size:34px;font-weight:800;letter-spacing:10px;margin-top:6px">${code}</div>` +
+      `</div>` +
+      `<p style="color:#555;margin:18px 0 0">This code expires in 15 minutes.</p>` +
+      `<p style="color:#888;font-size:12px;margin-top:16px">If you didn't ask to reset your password, ignore this email — your current password still works.</p>` +
+      `<p style="color:#888;font-size:12px">Syncourse — complete courses, delivered.</p>` +
+      `</div>`;
+    return this.send({ to, subject: `Your Syncourse reset code: ${code}`, text, html });
   }
 
   /** Payment receipt after a successful subscription. */

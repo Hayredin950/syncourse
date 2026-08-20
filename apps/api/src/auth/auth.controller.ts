@@ -10,7 +10,16 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { AuthService } from './auth.service';
-import { GoogleExchangeDto, LinkTelegramDto, LoginDto, RegisterDto, ResendVerificationDto, VerifyDto } from './dto';
+import {
+  GoogleExchangeDto,
+  LinkTelegramDto,
+  LoginDto,
+  RegisterDto,
+  ResendVerificationDto,
+  ResetPasswordDto,
+  VerifyDto,
+  VerifyResetDto,
+} from './dto';
 import { Public } from '../common/public.decorator';
 import { CurrentUser } from '../common/current-user.decorator';
 import { AuthUser } from '../common/jwt-auth.guard';
@@ -46,17 +55,27 @@ export class AuthController {
     return this.auth.resendVerification(dto.email);
   }
 
+  /** Password reset, step 1: email a 6-digit code. */
   @Public()
   @Post('forgot-password')
   @HttpCode(HttpStatus.OK)
-  forgotPassword(@Body() dto: { email: string }) {
+  forgotPassword(@Body() dto: ResendVerificationDto) {
     return this.auth.forgotPassword(dto.email);
   }
 
+  /** Password reset, step 2: trade the code for a short-lived reset token. */
+  @Public()
+  @Post('verify-reset')
+  @HttpCode(HttpStatus.OK)
+  verifyReset(@Body() dto: VerifyResetDto) {
+    return this.auth.verifyResetCode(dto.email, dto.code);
+  }
+
+  /** Password reset, step 3: set the new password using that token. */
   @Public()
   @Post('reset-password')
   @HttpCode(HttpStatus.OK)
-  resetPassword(@Body() dto: { token: string; password: string }) {
+  resetPassword(@Body() dto: ResetPasswordDto) {
     return this.auth.resetPassword(dto.token, dto.password);
   }
 

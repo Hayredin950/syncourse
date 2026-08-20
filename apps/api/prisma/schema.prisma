@@ -248,6 +248,12 @@ model User {
   verifyExpiresAt  DateTime?
   verifyAttempts   Int       @default(0)
   verifySentAt     DateTime? // rate-limits "resend"
+  // Password recovery: the same 6-digit-code shape as verification. Typing a code
+  // beats tapping a magic link on a phone, where the link usually lands in spam.
+  resetCode        String?
+  resetExpiresAt   DateTime?
+  resetAttempts    Int       @default(0)
+  resetSentAt      DateTime? // rate-limits "resend"
   isStaff          Boolean   @default(false)
   planType         String    @default("free") // free | premium
   planExpiresAt    DateTime?

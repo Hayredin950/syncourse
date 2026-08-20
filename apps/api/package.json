@@ -16,7 +16,8 @@
     "db:seed:feed": "ts-node prisma/seed-feed.ts",
     "test:parser": "ts-node src/telegram-ingest/parser.test.ts",
     "test:import": "tsx --env-file=.env prisma/import-check.ts",
-    "test:verify": "tsx --env-file=.env prisma/verify-check.ts"
+    "test:verify": "tsx --env-file=.env prisma/verify-check.ts",
+    "test:reset": "tsx --env-file=.env prisma/reset-check.ts"
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"
@@ -51,6 +52,7 @@
     "ts-loader": "^9.5.1",
     "ts-node": "^10.9.2",
     "tsconfig-paths": "^4.2.0",
+    "tsx": "^4.23.12",
     "typescript": "^5.5.4"
   }
 }

@@ -273,6 +273,12 @@ export const changePassword = (currentPassword: string, newPassword: string) =>
   post("/users/me/change-password", { currentPassword, newPassword });
 export const forgotPassword = (email: string) =>
   post("/auth/forgot-password", { email });
+/** Step 2 of the reset: trade the emailed 6-digit code for a short-lived token. */
+export const verifyResetCode = (email: string, code: string) =>
+  post<{ verified: boolean; resetToken: string }>("/auth/verify-reset", { email, code });
+/** Step 3: set the new password using the token from step 2. */
+export const resetPassword = (token: string, password: string) =>
+  post<{ reset: boolean }>("/auth/reset-password", { token, password });
 
 export const recordDownload = (lessonId: string, quality?: string) =>
   post<{ id: string; recorded: boolean }>(`/lessons/${lessonId}/download`, quality ? { quality } : undefined);

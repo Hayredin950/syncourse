@@ -23,9 +23,16 @@ export default function AuthScreen() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [forgotOpen, setForgotOpen] = useState(false);
-  const [forgotEmail, setForgotEmail] = useState("");
-  const [forgotBusy, setForgotBusy] = useState(false);
+  // Password recovery. Steps through email -> 6-digit code -> new password.
+  // A code rather than a magic link: on a phone the link usually lands in spam,
+  // and bouncing out to a browser mid-signup loses the app context entirely.
+  const [resetStep, setResetStep] = useState<"hidden" | "email" | "otp" | "password">("hidden");
+  const [resetEmail, setResetEmail] = useState("");
+  const [resetOtp, setResetOtp] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [resetToken, setResetToken] = useState("");
+  const [resetBusy, setResetBusy] = useState(false);
+  const [resetErr, setResetErr] = useState<string | null>(null);
 
   // email verification (hard verify: sign-in blocked until confirmed)
   const [verifying, setVerifying] = useState(false);
@@ -133,18 +140,93 @@ export default function AuthScreen() {
     }
   };
 
-  const sendReset = async () => {
-    if (!forgotEmail.trim()) return;
-    setForgotBusy(true);
+  const openReset = () => {
+    setResetStep("email");
+    setResetEmail(email);
+    setResetOtp("");
+    setNewPassword("");
+    setResetToken("");
+    setResetErr(null);
+  };
+
+  const closeReset = () => {
+    setResetStep("hidden");
+    setResetOtp("");
+    setNewPassword("");
+    setResetToken("");
+    setResetErr(null);
+  };
+
+  /** Step 1 — ask for a code. */
+  const requestReset = async () => {
+    if (!resetEmail.trim()) return;
+    setResetBusy(true);
+    setResetErr(null);
     try {
-      await api.forgotPassword(forgotEmail.trim());
-      setForgotOpen(false);
-      setForgotEmail("");
-      Alert.alert("Reset email sent", "Check your inbox for the password reset link.");
+      await api.forgotPassword(resetEmail.trim());
+      setResetStep("otp");
     } catch (e) {
-      Alert.alert("Reset", e instanceof Error ? e.message : "Could not send reset email");
+      setResetErr(e instanceof Error ? e.message : "Could not send the reset code");
     } finally {
-      setForgotBusy(false);
+      setResetBusy(false);
+    }
+  };
+
+  /** Step 2 — trade the code for a short-lived token. */
+  const verifyResetOtp = async () => {
+    setResetBusy(true);
+    setResetErr(null);
+    try {
+      const res = await api.verifyResetCode(resetEmail.trim(), resetOtp);
+      setResetToken(res.resetToken);
+      setResetStep("password");
+    } catch (e) {
+      setResetErr(e instanceof Error ? e.message : "That code was not accepted");
+    } finally {
+      setResetBusy(false);
+    }
+  };
+
+  /** Step 3 — save the new password, then sign straight in with it. */
+  const saveNewPassword = async () => {
+    setResetBusy(true);
+    setResetErr(null);
+    try {
+      await api.resetPassword(resetToken, newPassword);
+      const chosen = newPassword;
+      const addr = resetEmail.trim();
+      closeReset();
+      // Signing in here saves retyping what was just chosen. If it fails the
+      // reset still succeeded, so fall back to the form with a clear message.
+      try {
+        await api.login(addr, chosen);
+        await refresh();
+        router.replace("/");
+      } catch {
+        setMode("login");
+        setEmail(addr);
+        setPassword("");
+        setError("Password updated — sign in with your new password.");
+      }
+    } catch (e) {
+      setResetErr(e instanceof Error ? e.message : "Could not update the password");
+    } finally {
+      setResetBusy(false);
+    }
+  };
+
+  /** A fresh code; the API rate-limits this to one a minute. */
+  const resendReset = async () => {
+    setResetBusy(true);
+    setResetErr(null);
+    try {
+      await api.forgotPassword(resetEmail.trim());
+      setResetOtp("");
+      Alert.alert("Code sent", "A new code is on its way — check your inbox (and spam).");
+    } catch (e) {
+      setResetErr(e instanceof Error ? e.message : "Could not resend the code");
+    } finally {
+      setResetBusy(false);
     }
   };
 
@@ -240,7 +322,7 @@ export default function AuthScreen() {
           {busy ? "…" : mode === "register" ? "Create account" : "Sign in"}
         </Text>
         {mode === "login" && (
-          <Text style={styles.forgot} onPress={() => setForgotOpen(true)}>
+          <Text style={styles.forgot} onPress={openReset}>
             Forgot password?
           </Text>
         )}
@@ -260,27 +342,92 @@ export default function AuthScreen() {
         )}
       </ScrollView>
 
-      <Modal visible={forgotOpen} transparent animationType="fade" onRequestClose={() => setForgotOpen(false)}>
-        <Pressable style={styles.forgotBackdrop} onPress={() => setForgotOpen(false)}>
+      <Modal visible={resetStep !== "hidden"} transparent animationType="fade" onRequestClose={closeReset}>
+        <Pressable style={styles.forgotBackdrop} onPress={closeReset}>
           <Pressable style={styles.forgotCard} onPress={(e) => e.stopPropagation()}>
-            <Text style={styles.forgotTitle}>Reset your password</Text>
-            <Text style={styles.muted}>We&apos;ll email you a link to set a new password.</Text>
-            <TextInput
-              value={forgotEmail}
-              onChangeText={setForgotEmail}
-              placeholder="Email"
-              placeholderTextColor={colors.dim}
-              style={styles.input}
-              autoCapitalize="none"
-              keyboardType="email-address"
-            />
-            <Pressable
-              style={[styles.forgotBtn, (!forgotEmail.trim() || forgotBusy) && { opacity: 0.4 }]}
-              disabled={!forgotEmail.trim() || forgotBusy}
-              onPress={sendReset}
-            >
-              <Text style={styles.forgotBtnLabel}>{forgotBusy ? "…" : "Send reset link"}</Text>
-            </Pressable>
+            <Text style={styles.forgotTitle}>
+              {resetStep === "email"
+                ? "Reset your password"
+                : resetStep === "otp"
+                  ? "Enter your code"
+                  : "Choose a new password"}
+            </Text>
+
+            {resetStep === "email" && (
+              <>
+                <Text style={styles.muted}>We&apos;ll email you a 6-digit code.</Text>
+                <TextInput
+                  value={resetEmail}
+                  onChangeText={setResetEmail}
+                  placeholder="Email"
+                  placeholderTextColor={colors.dim}
+                  style={styles.input}
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                  autoFocus
+                />
+                <Pressable
+                  style={[styles.forgotBtn, (!resetEmail.trim() || resetBusy) && { opacity: 0.4 }]}
+                  disabled={!resetEmail.trim() || resetBusy}
+                  onPress={requestReset}
+                >
+                  <Text style={styles.forgotBtnLabel}>{resetBusy ? "…" : "Send code"}</Text>
+                </Pressable>
+              </>
+            )}
+
+            {resetStep === "otp" && (
+              <>
+                <Text style={styles.muted}>Sent to {resetEmail.trim()} — expires in 15 minutes.</Text>
+                <TextInput
+                  value={resetOtp}
+                  onChangeText={(t) => setResetOtp(t.replace(/\D/g, "").slice(0, 6))}
+                  placeholder="6-digit code"
+                  placeholderTextColor={colors.dim}
+                  style={[styles.input, { letterSpacing: 6, fontWeight: "700", fontSize: 18, textAlign: "center" }]}
+                  keyboardType="number-pad"
+                  textContentType="oneTimeCode"
+                  autoComplete="sms-otp"
+                  autoFocus
+                />
+                <Pressable
+                  style={[styles.forgotBtn, (resetOtp.length !== 6 || resetBusy) && { opacity: 0.4 }]}
+                  disabled={resetOtp.length !== 6 || resetBusy}
+                  onPress={verifyResetOtp}
+                >
+                  <Text style={styles.forgotBtnLabel}>{resetBusy ? "…" : "Continue"}</Text>
+                </Pressable>
+                <Text style={styles.forgot} onPress={resetBusy ? undefined : resendReset}>
+                  {/* plain apostrophe: this is a JS string, not JSX text — &apos; would render literally */}
+                  Didn't get it? Send another code
+                </Text>
+              </>
+            )}
+
+            {resetStep === "password" && (
+              <>
+                <Text style={styles.muted}>Code confirmed. This signs you out everywhere else.</Text>
+                <TextInput
+                  value={newPassword}
+                  onChangeText={setNewPassword}
+                  placeholder="New password (min 8 chars)"
+                  placeholderTextColor={colors.dim}
+                  style={styles.input}
+                  secureTextEntry
+                  autoComplete="new-password"
+                  autoFocus
+                />
+                <Pressable
+                  style={[styles.forgotBtn, (newPassword.length < 8 || resetBusy) && { opacity: 0.4 }]}
+                  disabled={newPassword.length < 8 || resetBusy}
+                  onPress={saveNewPassword}
+                >
+                  <Text style={styles.forgotBtnLabel}>{resetBusy ? "…" : "Save password"}</Text>
+                </Pressable>
+              </>
+            )}
+
+            {resetErr && <Text style={styles.error}>{resetErr}</Text>}
           </Pressable>
         </Pressable>
       </Modal>

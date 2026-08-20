@@ -42,6 +42,32 @@ export class ResendVerificationDto {
   email: string;
 }
 
+/** Step 2 of the password reset: the emailed code, traded for a reset token. */
+export class VerifyResetDto {
+  @IsEmail()
+  email: string;
+
+  @IsString()
+  @Matches(/^\d{6}$/, { message: 'Code must be 6 digits' })
+  code: string;
+}
+
+/**
+ * Step 3: the new password.
+ *
+ * Must be a class, not a bare `{ token, password }` type — the global
+ * ValidationPipe only validates decorated classes, so an inline type silently
+ * let a reset set any password at all, minimum length included.
+ */
+export class ResetPasswordDto {
+  @IsString()
+  token: string;
+
+  @IsString()
+  @MinLength(8, { message: 'Password must be at least 8 characters' })
+  password: string;
+}
+
 export class LinkTelegramDto {
   @IsString()
   @MinLength(3)

@@ -11,6 +11,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
+import { createHash } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
 import { RegisterDto } from './dto';
@@ -338,40 +339,126 @@ export class AuthService {
     };
   }
 
-  /** Forgot-password: email a short-lived reset link (JWT) to the account owner. */
+  /**
+   * Forgot-password, step 1: email a 6-digit code.
+   *
+   * Replaces the old magic-link flow. Typing a code is far more reliable than a
+   * link tap, especially on phones where the link often lands in spam — and it
+   * works identically on web, mobile and the bot, none of which can rely on the
+   * user opening a browser at the right moment.
+   *
+   * The response never reveals whether the account exists, and never says the
+   * mail was sent when it wasn't: `sent` reflects the real outcome, while
+   * `message` stays constant either way.
+   */
   async forgotPassword(email: string) {
+    const message = 'If that account exists, a 6-digit code is on its way.';
     const user = await this.prisma.user.findUnique({ where: { email: email.toLowerCase() } });
-    // Always return the same message whether or not the account exists (no user enumeration).
-    if (!user || !user.passwordHash) {
-      return { sent: false, message: 'If that account exists, a reset link has been sent.' };
+    // No password hash means a Google/Telegram-only account: nothing to reset.
+    if (!user || !user.passwordHash) return { sent: false, message };
+
+    if (user.resetSentAt && Date.now() - user.resetSentAt.getTime() < RESEND_MIN_MS) {
+      throw new HttpException(
+        'Wait a minute before requesting another code.',
+        HttpStatus.TOO_MANY_REQUESTS,
+      );
     }
-    const token = this.jwt.sign({ sub: user.id, purpose: 'reset' }, { expiresIn: '30m' });
-    const appUrl = process.env.PUBLIC_APP_URL || 'https://syncourse.pages.dev';
-    const link = `${appUrl}/auth?reset=${encodeURIComponent(token)}`;
-    await this.email.send({
-      to: user.email,
-      subject: 'Reset your Syncourse password',
-      text: `Hi ${user.name},\n\nClick the link below to set a new password (valid for 30 minutes):\n${link}\n\nIf you didn't request this, you can safely ignore this email.`,
-      html: `<p>Hi ${user.name},</p><p>Click the link below to set a new password (valid for 30 minutes):</p><p><a href="${link}" style="background:#f39027;color:#211308;padding:10px 18px;border-radius:8px;text-decoration:none;font-weight:700">Reset password</a></p><p>If you didn't request this, you can safely ignore this email.</p>`,
+
+    const code = this.newVerificationCode();
+    const sent = await this.email.sendResetCode(user.email, user.name, code);
+    if (!sent.sent) {
+      // Storing a code nobody can read would strand the user on the code screen.
+      throw new ServiceUnavailableException('Could not send the code right now — please try again.');
+    }
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        resetCode: code,
+        resetExpiresAt: new Date(Date.now() + VERIFY_TTL_MS),
+        resetSentAt: new Date(),
+        resetAttempts: 0,
+      },
     });
-    return { sent: true, message: 'If that account exists, a reset link has been sent.' };
+    return { sent: true, message };
   }
 
-  /** Reset-password: verify the reset JWT and set a new password. */
+  /**
+   * Forgot-password, step 2: trade the emailed code for a short-lived token.
+   *
+   * The code is burned here, so it cannot be replayed; the returned token is the
+   * only thing that can set the new password, and only for the next 15 minutes.
+   */
+  async verifyResetCode(email: string, code: string) {
+    const user = await this.prisma.user.findUnique({ where: { email: email.toLowerCase() } });
+    const invalid = () => new BadRequestException('That code is invalid or has expired.');
+    if (!user || !user.resetCode) throw invalid();
+    if (user.resetExpiresAt && user.resetExpiresAt.getTime() < Date.now()) {
+      throw new BadRequestException('That code has expired — request a new one.');
+    }
+    if (user.resetAttempts >= MAX_VERIFY_ATTEMPTS) {
+      throw new BadRequestException('Too many wrong attempts — request a new code.');
+    }
+    const clean = code.trim().replace(/\D/g, '');
+    if (clean !== user.resetCode) {
+      const attempts = user.resetAttempts + 1;
+      await this.prisma.user.update({
+        where: { id: user.id },
+        data: { resetAttempts: attempts, ...(attempts >= MAX_VERIFY_ATTEMPTS ? { resetCode: null } : {}) },
+      });
+      throw new BadRequestException(`Wrong code — ${MAX_VERIFY_ATTEMPTS - attempts} attempts left.`);
+    }
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: { resetCode: null, resetExpiresAt: null, resetAttempts: 0 },
+    });
+    const resetToken = this.jwt.sign(
+      // `pv` binds the token to the password it was issued against, which makes it
+      // single-use: the moment step 3 changes the hash, the token stops verifying.
+      { sub: user.id, purpose: 'reset', pv: this.passwordFingerprint(user.passwordHash) },
+      { expiresIn: '15m' },
+    );
+    return { verified: true, resetToken };
+  }
+
+  /**
+   * Short, non-reversible stamp of a password hash, for the `pv` claim above.
+   * A JWT payload is readable by anyone holding the token, so the hash itself
+   * must never go in there.
+   */
+  private passwordFingerprint(passwordHash: string | null): string {
+    return createHash('sha256').update(passwordHash ?? '').digest('hex').slice(0, 16);
+  }
+
+  /**
+   * Forgot-password, step 3: set the new password.
+   *
+   * Takes the token from step 2. Unchanged from the link-based flow on purpose —
+   * old reset links that are still in flight keep working.
+   */
   async resetPassword(token: string, password: string) {
-    let payload: { sub?: string; purpose?: string };
+    let payload: { sub?: string; purpose?: string; pv?: string };
     try {
       payload = this.jwt.verify(token);
     } catch {
-      throw new BadRequestException('That reset link is invalid or has expired.');
+      throw new BadRequestException('That reset session is invalid or has expired — start again.');
     }
     if (payload.purpose !== 'reset' || !payload.sub) {
-      throw new BadRequestException('That reset link is invalid or has expired.');
+      throw new BadRequestException('That reset session is invalid or has expired — start again.');
     }
     const user = await this.prisma.user.findUnique({ where: { id: payload.sub } });
     if (!user) throw new BadRequestException('That account no longer exists.');
+    // Tokens minted by the code flow carry `pv` and are single-use. Older
+    // magic-link tokens have no `pv`; those still work until they expire.
+    if (payload.pv && payload.pv !== this.passwordFingerprint(user.passwordHash)) {
+      throw new BadRequestException('That reset session has already been used — start again.');
+    }
     const passwordHash = await bcrypt.hash(password, 10);
-    await this.prisma.user.update({ where: { id: user.id }, data: { passwordHash } });
+    await this.prisma.user.update({
+      where: { id: user.id },
+      // Clear the whole reset trail so the next request isn't rate-limited by
+      // the one that just succeeded.
+      data: { passwordHash, resetCode: null, resetExpiresAt: null, resetAttempts: 0, resetSentAt: null },
+    });
     await this.prisma.session.updateMany({ where: { userId: user.id }, data: { active: false } });
     return { reset: true };
   }

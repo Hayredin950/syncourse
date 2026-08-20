@@ -29,11 +29,17 @@ function AuthInner() {
   const [verifyMsg, setVerifyMsg] = useState("");
   const [resendBusy, setResendBusy] = useState(false);
 
-  // forgot-password modal
-  const [forgotOpen, setForgotOpen] = useState(false);
-  const [forgotEmail, setForgotEmail] = useState("");
-  const [forgotMsg, setForgotMsg] = useState("");
-  const [forgotBusy, setForgotBusy] = useState(false);
+  // Password recovery. Steps through email -> 6-digit code -> new password.
+  // A code rather than a magic link: typing six digits is far more reliable than
+  // a link tap, especially on phones where the link often lands in spam.
+  const [resetStep, setResetStep] = useState<"hidden" | "email" | "otp" | "password">("hidden");
+  const [resetEmail, setResetEmail] = useState("");
+  const [resetOtp, setResetOtp] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [resetToken, setResetToken] = useState("");
+  const [resetMsg, setResetMsg] = useState("");
+  const [resetErr, setResetErr] = useState("");
+  const [resetBusy, setResetBusy] = useState(false);
 
   // Google OAuth bounce-back: the API redirects here with ?token=...
   useEffect(() => {
@@ -114,16 +120,101 @@ function AuthInner() {
     }
   };
 
-  const sendForgot = async () => {
-    setForgotBusy(true);
-    setForgotMsg("");
+  const openReset = () => {
+    setResetStep("email");
+    setResetEmail(email);
+    setResetOtp("");
+    setNewPassword("");
+    setResetToken("");
+    setResetMsg("");
+    setResetErr("");
+  };
+
+  const closeReset = () => {
+    setResetStep("hidden");
+    setResetOtp("");
+    setNewPassword("");
+    setResetToken("");
+    setResetMsg("");
+    setResetErr("");
+  };
+
+  /** Step 1 — ask for a code. */
+  const requestReset = async () => {
+    setResetBusy(true);
+    setResetErr("");
+    setResetMsg("");
     try {
-      await post("/auth/forgot-password", { email: forgotEmail });
-      setForgotMsg("If that email exists, a reset link is on its way. Check your inbox (and spam).");
+      await post("/auth/forgot-password", { email: resetEmail });
+      setResetStep("otp");
+      setResetMsg("If that account exists, a 6-digit code is on its way. Check your inbox (and spam).");
     } catch (e: any) {
-      setForgotMsg(e.message ?? "Could not send reset email");
+      setResetErr(e.message ?? "Could not send the reset code");
     } finally {
-      setForgotBusy(false);
+      setResetBusy(false);
+    }
+  };
+
+  /** Step 2 — trade the code for a short-lived token. */
+  const verifyResetOtp = async () => {
+    setResetBusy(true);
+    setResetErr("");
+    setResetMsg("");
+    try {
+      const res = await post<{ resetToken: string }>("/auth/verify-reset", {
+        email: resetEmail,
+        code: resetOtp,
+      });
+      setResetToken(res.resetToken);
+      setResetStep("password");
+    } catch (e: any) {
+      setResetErr(e.message ?? "That code was not accepted");
+    } finally {
+      setResetBusy(false);
+    }
+  };
+
+  /** Step 3 — set the new password, then sign straight in with it. */
+  const saveNewPassword = async () => {
+    setResetBusy(true);
+    setResetErr("");
+    setResetMsg("");
+    try {
+      await post("/auth/reset-password", { token: resetToken, password: newPassword });
+      // Signing in here saves the user retyping what they just chose. If it
+      // fails for any reason the reset still succeeded, so fall back to the form.
+      try {
+        await login(resetEmail, newPassword);
+        closeReset();
+        router.push(next);
+        return;
+      } catch {
+        closeReset();
+        setMode("login");
+        setEmail(resetEmail);
+        setPassword("");
+        setError("Password updated — sign in with your new password.");
+      }
+    } catch (e: any) {
+      setResetErr(e.message ?? "Could not update the password");
+    } finally {
+      setResetBusy(false);
+    }
+  };
+
+  /** Back to step 1 for a fresh code; the API rate-limits this to one a minute. */
+  const resendReset = async () => {
+    setResetBusy(true);
+    setResetErr("");
+    setResetMsg("");
+    try {
+      await post("/auth/forgot-password", { email: resetEmail });
+      setResetOtp("");
+      setResetMsg("A new code is on its way — check your inbox (and spam).");
+    } catch (e: any) {
+      setResetErr(e.message ?? "Could not resend the code");
+    } finally {
+      setResetBusy(false);
     }
   };
 
@@ -239,7 +330,7 @@ function AuthInner() {
 
             {mode === "login" && (
               <div style={{ textAlign: "right", marginTop: -4 }}>
-                <button onClick={() => setForgotOpen(true)} className="link-btn">
+                <button onClick={openReset} className="link-btn">
                   Forgot password?
                 </button>
               </div>
@@ -282,32 +373,120 @@ function AuthInner() {
         </div>
       </div>
 
-      {/* forgot-password modal */}
-      {forgotOpen && (
-        <div className="sheet" onClick={() => setForgotOpen(false)}>
+      {/* password recovery — email -> code -> new password, one panel per step */}
+      {resetStep !== "hidden" && (
+        <div className="sheet" onClick={closeReset}>
           <div className="sheet-panel" onClick={(e) => e.stopPropagation()}>
             <div className="section-head">
-              <h2>Reset password</h2>
-              <button className="icon-btn" onClick={() => setForgotOpen(false)} aria-label="Close">
+              <h2>
+                {resetStep === "email" ? "Reset password" : resetStep === "otp" ? "Enter your code" : "Choose a new password"}
+              </h2>
+              <button className="icon-btn" onClick={closeReset} aria-label="Close">
                 <X size={15} />
               </button>
             </div>
-            <p className="muted" style={{ fontSize: 12, margin: "0 0 14px" }}>
-              Enter the email you signed up with and we&apos;ll send a reset link.
-            </p>
-            <input
-              className="form-input"
-              value={forgotEmail}
-              onChange={(e) => setForgotEmail(e.target.value)}
-              type="email"
-              placeholder="you@example.com"
-            />
-            <button className="btn primary" style={{ width: "100%", marginTop: 14 }} onClick={sendForgot} disabled={forgotBusy || !forgotEmail}>
-              {forgotBusy ? "Sending…" : "Send reset link"}
-            </button>
-            {forgotMsg && (
-              <div className="muted" style={{ marginTop: 12, fontSize: 12, color: forgotMsg.includes("way") ? "#6fe0a4" : "hsl(var(--destructive))" }}>
-                {forgotMsg}
+
+            {resetStep === "email" && (
+              <>
+                <p className="muted" style={{ fontSize: 12, margin: "0 0 14px" }}>
+                  Enter the email you signed up with and we&apos;ll send you a 6-digit code.
+                </p>
+                <input
+                  className="form-input"
+                  value={resetEmail}
+                  onChange={(e) => setResetEmail(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && resetEmail && !resetBusy && void requestReset()}
+                  type="email"
+                  placeholder="you@example.com"
+                  autoFocus
+                />
+                <button
+                  className="btn primary"
+                  style={{ width: "100%", marginTop: 14 }}
+                  onClick={requestReset}
+                  disabled={resetBusy || !resetEmail}
+                >
+                  {resetBusy ? "Sending…" : "Send code"}
+                </button>
+              </>
+            )}
+
+            {resetStep === "otp" && (
+              <>
+                <p className="muted" style={{ fontSize: 12, margin: "0 0 14px" }}>
+                  We sent a 6-digit code to <b>{resetEmail}</b>. It expires in 15 minutes.
+                </p>
+                <input
+                  className="form-input"
+                  value={resetOtp}
+                  onChange={(e) => setResetOtp(e.target.value.replace(/\D/g, "").slice(0, 6))}
+                  onKeyDown={(e) => e.key === "Enter" && resetOtp.length === 6 && !resetBusy && void verifyResetOtp()}
+                  inputMode="numeric"
+                  autoComplete="one-time-code"
+                  placeholder="123456"
+                  style={{ letterSpacing: 8, textAlign: "center", fontSize: 20, fontWeight: 700 }}
+                  autoFocus
+                />
+                <button
+                  className="btn primary"
+                  style={{ width: "100%", marginTop: 14 }}
+                  onClick={verifyResetOtp}
+                  disabled={resetBusy || resetOtp.length !== 6}
+                >
+                  {resetBusy ? "Checking…" : "Continue"}
+                </button>
+                <button className="link-btn" style={{ marginTop: 12 }} onClick={resendReset} disabled={resetBusy}>
+                  {/* plain apostrophe: this is a JS string, not JSX text — &apos; would render literally */}
+                  {resetBusy ? "Sending…" : "Didn't get it? Send another code"}
+                </button>
+              </>
+            )}
+
+            {resetStep === "password" && (
+              <>
+                <p className="muted" style={{ fontSize: 12, margin: "0 0 14px" }}>
+                  Code confirmed. Choose a new password — this signs you out everywhere else.
+                </p>
+                <div style={{ position: "relative" }}>
+                  <input
+                    className="form-input"
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && newPassword.length >= 8 && !resetBusy && void saveNewPassword()}
+                    type={showPassword ? "text" : "password"}
+                    placeholder="New password (min 8 characters)"
+                    autoComplete="new-password"
+                    style={{ paddingRight: 42 }}
+                    autoFocus
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword((s) => !s)}
+                    aria-label={showPassword ? "Hide password" : "Show password"}
+                    className="auth-eye"
+                  >
+                    {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+                  </button>
+                </div>
+                <button
+                  className="btn primary"
+                  style={{ width: "100%", marginTop: 14 }}
+                  onClick={saveNewPassword}
+                  disabled={resetBusy || newPassword.length < 8}
+                >
+                  {resetBusy ? "Saving…" : "Save password"}
+                </button>
+              </>
+            )}
+
+            {resetMsg && (
+              <div className="muted" style={{ marginTop: 12, fontSize: 12, color: "#6fe0a4" }}>
+                {resetMsg}
+              </div>
+            )}
+            {resetErr && (
+              <div className="muted" style={{ marginTop: 12, fontSize: 12, color: "hsl(var(--destructive))" }}>
+                {resetErr}
               </div>
             )}
           </div>
