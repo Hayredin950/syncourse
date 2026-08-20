@@ -2,9 +2,11 @@
   "expo": {
     "name": "Syncourse",
     "slug": "syncourse",
+    "// owner": "must equal the EAS account that owns extra.eas.projectId — `eas whoami` reports hayrecodes-team. Setting this to a personal username makes every eas command fail with 'does not match owner specified in the owner field'.",
     "owner": "hayrecodes-team",
     "version": "1.1.0",
-    "runtimeVersion": "1.0.0",
+    "// runtimeVersion": "MUST match the installed build's runtime exactly — expo-updates only serves an update whose runtimeVersion is identical. This said 1.0.0 while every shipped APK was built at 1.1.0, so the last two OTA publishes went to a runtime no device has and were undeliverable.",
+    "runtimeVersion": "1.1.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
     "scheme": "syncourse",
