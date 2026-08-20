@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "expo-router";
+import { Link, useRouter } from "expo-router";
 import React from "react";
 import { ActivityIndicator, FlatList, Image, StyleSheet, Text, View, Pressable } from "react-native";
 import * as api from "../../lib/api";
@@ -7,6 +7,7 @@ import { cloudinaryUrl } from "../../lib/cloudinary";
 import { colors, radius } from "../../lib/tokens";
 
 export default function OrganizationsIndex() {
+  const router = useRouter();
   const { data, isLoading } = useQuery({
     queryKey: ["organizations"],
     queryFn: api.organizations,
@@ -33,31 +34,29 @@ export default function OrganizationsIndex() {
         </View>
       }
       renderItem={({ item }) => (
-        <Link href={`/organizations/${item.slug}`} asChild>
-          <Pressable style={styles.card}>
-            <View style={styles.logo}>
-              {item.logoUrl ? (
-                <Image
-                  source={{ uri: cloudinaryUrl(item.logoUrl, { width: 96, height: 96 }) ?? undefined }}
-                  style={styles.logoImg}
-                  resizeMode="cover"
-                />
-              ) : (
-                <Text style={styles.initial}>{item.name.charAt(0)}</Text>
-              )}
-            </View>
-            <View style={styles.cardBody}>
-              <Text style={styles.name} numberOfLines={1}>{item.name}</Text>
-              {!!item.description && (
-                <Text style={styles.muted} numberOfLines={1}>{item.description}</Text>
-              )}
-              <Text style={styles.muted}>
-                {(item.subscribers ?? 0).toLocaleString()} subscribers · {item.courseCount ?? 0} courses
-              </Text>
-            </View>
-            <Text style={styles.chevron}>›</Text>
-          </Pressable>
-        </Link>
+        <Pressable style={styles.card} onPress={() => router.push(`/organizations/${item.slug}`)}>
+          <View style={styles.logo}>
+            {item.logoUrl ? (
+              <Image
+                source={{ uri: cloudinaryUrl(item.logoUrl, { width: 96, height: 96 }) ?? undefined }}
+                style={styles.logoImg}
+                resizeMode="cover"
+              />
+            ) : (
+              <Text style={styles.initial}>{item.name.charAt(0)}</Text>
+            )}
+          </View>
+          <View style={styles.cardBody}>
+            <Text style={styles.name} numberOfLines={1}>{item.name}</Text>
+            {!!item.description && (
+              <Text style={styles.muted} numberOfLines={1}>{item.description}</Text>
+            )}
+            <Text style={styles.muted}>
+              {(item.subscribers ?? 0).toLocaleString()} subscribers · {item.courseCount ?? 0} courses
+            </Text>
+          </View>
+          <Text style={styles.chevron}>›</Text>
+        </Pressable>
       )}
     />
   );

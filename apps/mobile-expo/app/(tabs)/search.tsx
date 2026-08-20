@@ -136,23 +136,22 @@ export default function SearchScreen() {
 }
 
 function SearchRow({ course }: { course: CourseSummary }) {
+  const router = useRouter();
   return (
-    <Link href={`/courses/${course.slug}`} asChild>
-      <Pressable style={styles.row}>
-        <View style={styles.thumb}>
-          <Text style={{ color: colors.dim, fontSize: 14 }}>▶</Text>
-        </View>
-        <View style={{ flex: 1 }}>
-          <Text numberOfLines={1} style={styles.rowTitle}>
-            {course.title}
-          </Text>
-          <Text style={styles.rowMeta}>
-            {course.level} · {course.ratingAvg.toFixed(1)}★
-          </Text>
-        </View>
-        <Text style={{ color: colors.dim }}>▢</Text>
-      </Pressable>
-    </Link>
+    <Pressable style={styles.row} onPress={() => router.push(`/courses/${course.slug}`)}>
+      <View style={styles.thumb}>
+        <Text style={{ color: colors.dim, fontSize: 14 }}>▶</Text>
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text numberOfLines={1} style={styles.rowTitle}>
+          {course.title}
+        </Text>
+        <Text style={styles.rowMeta}>
+          {course.level} · {course.ratingAvg.toFixed(1)}★
+        </Text>
+      </View>
+      <Text style={{ color: colors.dim }}>▢</Text>
+    </Pressable>
   );
 }
 

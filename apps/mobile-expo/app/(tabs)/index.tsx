@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "expo-router";
-import React, { useState } from "react";
+import { Link, useRouter } from "expo-router";
+import React, { useCallback, useState } from "react";
 import {
   ActivityIndicator,
   FlatList,
@@ -75,6 +75,9 @@ export default function HomeScreen() {
   const activeOrg = (feed.bestOf ?? []).find((o) => o.slug === orgSlug) ?? feed.bestOf?.[0];
   const hero = feed.trending[0];
 
+  const router = useRouter();
+  const goTo = useCallback((href: string) => () => router.push(href as any), []);
+
   return (
     <ScrollView
       style={styles.screen}
@@ -85,30 +88,28 @@ export default function HomeScreen() {
     >
       {/* hero — featured course banner */}
       {hero && (
-        <Link href={`/courses/${hero.slug}`} asChild>
-          <Pressable style={styles.hero}>
-            {hero.thumbnailUrl ? (
-              <Image
-                source={{ uri: cloudinaryUrl(hero.thumbnailUrl, { width: 720, height: 500 }) ?? undefined }}
-                style={StyleSheet.absoluteFill}
-                resizeMode="cover"
-              />
-            ) : (
-              <View style={[StyleSheet.absoluteFill, styles.heroFallback]} />
-            )}
-            <View style={styles.heroShade} />
-            <View style={styles.heroContent}>
-              <Text style={styles.heroEyebrow}>FEATURED COURSE</Text>
-              <Text style={styles.heroTitle} numberOfLines={2}>{hero.title}</Text>
-              <Text style={styles.heroMeta} numberOfLines={1}>
-                ★ {hero.ratingAvg.toFixed(1)} · {hero.level} · {formatMin(hero.durationMin)}
-              </Text>
-              <View style={styles.heroCta}>
-                <Text style={styles.heroCtaText}>Start learning free →</Text>
-              </View>
+        <Pressable style={styles.hero} onPress={goTo(`/courses/${hero.slug}`)}>
+          {hero.thumbnailUrl ? (
+            <Image
+              source={{ uri: cloudinaryUrl(hero.thumbnailUrl, { width: 720, height: 500 }) ?? undefined }}
+              style={StyleSheet.absoluteFill}
+              resizeMode="cover"
+            />
+          ) : (
+            <View style={[StyleSheet.absoluteFill, styles.heroFallback]} />
+          )}
+          <View style={styles.heroShade} />
+          <View style={styles.heroContent}>
+            <Text style={styles.heroEyebrow}>FEATURED COURSE</Text>
+            <Text style={styles.heroTitle} numberOfLines={2}>{hero.title}</Text>
+            <Text style={styles.heroMeta} numberOfLines={1}>
+              ★ {hero.ratingAvg.toFixed(1)} · {hero.level} · {formatMin(hero.durationMin)}
+            </Text>
+            <View style={styles.heroCta}>
+              <Text style={styles.heroCtaText}>Start learning free →</Text>
             </View>
-          </Pressable>
-        </Link>
+          </View>
+        </Pressable>
       )}
 
       <Rail title="🔥 Trending" courses={feed.trending} href="/browse" />
@@ -155,29 +156,27 @@ export default function HomeScreen() {
             data={feed.featuredPaths}
             keyExtractor={(p) => p.id}
             renderItem={({ item }) => (
-              <Link href={`/paths/${item.id}`} asChild>
-                <Pressable style={styles.pathCard}>
-                  <View style={styles.pathStrip}>
-                    {item.courses.slice(0, 4).map((c, i) =>
-                      c.thumbnailUrl ? (
-                        <Image
-                          key={i}
-                          source={{ uri: cloudinaryUrl(c.thumbnailUrl, { width: 140, height: 90 }) ?? undefined }}
-                          style={styles.pathThumb}
-                          resizeMode="cover"
-                        />
-                      ) : (
-                        <View key={i} style={[styles.pathThumb, styles.pathThumbFallback]} />
-                      ),
-                    )}
-                  </View>
-                  <Text style={styles.pathEyebrow}>LEARNING PATH</Text>
-                  <Text style={styles.pathTitle} numberOfLines={1}>{item.title}</Text>
-                  <Text style={styles.muted} numberOfLines={1}>
-                    ★ {item.ratingAvg.toFixed(1)} · {item.courseCount} courses · {item.totalVotes} votes
-                  </Text>
-                </Pressable>
-              </Link>
+              <Pressable style={styles.pathCard} onPress={goTo(`/paths/${item.id}`)}>
+                <View style={styles.pathStrip}>
+                  {item.courses.slice(0, 4).map((c, i) =>
+                    c.thumbnailUrl ? (
+                      <Image
+                        key={i}
+                        source={{ uri: cloudinaryUrl(c.thumbnailUrl, { width: 140, height: 90 }) ?? undefined }}
+                        style={styles.pathThumb}
+                        resizeMode="cover"
+                      />
+                    ) : (
+                      <View key={i} style={[styles.pathThumb, styles.pathThumbFallback]} />
+                    ),
+                  )}
+                </View>
+                <Text style={styles.pathEyebrow}>LEARNING PATH</Text>
+                <Text style={styles.pathTitle} numberOfLines={1}>{item.title}</Text>
+                <Text style={styles.muted} numberOfLines={1}>
+                  ★ {item.ratingAvg.toFixed(1)} · {item.courseCount} courses · {item.totalVotes} votes
+                </Text>
+              </Pressable>
             )}
           />
         </View>
@@ -192,13 +191,11 @@ export default function HomeScreen() {
           </View>
           <View style={styles.catGrid}>
             {feed.categories.map((c) => (
-              <Link key={c.slug} href={`/browse?category=${c.slug}`} asChild>
-                <Pressable style={styles.catTile}>
-                  <Text style={styles.catIcon}>{c.icon ?? "🎓"}</Text>
-                  <Text style={styles.catName} numberOfLines={1}>{c.name}</Text>
-                  <Text style={styles.catCount}>{c.courseCount} courses</Text>
-                </Pressable>
-              </Link>
+              <Pressable key={c.slug} style={styles.catTile} onPress={goTo(`/browse?category=${c.slug}`)}>
+                <Text style={styles.catIcon}>{c.icon ?? "🎓"}</Text>
+                <Text style={styles.catName} numberOfLines={1}>{c.name}</Text>
+                <Text style={styles.catCount}>{c.courseCount} courses</Text>
+              </Pressable>
             ))}
           </View>
         </View>
@@ -299,6 +296,7 @@ function PersonRow({
   image: (p: any) => string | null;
   sub: (p: any) => string;
 }) {
+  const router = useRouter();
   return (
     <View style={styles.wrap}>
       <View style={styles.header}>
@@ -307,19 +305,17 @@ function PersonRow({
       </View>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
         {people.map((p) => (
-          <Link key={p.id} href={href(p)} asChild>
-            <Pressable style={styles.person}>
-              {image(p) ? (
-                <Image source={{ uri: cloudinaryUrl(image(p), { width: 96, height: 96 }) ?? undefined }} style={styles.personPhoto} resizeMode="cover" />
-              ) : (
-                <View style={[styles.personPhoto, styles.personFallback]}>
-                  <Text style={styles.personInitial}>{p.name.charAt(0)}</Text>
-                </View>
-              )}
-              <Text style={styles.personName} numberOfLines={1}>{p.name}</Text>
-              <Text style={styles.muted} numberOfLines={1}>{sub(p)}</Text>
-            </Pressable>
-          </Link>
+          <Pressable key={p.id} style={styles.person} onPress={() => router.push(href(p) as any)}>
+            {image(p) ? (
+              <Image source={{ uri: cloudinaryUrl(image(p), { width: 96, height: 96 }) ?? undefined }} style={styles.personPhoto} resizeMode="cover" />
+            ) : (
+              <View style={[styles.personPhoto, styles.personFallback]}>
+                <Text style={styles.personInitial}>{p.name.charAt(0)}</Text>
+              </View>
+            )}
+            <Text style={styles.personName} numberOfLines={1}>{p.name}</Text>
+            <Text style={styles.muted} numberOfLines={1}>{sub(p)}</Text>
+          </Pressable>
         ))}
       </ScrollView>
     </View>

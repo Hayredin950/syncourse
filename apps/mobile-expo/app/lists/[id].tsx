@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link, useLocalSearchParams } from "expo-router";
+import { Link, useLocalSearchParams, useRouter } from "expo-router";
 import React from "react";
 import { ActivityIndicator, FlatList, StyleSheet, Text, View, Pressable } from "react-native";
 import * as api from "../../lib/api";
@@ -7,6 +7,7 @@ import { colors } from "../../lib/tokens";
 
 export default function ListDetailScreen() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const router = useRouter();
   const { data, isLoading, error } = useQuery({
     queryKey: ["list", id],
     queryFn: () => api.listDetail(id!),
@@ -44,20 +45,18 @@ export default function ListDetailScreen() {
         <Text style={styles.muted}>Nothing here. This collection is empty.</Text>
       }
       renderItem={({ item }) => (
-        <Link href={`/courses/${item.slug}`} asChild>
-          <Pressable style={styles.card}>
-            <View style={styles.thumb}>
-              <Text style={{ color: colors.dim, fontSize: 14 }}>▶</Text>
-            </View>
-            <View style={{ flex: 1 }}>
-              <Text numberOfLines={1} style={styles.cardTitle}>
-                {item.title}
-              </Text>
-              <Text style={styles.muted}>{item.progressPct}% · {item.status}</Text>
-            </View>
-            <Text style={{ color: colors.dim }}>›</Text>
-          </Pressable>
-        </Link>
+        <Pressable style={styles.card} onPress={() => router.push(`/courses/${item.slug}`)}>
+          <View style={styles.thumb}>
+            <Text style={{ color: colors.dim, fontSize: 14 }}>▶</Text>
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text numberOfLines={1} style={styles.cardTitle}>
+              {item.title}
+            </Text>
+            <Text style={styles.muted}>{item.progressPct}% · {item.status}</Text>
+          </View>
+          <Text style={{ color: colors.dim }}>›</Text>
+        </Pressable>
       )}
     />
   );

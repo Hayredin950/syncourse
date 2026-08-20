@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "expo-router";
+import { Link, useRouter } from "expo-router";
 import React from "react";
 import { ActivityIndicator, FlatList, Image, StyleSheet, Text, View, Pressable } from "react-native";
 import * as api from "../../lib/api";
@@ -7,6 +7,7 @@ import { cloudinaryUrl } from "../../lib/cloudinary";
 import { colors, radius } from "../../lib/tokens";
 
 export default function PathsIndex() {
+  const router = useRouter();
   const { data, isLoading } = useQuery({
     queryKey: ["learning-paths"],
     queryFn: api.learningPaths,
@@ -33,32 +34,30 @@ export default function PathsIndex() {
         </View>
       }
       renderItem={({ item }) => (
-        <Link href={`/paths/${item.id}`} asChild>
-          <Pressable style={styles.card}>
-            <View style={styles.strip}>
-              {(item.courses ?? []).slice(0, 4).map((c, i) =>
-                c.thumbnailUrl ? (
-                  <Image
-                    key={i}
-                    source={{ uri: cloudinaryUrl(c.thumbnailUrl, { width: 140, height: 90 }) ?? undefined }}
-                    style={styles.thumb}
-                    resizeMode="cover"
-                  />
-                ) : (
-                  <View key={i} style={[styles.thumb, styles.thumbFallback]} />
-                ),
-              )}
-            </View>
-            <Text style={styles.eyebrow}>LEARNING PATH</Text>
-            <Text style={styles.name} numberOfLines={1}>{item.title}</Text>
-            {!!item.description && (
-              <Text style={styles.muted} numberOfLines={2}>{item.description}</Text>
+        <Pressable style={styles.card} onPress={() => router.push(`/paths/${item.id}`)}>
+          <View style={styles.strip}>
+            {(item.courses ?? []).slice(0, 4).map((c, i) =>
+              c.thumbnailUrl ? (
+                <Image
+                  key={i}
+                  source={{ uri: cloudinaryUrl(c.thumbnailUrl, { width: 140, height: 90 }) ?? undefined }}
+                  style={styles.thumb}
+                  resizeMode="cover"
+                />
+              ) : (
+                <View key={i} style={[styles.thumb, styles.thumbFallback]} />
+              ),
             )}
-            <Text style={styles.meta}>
-              ★ {item.ratingAvg.toFixed(1)} · {item.courseCount} courses · {item.totalVotes.toLocaleString()} votes
-            </Text>
-          </Pressable>
-        </Link>
+          </View>
+          <Text style={styles.eyebrow}>LEARNING PATH</Text>
+          <Text style={styles.name} numberOfLines={1}>{item.title}</Text>
+          {!!item.description && (
+            <Text style={styles.muted} numberOfLines={2}>{item.description}</Text>
+          )}
+          <Text style={styles.meta}>
+            ★ {item.ratingAvg.toFixed(1)} · {item.courseCount} courses · {item.totalVotes.toLocaleString()} votes
+          </Text>
+        </Pressable>
       )}
     />
   );

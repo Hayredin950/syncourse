@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link, useLocalSearchParams } from "expo-router";
+import { Link, useLocalSearchParams, useRouter } from "expo-router";
 import React from "react";
 import { ActivityIndicator, Image, ScrollView, StyleSheet, Text, View, Pressable } from "react-native";
 import * as api from "../../lib/api";
@@ -8,6 +8,7 @@ import { colors, radius } from "../../lib/tokens";
 
 export default function PathDetail() {
   const { id } = useLocalSearchParams<{ id: string }>();
+  const router = useRouter();
   const { data, isLoading, isError } = useQuery({
     queryKey: ["learning-path", id],
     queryFn: () => api.learningPath(id as string),
@@ -53,18 +54,16 @@ export default function PathDetail() {
       {/* Course list */}
       <Text style={styles.sectionTitle}>Courses in this path</Text>
       {data.courses.map((c, i) => (
-        <Link key={c.id} href={`/courses/${c.slug}`} asChild>
-          <Pressable style={styles.row}>
-            <Text style={styles.rank}>{i + 1}</Text>
-            <View style={styles.rowBody}>
-              <Text style={styles.rowTitle} numberOfLines={1}>{c.title}</Text>
-              <Text style={styles.rowMeta}>
-                {c.level} · ★ {c.ratingAvg.toFixed(1)} · {formatMin(c.durationMin)}
-              </Text>
-            </View>
-            <Text style={styles.chevron}>›</Text>
-          </Pressable>
-        </Link>
+        <Pressable key={c.id} style={styles.row} onPress={() => router.push(`/courses/${c.slug}`)}>
+          <Text style={styles.rank}>{i + 1}</Text>
+          <View style={styles.rowBody}>
+            <Text style={styles.rowTitle} numberOfLines={1}>{c.title}</Text>
+            <Text style={styles.rowMeta}>
+              {c.level} · ★ {c.ratingAvg.toFixed(1)} · {formatMin(c.durationMin)}
+            </Text>
+          </View>
+          <Text style={styles.chevron}>›</Text>
+        </Pressable>
       ))}
     </ScrollView>
   );

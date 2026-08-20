@@ -95,14 +95,13 @@ export default function MeScreen() {
 }
 
 function MenuRow({ icon, label, href }: { icon: string; label: string; href: string }) {
+  const router = useRouter();
   return (
-    <Link href={href} asChild>
-      <Pressable style={styles.menuRow}>
-        <Text style={{ color: colors.accent, fontSize: 18 }}>{icon}</Text>
-        <Text style={styles.menuLabel}>{label}</Text>
-        <Text style={{ color: colors.dim }}>›</Text>
-      </Pressable>
-    </Link>
+    <Pressable style={styles.menuRow} onPress={() => router.push(href as any)}>
+      <Text style={{ color: colors.accent, fontSize: 18 }}>{icon}</Text>
+      <Text style={styles.menuLabel}>{label}</Text>
+      <Text style={{ color: colors.dim }}>›</Text>
+    </Pressable>
   );
 }
 

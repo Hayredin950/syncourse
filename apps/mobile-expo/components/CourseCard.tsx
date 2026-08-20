@@ -1,5 +1,5 @@
-import { Link } from "expo-router";
-import React from "react";
+import { useRouter } from "expo-router";
+import React, { useCallback } from "react";
 import { Image, StyleSheet, Text, View, Pressable } from "react-native";
 import { colors, radius } from "../lib/tokens";
 import { formatDuration, type CourseSummary } from "../lib/types";
@@ -39,57 +39,58 @@ export function CourseCard({ course, width = 132 }: { course: CourseSummary; wid
           ? "MAP"
           : "CRS";
 
+  const router = useRouter();
+  const go = useCallback(() => router.push(`/courses/${course.slug}`), [course.slug]);
+
   return (
-    <Link href={`/courses/${course.slug}`} asChild>
-      <Pressable style={{ width }}>
-        {course.thumbnailUrl ? (
-          <Image
-            source={{
-              uri: cloudinaryUrl(course.thumbnailUrl, { width: width * 2, height: Math.round(width * 2 * 1.14) }) ?? undefined,
-            }}
-            style={[styles.cover, { width, height: coverH }]}
-            resizeMode="cover"
-          />
-        ) : (
-          <View
-            style={[
-              styles.coverFallback,
-              { width, height: coverH, backgroundColor: `hsl(${hue} 42% 18%)` },
-            ]}
-          >
-            <View style={styles.coverMark}>
-              {words.map((w, i) => (
-                <Text key={i} style={styles.coverMarkLine}>
-                  {w}
-                </Text>
-              ))}
+    <Pressable style={{ width }} onPress={go}>
+      {course.thumbnailUrl ? (
+        <Image
+          source={{
+            uri: cloudinaryUrl(course.thumbnailUrl, { width: width * 2, height: Math.round(width * 2 * 1.14) }) ?? undefined,
+          }}
+          style={[styles.cover, { width, height: coverH }]}
+          resizeMode="cover"
+        />
+      ) : (
+        <View
+          style={[
+            styles.coverFallback,
+            { width, height: coverH, backgroundColor: `hsl(${hue} 42% 18%)` },
+          ]}
+        >
+          <View style={styles.coverMark}>
+            {words.map((w, i) => (
+              <Text key={i} style={styles.coverMarkLine}>
+                {w}
+              </Text>
+            ))}
+          </View>
+          {course.isPremium && (
+            <View style={styles.premium}>
+              <Text style={styles.premiumText}>Premium</Text>
             </View>
-            {course.isPremium && (
-              <View style={styles.premium}>
-                <Text style={styles.premiumText}>Premium</Text>
-              </View>
-            )}
-          </View>
-        )}
-        {course.isNew && (
-          <View style={styles.added}>
-            <Text style={styles.addedText}>Added</Text>
-          </View>
-        )}
-        <Text numberOfLines={2} style={styles.title}>
-          {course.title}
+          )}
+        </View>
+      )}
+      {course.isNew && (
+        <View style={styles.added}>
+          <Text style={styles.addedText}>Added</Text>
+        </View>
+      )}
+      <Text numberOfLines={2} style={styles.title}>
+        {course.title}
+      </Text>
+      {!!meta && (
+        <Text numberOfLines={1} style={styles.meta}>
+          {meta}
         </Text>
-        {!!meta && (
-          <Text numberOfLines={1} style={styles.meta}>
-            {meta}
-          </Text>
-        )}
-        <Stars value={course.ratingAvg} />
-        <Text style={styles.votes} numberOfLines={1}>
-          {course.ratingCount.toLocaleString()} votes
-        </Text>
-      </Pressable>
-    </Link>
+      )}
+      <Stars value={course.ratingAvg} />
+      <Text style={styles.votes} numberOfLines={1}>
+        {course.ratingCount.toLocaleString()} votes
+      </Text>
+    </Pressable>
   );
 }
 

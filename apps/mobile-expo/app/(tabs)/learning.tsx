@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "expo-router";
+import { Link, useRouter } from "expo-router";
 import React, { useState } from "react";
 import {
   ActivityIndicator,
@@ -71,23 +71,22 @@ export default function LearningScreen() {
 }
 
 function LearningRow({ item }: { item: MyLearningItem }) {
+  const router = useRouter();
   return (
-    <Link href={`/courses/${item.slug}`} asChild>
-      <Pressable style={styles.card}>
-        <View style={styles.thumb}>
-          <Text style={{ color: colors.dim, fontSize: 14 }}>▶</Text>
+    <Pressable style={styles.card} onPress={() => router.push(`/courses/${item.slug}`)}>
+      <View style={styles.thumb}>
+        <Text style={{ color: colors.dim, fontSize: 14 }}>▶</Text>
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text numberOfLines={1} style={styles.cardTitle}>
+          {item.title}
+        </Text>
+        <View style={styles.progressTrack}>
+          <View style={[styles.progressFill, { width: `${Math.min(item.progressPct, 100)}%` }]} />
         </View>
-        <View style={{ flex: 1 }}>
-          <Text numberOfLines={1} style={styles.cardTitle}>
-            {item.title}
-          </Text>
-          <View style={styles.progressTrack}>
-            <View style={[styles.progressFill, { width: `${Math.min(item.progressPct, 100)}%` }]} />
-          </View>
-          <Text style={styles.progressText}>{item.progressPct}% complete</Text>
-        </View>
-      </Pressable>
-    </Link>
+        <Text style={styles.progressText}>{item.progressPct}% complete</Text>
+      </View>
+    </Pressable>
   );
 }
 

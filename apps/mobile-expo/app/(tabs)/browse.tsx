@@ -1,6 +1,6 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link, useLocalSearchParams } from "expo-router";
-import React, { useEffect, useMemo, useState } from "react";
+import { Link, useLocalSearchParams, useRouter } from "expo-router";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { cloudinaryUrl } from "../../lib/cloudinary";
 import {
   ActivityIndicator,
@@ -199,48 +199,46 @@ function Chip({ label, active, onPress }: { label: string; active: boolean; onPr
 }
 
 function BrowseRow({ course }: { course: CourseSummary }) {
+  const router = useRouter();
   const meta = [course.level, course.durationMin ? formatDuration(course.durationMin) : ""]
     .filter(Boolean)
     .join(" · ");
   return (
-    <Link href={`/courses/${course.slug}`} asChild>
-      <Pressable style={styles.row}>
-        <View style={styles.thumb}>
-          <Text style={{ color: colors.dim, fontSize: 18 }}>▶</Text>
+    <Pressable style={styles.row} onPress={() => router.push(`/courses/${course.slug}`)}>
+      <View style={styles.thumb}>
+        <Text style={{ color: colors.dim, fontSize: 18 }}>▶</Text>
+      </View>
+      <View style={styles.rowBody}>
+        <Text numberOfLines={2} style={styles.rowTitle}>
+          {course.title}
+        </Text>
+        {!!meta && <Text style={styles.rowMeta}>{meta}</Text>}
+        <View style={styles.starsRow}>
+          <Stars value={course.ratingAvg} />
+          <Text style={styles.rowMeta}> ({course.ratingCount})</Text>
         </View>
-        <View style={styles.rowBody}>
-          <Text numberOfLines={2} style={styles.rowTitle}>
-            {course.title}
-          </Text>
-          {!!meta && <Text style={styles.rowMeta}>{meta}</Text>}
-          <View style={styles.starsRow}>
-            <Stars value={course.ratingAvg} />
-            <Text style={styles.rowMeta}> ({course.ratingCount})</Text>
-          </View>
-        </View>
-        <Text style={{ color: colors.dim }}>›</Text>
-      </Pressable>
-    </Link>
+      </View>
+      <Text style={{ color: colors.dim }}>›</Text>
+    </Pressable>
   );
 }
 
 function GridCard({ course }: { course: CourseSummary }) {
+  const router = useRouter();
   return (
-    <Link href={`/courses/${course.slug}`} asChild>
-      <Pressable style={styles.gridCard}>
-        {course.thumbnailUrl ? (
-          <Image source={{ uri: cloudinaryUrl(course.thumbnailUrl, { width: 300, height: 450 }) ?? undefined }} style={styles.gridThumb} resizeMode="cover" />
-        ) : (
-          <View style={[styles.gridThumb, styles.gridThumbFallback]}>
-            <Text style={{ color: colors.dim }}>▶</Text>
-          </View>
-        )}
-        <Text numberOfLines={2} style={styles.gridTitle}>
-          {course.title}
-        </Text>
-        <Text style={styles.rowMeta}>{course.level}</Text>
-      </Pressable>
-    </Link>
+    <Pressable style={styles.gridCard} onPress={() => router.push(`/courses/${course.slug}`)}>
+      {course.thumbnailUrl ? (
+        <Image source={{ uri: cloudinaryUrl(course.thumbnailUrl, { width: 300, height: 450 }) ?? undefined }} style={styles.gridThumb} resizeMode="cover" />
+      ) : (
+        <View style={[styles.gridThumb, styles.gridThumbFallback]}>
+          <Text style={{ color: colors.dim }}>▶</Text>
+        </View>
+      )}
+      <Text numberOfLines={2} style={styles.gridTitle}>
+        {course.title}
+      </Text>
+      <Text style={styles.rowMeta}>{course.level}</Text>
+    </Pressable>
   );
 }
 

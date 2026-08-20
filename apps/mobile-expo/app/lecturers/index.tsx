@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "expo-router";
+import { Link, useRouter } from "expo-router";
 import React from "react";
 import { ActivityIndicator, FlatList, Image, StyleSheet, Text, View, Pressable } from "react-native";
 import * as api from "../../lib/api";
@@ -7,6 +7,7 @@ import { cloudinaryUrl } from "../../lib/cloudinary";
 import { colors, radius } from "../../lib/tokens";
 
 export default function LecturersIndex() {
+  const router = useRouter();
   const { data, isLoading } = useQuery({
     queryKey: ["lecturers"],
     queryFn: api.lecturers,
@@ -33,29 +34,27 @@ export default function LecturersIndex() {
         </View>
       }
       renderItem={({ item }) => (
-        <Link href={`/lecturers/${item.slug}`} asChild>
-          <Pressable style={styles.card}>
-            <View style={styles.avatar}>
-              {item.photoUrl ? (
-                <Image
-                  source={{ uri: cloudinaryUrl(item.photoUrl, { width: 96, height: 96 }) ?? undefined }}
-                  style={styles.avatarImg}
-                  resizeMode="cover"
-                />
-              ) : (
-                <Text style={styles.initial}>{item.name.charAt(0)}</Text>
-              )}
-            </View>
-            <View style={styles.cardBody}>
-              <Text style={styles.name} numberOfLines={1}>{item.name}</Text>
-              {!!item.credentials && (
-                <Text style={styles.muted} numberOfLines={1}>{item.credentials}</Text>
-              )}
-              <Text style={styles.muted}>{item.courseCount ?? 0} courses</Text>
-            </View>
-            <Text style={styles.chevron}>›</Text>
-          </Pressable>
-        </Link>
+        <Pressable style={styles.card} onPress={() => router.push(`/lecturers/${item.slug}`)}>
+          <View style={styles.avatar}>
+            {item.photoUrl ? (
+              <Image
+                source={{ uri: cloudinaryUrl(item.photoUrl, { width: 96, height: 96 }) ?? undefined }}
+                style={styles.avatarImg}
+                resizeMode="cover"
+              />
+            ) : (
+              <Text style={styles.initial}>{item.name.charAt(0)}</Text>
+            )}
+          </View>
+          <View style={styles.cardBody}>
+            <Text style={styles.name} numberOfLines={1}>{item.name}</Text>
+            {!!item.credentials && (
+              <Text style={styles.muted} numberOfLines={1}>{item.credentials}</Text>
+            )}
+            <Text style={styles.muted}>{item.courseCount ?? 0} courses</Text>
+          </View>
+          <Text style={styles.chevron}>›</Text>
+        </Pressable>
       )}
     />
   );

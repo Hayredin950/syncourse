@@ -138,6 +138,10 @@ export default function CourseDetailScreen() {
   }
 
   const c = data;
+  // Captured as consts so the null check still narrows inside the onPress
+  // closures below — TS drops the narrowing on `c.lecturer` across a callback.
+  const lecturer = c.lecturer;
+  const organization = c.organization;
   const desc =
     c.description.length > 200 && !expanded
       ? `${c.description.slice(0, 200)}…`
@@ -277,40 +281,36 @@ export default function CourseDetailScreen() {
         {c.lecturer && (
           <>
             <Text style={styles.heading}>Lecturer</Text>
-            <Link href={`/lecturers/${c.lecturer.slug}`} asChild>
-              <Pressable style={styles.lecturerRow}>
-                <View style={styles.avatar}>
-                  <Text style={styles.avatarText}>{c.lecturer.name.charAt(0)}</Text>
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.lecturerName}>{c.lecturer.name}</Text>
-                  {(c.lecturer.credentials || c.lecturer.bio) && (
-                    <Text style={styles.muted} numberOfLines={2}>
-                      {[c.lecturer.credentials, c.lecturer.bio].filter(Boolean).join(" · ")}
-                    </Text>
-                  )}
-                </View>
-                <Text style={{ color: colors.dim }}>›</Text>
-              </Pressable>
-            </Link>
+            <Pressable style={styles.lecturerRow} onPress={() => c.lecturer && router.push(`/lecturers/${c.lecturer.slug}`)}>
+              <View style={styles.avatar}>
+                <Text style={styles.avatarText}>{c.lecturer.name.charAt(0)}</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.lecturerName}>{c.lecturer.name}</Text>
+                {(c.lecturer.credentials || c.lecturer.bio) && (
+                  <Text style={styles.muted} numberOfLines={2}>
+                    {[c.lecturer.credentials, c.lecturer.bio].filter(Boolean).join(" · ")}
+                  </Text>
+                )}
+              </View>
+              <Text style={{ color: colors.dim }}>›</Text>
+            </Pressable>
           </>
         )}
 
         {c.organization && (
           <>
             <Text style={styles.heading}>Organization</Text>
-            <Link href={`/organizations/${c.organization.slug}`} asChild>
-              <Pressable style={styles.lecturerRow}>
-                <View style={styles.avatar}>
-                  <Text style={styles.avatarText}>{c.organization.name.charAt(0)}</Text>
-                </View>
-                <View style={{ flex: 1 }}>
-                  <Text style={styles.lecturerName}>{c.organization.name}</Text>
-                  <Text style={styles.muted}>See all courses</Text>
-                </View>
-                <Text style={{ color: colors.dim }}>›</Text>
-              </Pressable>
-            </Link>
+            <Pressable style={styles.lecturerRow} onPress={() => c.organization && router.push(`/organizations/${c.organization.slug}`)}>
+              <View style={styles.avatar}>
+                <Text style={styles.avatarText}>{c.organization.name.charAt(0)}</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.lecturerName}>{c.organization.name}</Text>
+                <Text style={styles.muted}>See all courses</Text>
+              </View>
+              <Text style={{ color: colors.dim }}>›</Text>
+            </Pressable>
           </>
         )}
 
@@ -518,18 +518,16 @@ export default function CourseDetailScreen() {
             </View>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.similarRow}>
               {similarQ.data.map((sc) => (
-                <Link key={sc.id} href={`/courses/${sc.slug}`} asChild>
-                  <Pressable style={{ width: 132 }}>
-                    {sc.thumbnailUrl ? (
-                      <Image source={{ uri: cloudinaryUrl(sc.thumbnailUrl, { width: 264, height: 300 }) ?? undefined }} style={styles.similarThumb} resizeMode="cover" />
-                    ) : (
-                      <View style={[styles.similarThumb, styles.similarFallback]}>
-                        <Text style={{ color: colors.dim }}>▶</Text>
-                      </View>
-                    )}
-                    <Text numberOfLines={2} style={styles.similarTitle}>{sc.title}</Text>
-                  </Pressable>
-                </Link>
+                <Pressable key={sc.id} style={{ width: 132 }} onPress={() => router.push(`/courses/${sc.slug}`)}>
+                  {sc.thumbnailUrl ? (
+                    <Image source={{ uri: cloudinaryUrl(sc.thumbnailUrl, { width: 264, height: 300 }) ?? undefined }} style={styles.similarThumb} resizeMode="cover" />
+                  ) : (
+                    <View style={[styles.similarThumb, styles.similarFallback]}>
+                      <Text style={{ color: colors.dim }}>▶</Text>
+                    </View>
+                  )}
+                  <Text numberOfLines={2} style={styles.similarTitle}>{sc.title}</Text>
+                </Pressable>
               ))}
             </ScrollView>
           </View>

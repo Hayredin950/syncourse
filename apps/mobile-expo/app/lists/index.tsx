@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link } from "expo-router";
+import { Link, useRouter } from "expo-router";
 import React, { useState } from "react";
 import {
   ActivityIndicator,
@@ -21,6 +21,7 @@ export default function ListsScreen() {
     queryKey: ["my-lists"],
     queryFn: api.myLists,
   });
+  const router = useRouter();
   const [showCreate, setShowCreate] = useState(false);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
@@ -81,19 +82,17 @@ export default function ListsScreen() {
           </View>
         }
         renderItem={({ item }) => (
-          <Link href={`/lists/${item.id}`} asChild>
-            <Pressable style={styles.card}>
-              <Text style={{ fontSize: 18 }}>{item.visibility === "public" ? "🌐" : "🔒"}</Text>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.cardTitle}>{item.name}</Text>
-                <Text style={styles.muted}>
-                  {item.itemCount} courses · {item.visibility}
-                  {item.description ? ` · ${item.description}` : ""}
-                </Text>
-              </View>
-              <Text style={{ color: colors.dim }}>›</Text>
-            </Pressable>
-          </Link>
+          <Pressable style={styles.card} onPress={() => router.push(`/lists/${item.id}`)}>
+            <Text style={{ fontSize: 18 }}>{item.visibility === "public" ? "🌐" : "🔒"}</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.cardTitle}>{item.name}</Text>
+              <Text style={styles.muted}>
+                {item.itemCount} courses · {item.visibility}
+                {item.description ? ` · ${item.description}` : ""}
+              </Text>
+            </View>
+            <Text style={{ color: colors.dim }}>›</Text>
+          </Pressable>
         )}
       />
 

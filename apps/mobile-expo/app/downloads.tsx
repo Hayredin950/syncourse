@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "expo-router";
+import { Link, useRouter } from "expo-router";
 import React, { useState } from "react";
 import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, View } from "react-native";
 import * as api from "../lib/api";
@@ -15,6 +15,7 @@ interface FileRow extends LessonFile {
 const CODECS = ["All", "x264", "x265", "H264"];
 
 export default function DownloadsScreen() {
+  const router = useRouter();
   const [codec, setCodec] = useState("All");
   const myLearning = useQuery({ queryKey: ["my-learning"], queryFn: api.myLearning });
 
@@ -58,8 +59,7 @@ export default function DownloadsScreen() {
             ) : null
           }
           renderItem={({ item }) => (
-            <Link href={`/courses/${item.slug}`} asChild>
-              <Pressable style={styles.card}>
+              <Pressable style={styles.card} onPress={() => router.push(`/courses/${item.slug}`)}>
                 <View style={{ flex: 1 }}>
                   <Text numberOfLines={1} style={styles.title}>
                     {item.title}
@@ -70,7 +70,6 @@ export default function DownloadsScreen() {
                   <View style={[styles.progressFill, { width: `${Math.min(item.progressPct, 100)}%` }]} />
                 </View>
               </Pressable>
-            </Link>
           )}
         />
       )}
