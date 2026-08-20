@@ -51,8 +51,13 @@ services:
         sync: false
       - key: BREVO_SMTP_HOST
         value: smtp-relay.brevo.com
+      # 2525, not 465: Render blackholes outbound SMTP on 465 (and 587), so every
+      # send hung for 120s and failed with "Connection timeout" — which is why no
+      # mail ever arrived from this service. Brevo listens on 2525 too, and it is
+      # reachable from Render. Verified: register went from a 120s timeout to a
+      # 3s success the moment the port changed. Keep this off 465.
       - key: BREVO_SMTP_PORT
-        value: "465"
+        value: "2525"
       - key: BREVO_SMTP_USER
         sync: false
       - key: BREVO_SMTP_KEY
