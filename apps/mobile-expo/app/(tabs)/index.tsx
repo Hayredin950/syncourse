@@ -42,6 +42,8 @@ export default function HomeScreen() {
     queryFn: () => api.browse({ lecturer: activeLecturer?.slug, limit: 8 }).then((r) => r.results),
     enabled: !!activeLecturer?.slug,
   });
+  const router = useRouter();
+  const goTo = useCallback((href: string) => () => router.push(href as any), [router]);
 
   if (isLoading) {
     return (
@@ -74,9 +76,6 @@ export default function HomeScreen() {
   const catCourses = catSlug ? (catCoursesQ.data ?? []) : feed.trending.slice(0, 8);
   const activeOrg = (feed.bestOf ?? []).find((o) => o.slug === orgSlug) ?? feed.bestOf?.[0];
   const hero = feed.trending[0];
-
-  const router = useRouter();
-  const goTo = useCallback((href: string) => () => router.push(href as any), []);
 
   return (
     <ScrollView

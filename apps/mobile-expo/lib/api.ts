@@ -28,7 +28,7 @@ import type {
 } from "./types";
 
 export const API_URL =
-  process.env.EXPO_PUBLIC_API_URL ?? "http://localhost:4000";
+  process.env.EXPO_PUBLIC_API_URL ?? "https://syncourse-api.onrender.com";
 
 const TOKEN_KEY = "syncourse_token";
 

@@ -1,8 +1,6 @@
 import { useRouter } from "expo-router";
-import * as AuthSession from "expo-auth-session";
-import * as Google from "expo-auth-session/providers/google";
 import * as WebBrowser from "expo-web-browser";
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import { Alert, KeyboardAvoidingView, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from "react-native";
 import * as api from "../lib/api";
 import { useAuth } from "../lib/auth";
@@ -10,8 +8,17 @@ import { colors } from "../lib/tokens";
 
 WebBrowser.maybeCompleteAuthSession();
 
-const GOOGLE_CLIENT_ID = process.env.EXPO_PUBLIC_GOOGLE_CLIENT_ID;
-const GOOGLE_REDIRECT_URI = AuthSession.makeRedirectUri({ scheme: "syncourse", path: "auth" });
+// Google sign-in goes through our own API rather than talking to Google here.
+// The only OAuth client this project has is a Web client — it is the one the
+// API holds the secret for — and Google will not redirect a Web client to a
+// custom scheme: asking it to land on syncourse:// gets "Access blocked …
+// Error 400: invalid_request — this app doesn't comply with Google's OAuth 2.0
+// policy for keeping apps secure". So the app opens /api/auth/google in a
+// system browser, Google redirects to the API's registered https callback, the
+// API exchanges the code with its secret, and it bounces back to the URL below
+// with ?token=…. Nothing here has to be registered with Google, which is why
+// this file no longer needs a client ID at all.
+const RETURN_URL = "syncourse://auth";
 
 export default function AuthScreen() {
   const router = useRouter();
@@ -41,41 +48,30 @@ export default function AuthScreen() {
   const [verifyMsg, setVerifyMsg] = useState<string | null>(null);
   const [resendBusy, setResendBusy] = useState(false);
 
-  // eslint-disable-next-line react-hooks/rules-of-hooks
-  const [googleRequest, googleResponse, googlePrompt] = Google.useAuthRequest({
-    clientId: GOOGLE_CLIENT_ID,
-    redirectUri: GOOGLE_REDIRECT_URI,
-    scopes: ["openid", "email", "profile"],
-  });
-
-  useEffect(() => {
-    if (!googleResponse) return;
-    if (googleResponse.type !== "success") {
-      if (googleResponse.type === "error") setError("Google sign-in was cancelled or failed");
-      return;
-    }
-    const code = googleResponse.params.code;
-    setBusy(true);
-    setError(null);
-    api
-      .googleExchange(code, GOOGLE_REDIRECT_URI)
-      .then(async () => {
-        await refresh();
-        router.replace("/");
-      })
-      .catch((e) => setError(e instanceof Error ? e.message : "Google sign-in failed"))
-      .finally(() => setBusy(false));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [googleResponse]);
-
   const startGoogle = async () => {
     setError(null);
-    if (!GOOGLE_CLIENT_ID) {
-      setError("Google sign-in needs EXPO_PUBLIC_GOOGLE_CLIENT_ID — use email for now.");
-      return;
+    setBusy(true);
+    try {
+      const result = await WebBrowser.openAuthSessionAsync(
+        `${api.API_URL}/api/auth/google?redirect=${encodeURIComponent(RETURN_URL)}`,
+        RETURN_URL,
+      );
+      // "dismiss"/"cancel" just means the sheet was closed — not an error worth showing.
+      if (result.type !== "success") return;
+      // Read the token by hand: Hermes' URL has no searchParams.
+      const token = /[?&]token=([^&#]+)/.exec(result.url)?.[1];
+      if (!token) {
+        setError("Google sent us back without a token — please try again.");
+        return;
+      }
+      await api.setToken(decodeURIComponent(token));
+      await refresh();
+      router.replace("/");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Google sign-in failed");
+    } finally {
+      setBusy(false);
     }
-    const result = await googlePrompt();
-    if (result?.type === "error") setError("Google sign-in was cancelled or failed");
   };
   const submit = async () => {
     setError(null);
