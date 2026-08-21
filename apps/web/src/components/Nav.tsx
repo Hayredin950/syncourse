@@ -56,8 +56,7 @@ export function TopNav() {
         <Link href="/" className="brand">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/logo.png" alt="" className="brand-logo" />
-          <span className="brand-sync">sync</span>
-          <span className="brand-ourse">ourse</span>
+          <span className="brand-ourse">yncourse</span>
         </Link>
         <form className="top-search" onSubmit={submit}>
           <Search size={15} />
@@ -83,6 +82,11 @@ export function TopNav() {
           ) : (
             <Link href="/premium" className="nav-pill nav-pill--cta">
               <Crown size={14} /> Go Premium
+            </Link>
+          )}
+          {user?.isStaff && (
+            <Link href="/admin" className={`nav-pill nav-pill--admin ${active("/admin") ? "active" : ""}`}>
+              <Crown size={14} /> Admin
             </Link>
           )}
           {user ? (
@@ -166,7 +170,7 @@ export function Footer() {
         <div className="brand">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img src="/logo.png" alt="" className="brand-logo" />
-          sync<i />ourse
+          <span className="brand-ourse">yncourse</span>
         </div>
         <p className="muted">Practical skills for people who build.</p>
       </div>

@@ -9,7 +9,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="site-shell">
-      {!isAdmin && <TopNav />}
+      <TopNav />
       {children}
       {!isAdmin && <Footer />}
       {!isAdmin && <BottomNav />}
