@@ -17,7 +17,6 @@ import type { AdminActivityEvent, AdminCourseRow, AdminPaymentRow, AdminStats, A
 import {
   bucketByDate,
   bucketBySum,
-  compactCurrency,
   compactNumber,
   percentChange,
   periodDelta,
@@ -120,7 +119,7 @@ export default function AdminDashboard() {
         <div className="admin-stat-grid">
           <StatTile
             label={`Revenue · last ${WINDOW} days`}
-            value={compactCurrency(stats.revenue30d)}
+            value={compactNumber(stats.revenue30d)}
             icon={<CircleDollarSign size={13} />}
             delta={trends.revenueDelta}
             trend={trends.revenue}
@@ -163,9 +162,14 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      <p className="admin-section-head__hint" style={{ marginTop: 10 }}>
+      <p className="admin-section-head__hint" style={{ marginTop: 10, maxWidth: 780, lineHeight: 1.6 }}>
         Sparklines cover the last {WINDOW} days in 12 buckets. Revenue and payment trends read the 100 most recent
-        payments — the totals above come from the full ledger.
+        payments — the totals above come from the full ledger. Revenue carries no currency symbol on purpose: the API
+        adds ETB and USD amounts into one figure, so{" "}
+        <Link href="/admin/analytics" className="admin-cell-link">
+          Analytics
+        </Link>{" "}
+        splits it per currency instead.
       </p>
 
       <div className="admin-section-head">

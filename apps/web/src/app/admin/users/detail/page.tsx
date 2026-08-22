@@ -15,7 +15,7 @@ import {
 import { get, patch } from "@/lib/api";
 import type { AdminPaymentRow, AdminReviewRow, AdminUserRow } from "@/lib/types";
 import { formatDate } from "@/lib/format";
-import { compactCurrency, relativeTime } from "@/lib/metrics";
+import { moneyByCurrency, relativeTime } from "@/lib/metrics";
 import { useAuth } from "@/lib/auth";
 import { useAdminToast } from "@/components/admin/AdminToast";
 import ConfirmButton from "@/components/admin/ConfirmButton";
@@ -60,13 +60,13 @@ function UserDetail() {
 
   const account = users?.find((u) => u.id === id) ?? null;
   const mine = useMemo(() => {
-    if (!id) return { reviews: [], payments: [], spend: 0 };
+    if (!id) return { reviews: [], payments: [], spend: "—" };
     const rs = reviews.filter((r) => r.author.id === id);
     const ps = payments.filter((p) => p.user.id === id);
     return {
       reviews: rs,
       payments: ps,
-      spend: ps.filter((p) => p.status === "approved").reduce((a, p) => a + p.amount, 0),
+      spend: moneyByCurrency(ps.filter((p) => p.status === "approved")),
     };
   }, [id, reviews, payments]);
 
@@ -311,7 +311,7 @@ function UserDetail() {
                 )}
               </dd>
               <dt>Approved spend</dt>
-              <dd>{mine.spend > 0 ? compactCurrency(mine.spend) : "—"}</dd>
+              <dd>{mine.spend}</dd>
               <dt>Joined</dt>
               <dd>{formatDate(account.createdAt)}</dd>
               <dt>Username</dt>

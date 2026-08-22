@@ -482,10 +482,14 @@ a.admin-tile:hover {
 
 /* --- tables ---------------------------------------------------------------- */
 .admin-table { width: 100%; border-collapse: collapse; }
+/* Not sticky. Tables live inside .admin-card--flush, whose `overflow: hidden`
+   makes the card itself the scroll container sticky resolves against — so a
+   `top` offset here is measured from the card's own top edge, not the viewport,
+   and pushes the header *down* over the first row instead of pinning it under
+   the topbar. Sticky would also land behind the public site topbar, whose height
+   changes with the viewport. Lists are paginated, so a pinned header is not
+   worth measuring two layers of sticky chrome in JS to get right. */
 .admin-table th {
-  position: sticky;
-  top: 46px;
-  z-index: 1;
   text-align: left;
   padding: 9px 14px;
   background: var(--adm-surface);
@@ -1218,7 +1222,6 @@ a.admin-tile:hover {
     white-space: nowrap;
   }
   .admin-tab--active { background: var(--adm-raised); border-color: var(--adm-line-strong); color: var(--adm-ink); }
-  .admin-table th { top: 0; }
   .admin-form-grid { grid-template-columns: minmax(0, 1fr); }
   .admin-search-trigger { min-width: 0; }
   .admin-search-trigger span, .admin-topbar__exit span { display: none; }

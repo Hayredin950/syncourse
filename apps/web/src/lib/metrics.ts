@@ -19,13 +19,6 @@ export function compactNumber(n: number): string {
   return Math.round(n).toLocaleString("en-US");
 }
 
-export function compactCurrency(n: number, symbol = "$"): string {
-  const abs = Math.abs(n);
-  if (abs >= 1_000_000) return `${symbol}${trim(n / 1_000_000)}M`;
-  if (abs >= 10_000) return `${symbol}${trim(n / 1_000)}K`;
-  return `${symbol}${Math.round(n).toLocaleString("en-US")}`;
-}
-
 function trim(v: number): string {
   // 12.9K, but 4M rather than 4.0M.
   const s = v.toFixed(1);
@@ -116,6 +109,23 @@ export function periodDelta(
     period: opts.label ?? `previous ${days} days`,
     upIsGood: opts.upIsGood ?? true,
   };
+}
+
+/**
+ * Sum amounts per currency and render them side by side: "12.4K ETB · 32 USD".
+ *
+ * Payments are taken in ETB or USD, so a single total is not a number that means
+ * anything — and printing one of them with a `$` in front makes it worse. When
+ * only one currency is present this reads exactly like an ordinary total.
+ */
+export function moneyByCurrency(rows: { amount: number; currency: string }[], empty = "—"): string {
+  const totals = new Map<string, number>();
+  for (const r of rows) totals.set(r.currency, (totals.get(r.currency) ?? 0) + r.amount);
+  if (totals.size === 0) return empty;
+  return [...totals.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([code, sum]) => `${compactNumber(sum)} ${code}`)
+    .join(" · ");
 }
 
 export interface Bucket {

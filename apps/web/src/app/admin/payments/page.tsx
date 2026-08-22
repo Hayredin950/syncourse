@@ -6,7 +6,7 @@ import { BadgeCheck, Check, Search } from "lucide-react";
 import { get, patch } from "@/lib/api";
 import type { AdminPaymentRow } from "@/lib/types";
 import { formatDate } from "@/lib/format";
-import { compactCurrency, relativeTime } from "@/lib/metrics";
+import { moneyByCurrency, relativeTime } from "@/lib/metrics";
 import { useAdminToast } from "@/components/admin/AdminToast";
 import ConfirmButton from "@/components/admin/ConfirmButton";
 import Pagination, { clampPage } from "@/components/admin/Pagination";
@@ -39,7 +39,7 @@ export default function AdminPayments() {
   );
 
   const approvedValue = useMemo(
-    () => payments.filter((p) => p.status === "approved").reduce((a, p) => a + p.amount, 0),
+    () => moneyByCurrency(payments.filter((p) => p.status === "approved")),
     [payments],
   );
 
@@ -93,7 +93,7 @@ export default function AdminPayments() {
           <span>Approved</span>
         </div>
         <div className="admin-minitile">
-          <strong>{compactCurrency(approvedValue)}</strong>
+          <strong style={{ fontSize: 14 }}>{approvedValue}</strong>
           <span>Approved value loaded</span>
         </div>
       </div>
