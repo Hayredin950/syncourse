@@ -1,33 +1,66 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { Plus, Search, X } from "lucide-react";
 import { del, get, post, patch } from "@/lib/api";
 import type { AdminLecturerRow } from "@/lib/types";
-import { useToast } from "@/lib/useToast";
+import { useAdminToast } from "@/components/admin/AdminToast";
+import ConfirmButton from "@/components/admin/ConfirmButton";
+import ExpandableText from "@/components/admin/ExpandableText";
 
-export default function AdminLecturers() {
+export default function AdminLecturersPage() {
+  return (
+    <Suspense fallback={<div className="admin-skeleton" style={{ height: 180, display: "block" }} />}>
+      <AdminLecturers />
+    </Suspense>
+  );
+}
+
+function AdminLecturers() {
+  const toast = useAdminToast();
+  // ?new=1 comes from the ⌘K palette's "New lecturer" command.
+  const wantsNew = useSearchParams().get("new") === "1";
   const [rows, setRows] = useState<AdminLecturerRow[]>([]);
-  const [editing, setEditing] = useState<AdminLecturerRow | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [query, setQuery] = useState("");
+  const [editing, setEditing] = useState<AdminLecturerRow | null | undefined>(undefined);
   const [name, setName] = useState("");
   const [bio, setBio] = useState("");
   const [photoUrl, setPhotoUrl] = useState("");
-  const { toast, setToast } = useToast();
+  const [saving, setSaving] = useState(false);
+  const [busyId, setBusyId] = useState<string | null>(null);
 
   useEffect(() => {
     get<AdminLecturerRow[]>("/admin/lecturers")
       .then(setRows)
-      .catch((e) => setToast(e.message));
-  }, [setToast]);
+      .catch((e) => toast.error(e.message))
+      .finally(() => setLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  const startEdit = (l: AdminLecturerRow | null) => {
+  useEffect(() => {
+    if (wantsNew) setEditing(null);
+  }, [wantsNew]);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (!q) return rows;
+    return rows.filter((l) => `${l.name} ${l.bio ?? ""} ${l.credentials ?? ""}`.toLowerCase().includes(q));
+  }, [rows, query]);
+
+  /** `undefined` = panel closed, `null` = creating, a row = editing that row. */
+  const open = (l: AdminLecturerRow | null) => {
     setEditing(l);
     setName(l?.name ?? "");
     setBio(l?.bio ?? "");
     setPhotoUrl(l?.photoUrl ?? "");
   };
+  const close = () => setEditing(undefined);
 
   const save = async () => {
-    if (!name.trim()) return setToast("Name is required");
+    if (!name.trim()) return toast.error("A name is required");
+    setSaving(true);
     try {
       if (editing) {
         const res = await patch<{ id: string; name: string }>(`/admin/lecturers/${editing.id}`, {
@@ -35,8 +68,10 @@ export default function AdminLecturers() {
           bio: bio || null,
           photoUrl: photoUrl || null,
         });
-        setRows((p) => p.map((x) => (x.id === res.id ? { ...x, name: res.name, bio, photoUrl: photoUrl || null } : x)));
-        setToast("Lecturer updated");
+        setRows((p) =>
+          p.map((x) => (x.id === res.id ? { ...x, name: res.name, bio: bio || null, photoUrl: photoUrl || null } : x)),
+        );
+        toast.success(`${res.name} updated`);
       } else {
         const res = await post<{ id: string; name: string; slug: string }>("/admin/lecturers", {
           name,
@@ -45,24 +80,37 @@ export default function AdminLecturers() {
         });
         setRows((p) => [
           ...p,
-          { id: res.id, name: res.name, slug: res.slug, bio: bio || null, photoUrl: photoUrl || null, credentials: null, courseCount: 0, createdAt: new Date().toISOString() },
+          {
+            id: res.id,
+            name: res.name,
+            slug: res.slug,
+            bio: bio || null,
+            photoUrl: photoUrl || null,
+            credentials: null,
+            courseCount: 0,
+            createdAt: new Date().toISOString(),
+          },
         ]);
-        setToast("Lecturer created");
+        toast.success(`${res.name} added`);
       }
-      startEdit(null);
-    } catch (e: any) {
-      setToast(e.message);
+      close();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not save that lecturer");
+    } finally {
+      setSaving(false);
     }
   };
 
   const remove = async (l: AdminLecturerRow) => {
-    if (!confirm(`Delete lecturer "${l.name}"?`)) return;
+    setBusyId(l.id);
     try {
       await del(`/admin/lecturers/${l.id}`);
       setRows((p) => p.filter((x) => x.id !== l.id));
-      setToast("Lecturer deleted");
-    } catch (e: any) {
-      setToast(e.message);
+      toast.success(`${l.name} deleted`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not delete that lecturer");
+    } finally {
+      setBusyId(null);
     }
   };
 
@@ -71,88 +119,122 @@ export default function AdminLecturers() {
       <div className="admin-page-head">
         <div>
           <h1>Lecturers</h1>
-          <p className="page-desc">Instructor profiles — {rows.length} on the platform.</p>
+          <p className="page-desc">
+            Instructor profiles shown on course pages — {rows.length.toLocaleString("en-US")} on the platform.
+          </p>
         </div>
-        {!editing && (
-          <button className="admin-btn admin-btn--primary" onClick={() => startEdit(null)}>
-            + New lecturer
+        <div className="admin-page-head__actions">
+          <button type="button" className="admin-btn admin-btn--primary" onClick={() => open(null)}>
+            <Plus size={13} /> New lecturer
           </button>
-        )}
+        </div>
       </div>
 
-      {editing !== null && (
-        <div className="admin-card">
-          <h3>{editing ? `Edit: ${editing.name}` : "New lecturer"}</h3>
-          <div style={{ display: "grid", gap: 10, gridTemplateColumns: "1fr 1fr", marginBottom: 12 }}>
-            <input className="admin-input" placeholder="Name *" value={name} onChange={(e) => setName(e.target.value)} />
-            <input className="admin-input" placeholder="Photo URL" value={photoUrl} onChange={(e) => setPhotoUrl(e.target.value)} />
-            <input
-              className="admin-input"
-              placeholder="Bio"
-              value={bio}
-              onChange={(e) => setBio(e.target.value)}
-              style={{ gridColumn: "1 / -1" }}
-            />
-          </div>
-          <div style={{ display: "flex", gap: 8 }}>
-            <button className="admin-btn admin-btn--primary" onClick={save}>
-              Save
+      {editing !== undefined && (
+        <div className="admin-panel">
+          <div className="admin-panel__head">
+            <span className="admin-panel__title">{editing ? `Edit ${editing.name}` : "New lecturer"}</span>
+            <button type="button" className="admin-btn admin-btn--quiet admin-btn--icon" onClick={close} aria-label="Close">
+              <X size={14} />
             </button>
-            <button className="admin-btn admin-btn--ghost" onClick={() => startEdit(null)}>
+          </div>
+          <div className="admin-form-grid">
+            <label className="admin-field">
+              <span className="admin-label">Name</span>
+              <input className="admin-input" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+            </label>
+            <label className="admin-field">
+              <span className="admin-label">Photo URL</span>
+              <input
+                className="admin-input"
+                placeholder="https://…"
+                value={photoUrl}
+                onChange={(e) => setPhotoUrl(e.target.value)}
+              />
+            </label>
+            <label className="admin-field admin-field--wide">
+              <span className="admin-label">Bio</span>
+              <textarea className="admin-textarea" value={bio} onChange={(e) => setBio(e.target.value)} />
+              <span className="admin-field__hint">Shown in full on the lecturer page, clamped to two lines in lists.</span>
+            </label>
+          </div>
+          <div className="admin-form-actions">
+            <button type="button" className="admin-btn admin-btn--primary" onClick={save} disabled={saving}>
+              {saving ? "Saving…" : editing ? "Save changes" : "Create lecturer"}
+            </button>
+            <button type="button" className="admin-btn admin-btn--ghost" onClick={close}>
               Cancel
             </button>
           </div>
         </div>
       )}
 
-      <div className="admin-card" style={{ padding: 0, overflow: "hidden" }}>
-        {rows.length === 0 && (
-          <p style={{ padding: 24, textAlign: "center", color: "rgba(255,255,255,0.4)", fontSize: 13 }}>
-            No lecturers yet.
-          </p>
+      <div className="admin-toolbar">
+        <span className="admin-search">
+          <Search size={14} />
+          <input
+            className="admin-input"
+            placeholder="Name or bio…"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            aria-label="Search lecturers"
+          />
+        </span>
+        <span className="admin-toolbar__count">
+          {filtered.length === rows.length ? `${rows.length} total` : `${filtered.length} of ${rows.length}`}
+        </span>
+      </div>
+
+      <div className="admin-card admin-card--flush">
+        {loading &&
+          Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="admin-row">
+              <span className="admin-skeleton" style={{ height: 34, flex: 1 }} />
+            </div>
+          ))}
+        {!loading && filtered.length === 0 && (
+          <p className="admin-empty">{rows.length === 0 ? "No lecturers yet." : "No lecturer matches that search."}</p>
         )}
-        {rows.map((l) => (
-          <div
-            key={l.id}
-            style={{
-              display: "flex",
-              gap: 12,
-              alignItems: "center",
-              padding: "12px 16px",
-              borderBottom: "1px solid rgba(255,255,255,0.06)",
-            }}
-          >
-            <div className="h-9 w-9 shrink-0 overflow-hidden rounded-full bg-surface" style={{ width: 36, height: 36 }}>
+        {filtered.map((l) => (
+          <div key={l.id} className="admin-row admin-row--top">
+            <span className="admin-avatar">
               {l.photoUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={l.photoUrl} alt="" className="h-full w-full object-cover" />
+                <img src={l.photoUrl} alt="" />
               ) : (
-                <div className="flex h-full w-full items-center justify-center text-sm font-bold text-accent">
-                  {l.name.charAt(0).toUpperCase()}
-                </div>
+                l.name.charAt(0).toUpperCase()
+              )}
+            </span>
+            <div className="admin-row__main">
+              <div className="admin-inline" style={{ gap: 7 }}>
+                <span className="admin-row__title">{l.name}</span>
+                <span className="admin-badge admin-badge--gray">
+                  {l.courseCount} course{l.courseCount === 1 ? "" : "s"}
+                </span>
+              </div>
+              {l.bio ? (
+                <ExpandableText text={l.bio} className="admin-row__body" />
+              ) : (
+                <div className="admin-row__meta">No bio yet</div>
               )}
             </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontWeight: 600, fontSize: 13, color: "#fff" }}>{l.name}</div>
-              <div style={{ fontSize: 11, color: "rgba(255,255,255,0.45)" }}>
-                {l.courseCount} course(s) · {l.bio ? l.bio.slice(0, 80) : "no bio"}
-              </div>
+            <div className="admin-row__actions">
+              <button type="button" className="admin-btn admin-btn--ghost admin-btn--sm" onClick={() => open(l)}>
+                Edit
+              </button>
+              <ConfirmButton
+                label="Delete"
+                question={`Delete ${l.name}?`}
+                confirmLabel="Yes, delete"
+                busy={busyId === l.id}
+                icon={false}
+                className="admin-btn admin-btn--danger admin-btn--sm"
+                onConfirm={() => remove(l)}
+              />
             </div>
-            <button className="admin-btn admin-btn--ghost" onClick={() => startEdit(l)}>
-              Edit
-            </button>
-            <button className="admin-btn admin-btn--danger" onClick={() => remove(l)}>
-              Delete
-            </button>
           </div>
         ))}
       </div>
-
-      {toast && (
-        <div className="fixed inset-x-0 bottom-16 z-40 mx-auto w-fit rounded-full bg-surface-raised px-4 py-2 text-xs text-text shadow-lg">
-          {toast}
-        </div>
-      )}
     </div>
   );
 }

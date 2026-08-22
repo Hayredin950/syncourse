@@ -1,36 +1,70 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { ChevronRight, Pencil, Plus, Search } from "lucide-react";
 import { del, get } from "@/lib/api";
 import type { AdminCourseRow } from "@/lib/types";
 import { formatDate } from "@/lib/format";
-import { useToast } from "@/lib/useToast";
+import { useAdminToast } from "@/components/admin/AdminToast";
+import ConfirmButton from "@/components/admin/ConfirmButton";
+import Pagination, { clampPage } from "@/components/admin/Pagination";
+
+type Sort = "updated" | "students" | "rating" | "title";
 
 export default function AdminCourses() {
+  const toast = useAdminToast();
   const [courses, setCourses] = useState<AdminCourseRow[]>([]);
   const [loading, setLoading] = useState(true);
-  const { toast, setToast } = useToast();
+  const [query, setQuery] = useState("");
+  const [scope, setScope] = useState("live");
+  const [sort, setSort] = useState<Sort>("updated");
+  const [page, setPage] = useState(1);
+  const [perPage, setPerPage] = useState(25);
+  const [busySlug, setBusySlug] = useState<string | null>(null);
 
   useEffect(() => {
     get<AdminCourseRow[]>("/admin/courses")
       .then(setCourses)
-      .catch((e) => setToast(e.message))
+      .catch((e) => toast.error(e.message))
       .finally(() => setLoading(false));
-  }, [setToast]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  const remove = async (slug: string) => {
-    if (!confirm("Delete this course? Students' progress history is kept (soft delete).")) return;
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    const rows = courses.filter((c) => {
+      if (q && !`${c.title} ${c.lecturer ?? ""} ${c.organization ?? ""}`.toLowerCase().includes(q)) return false;
+      if (scope === "live" && c.deleted) return false;
+      if (scope === "premium" && !c.isPremium) return false;
+      if (scope === "deleted" && !c.deleted) return false;
+      return true;
+    });
+    const sorted = [...rows];
+    if (sort === "students") sorted.sort((a, b) => b.enrollmentCount - a.enrollmentCount);
+    else if (sort === "rating") sorted.sort((a, b) => b.ratingAvg - a.ratingAvg);
+    else if (sort === "title") sorted.sort((a, b) => a.title.localeCompare(b.title));
+    else sorted.sort((a, b) => +new Date(b.updatedAt) - +new Date(a.updatedAt));
+    return sorted;
+  }, [courses, query, scope, sort]);
+
+  const safePage = clampPage(page, filtered.length, perPage);
+  const visible = filtered.slice((safePage - 1) * perPage, safePage * perPage);
+
+  const remove = async (c: AdminCourseRow) => {
+    setBusySlug(c.slug);
     try {
-      await del(`/admin/courses/${slug}`);
-      setCourses((p) => p.filter((c) => c.slug !== slug));
-      setToast("Course deleted");
-    } catch (e: any) {
-      setToast(e.message);
+      await del(`/admin/courses/${c.slug}`);
+      // Soft delete on the API side, so mark the row rather than dropping it —
+      // the "Deleted" scope has to still be able to find it.
+      setCourses((p) => p.map((x) => (x.slug === c.slug ? { ...x, deleted: true } : x)));
+      toast.success(`“${c.title}” deleted — student progress is kept`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not delete that course");
+    } finally {
+      setBusySlug(null);
     }
   };
-
-  if (loading) return <p className="page-desc">Loading…</p>;
 
   return (
     <div>
@@ -38,88 +72,166 @@ export default function AdminCourses() {
         <div>
           <h1>Courses</h1>
           <p className="page-desc">
-            {courses.length} course(s) — everything visible on the site comes from here.
+            {courses.length.toLocaleString("en-US")} in the catalogue. Everything visible on the site comes from here.
           </p>
         </div>
-        <Link href="/admin/courses/new" className="admin-btn admin-btn--primary">
-          + New course
-        </Link>
+        <div className="admin-page-head__actions">
+          <Link href="/admin/courses/new" className="admin-btn admin-btn--primary">
+            <Plus size={13} /> New course
+          </Link>
+        </div>
       </div>
 
-      <div className="admin-card" style={{ padding: 0, overflow: "hidden" }}>
+      <div className="admin-toolbar">
+        <span className="admin-search">
+          <Search size={14} />
+          <input
+            className="admin-input"
+            placeholder="Title, lecturer or publisher…"
+            value={query}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setPage(1);
+            }}
+            aria-label="Search courses"
+          />
+        </span>
+        <div className="admin-seg" role="group" aria-label="Filter courses">
+          {[
+            ["live", "Live"],
+            ["premium", "Premium"],
+            ["deleted", "Deleted"],
+            ["all", "All"],
+          ].map(([val, label]) => (
+            <button
+              key={val}
+              type="button"
+              aria-pressed={scope === val}
+              onClick={() => {
+                setScope(val);
+                setPage(1);
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <select
+          className="admin-select"
+          value={sort}
+          onChange={(e) => setSort(e.target.value as Sort)}
+          aria-label="Sort courses"
+        >
+          <option value="updated">Recently updated</option>
+          <option value="students">Most students</option>
+          <option value="rating">Highest rated</option>
+          <option value="title">Title A–Z</option>
+        </select>
+        <span className="admin-toolbar__count">
+          {filtered.length === courses.length ? `${courses.length} total` : `${filtered.length} of ${courses.length}`}
+        </span>
+      </div>
+
+      <div className="admin-card admin-card--flush">
         <table className="admin-table">
           <thead>
             <tr>
-              <th></th>
-              <th>Title</th>
+              <th style={{ width: 46 }} />
+              <th>Course</th>
               <th>Type</th>
-              <th>Sections</th>
-              <th>Rating</th>
-              <th>Students</th>
+              <th className="admin-table__num">Sections</th>
+              <th className="admin-table__num">Rating</th>
+              <th className="admin-table__num">Students</th>
               <th>Updated</th>
-              <th></th>
+              <th />
             </tr>
           </thead>
           <tbody>
-            {courses.length === 0 && (
+            {loading &&
+              Array.from({ length: 6 }).map((_, i) => (
+                <tr key={`s${i}`}>
+                  <td colSpan={8}>
+                    <span className="admin-skeleton" style={{ display: "block", height: 26 }} />
+                  </td>
+                </tr>
+              ))}
+            {!loading && visible.length === 0 && (
               <tr>
-                <td colSpan={8} style={{ textAlign: "center", padding: 24, color: "rgba(255,255,255,0.4)" }}>
-                  No courses yet — create your first one.
+                <td colSpan={8}>
+                  <p className="admin-empty">
+                    {courses.length === 0 ? "No courses yet — create your first one." : "Nothing matches those filters."}
+                  </p>
                 </td>
               </tr>
             )}
-            {courses.map((c) => (
+            {visible.map((c) => (
               <tr key={c.id}>
                 <td>
-                  <div className="h-12 w-9 overflow-hidden rounded bg-surface">
+                  <span className="admin-thumb" style={{ display: "block" }}>
                     {c.thumbnailUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
-                      <img src={c.thumbnailUrl} alt="" className="h-full w-full object-cover" />
+                      <img src={c.thumbnailUrl} alt="" />
                     ) : null}
-                  </div>
+                  </span>
                 </td>
-                <td style={{ maxWidth: 320 }}>
-                  <div style={{ fontWeight: 600, color: "#fff" }} className={c.deleted ? "line-through" : ""}>
-                    {c.title}
-                  </div>
-                  <div style={{ fontSize: 11, color: "rgba(255,255,255,0.45)" }}>
-                    {c.lecturer ?? "—"} · {c.organization ?? "—"}
-                  </div>
+                <td style={{ maxWidth: 340 }}>
+                  <Link href={`/admin/courses/detail?slug=${c.slug}`} className="admin-cell-link">
+                    <span className={`admin-cell-title ${c.deleted ? "admin-strike" : ""}`}>{c.title}</span>
+                    <span className="admin-cell-sub" style={{ display: "block" }}>
+                      {c.lecturer ?? "No lecturer"} · {c.organization ?? "No publisher"}
+                    </span>
+                  </Link>
                 </td>
                 <td>
-                  <span className="admin-badge admin-badge--gray">{c.contentType}</span>
-                  {c.isPremium && <span className="admin-badge admin-badge--accent" style={{ marginLeft: 4 }}>PREMIUM</span>}
-                  {c.deleted && <span className="admin-badge admin-badge--red" style={{ marginLeft: 4 }}>DELETED</span>}
+                  <span className="admin-inline" style={{ gap: 4 }}>
+                    <span className="admin-badge admin-badge--gray">{c.contentType}</span>
+                    {c.isPremium && <span className="admin-badge admin-badge--accent">Premium</span>}
+                    {c.deleted && <span className="admin-badge admin-badge--red">Deleted</span>}
+                  </span>
                 </td>
-                <td>{c.sectionCount}</td>
-                <td>{c.ratingAvg.toFixed(1)}</td>
-                <td>{c.enrollmentCount.toLocaleString()}</td>
-                <td style={{ fontSize: 12, color: "rgba(255,255,255,0.5)" }}>{formatDate(c.updatedAt)}</td>
-                <td style={{ whiteSpace: "nowrap" }}>
-                  <Link href={`/admin/courses/${c.slug}/edit`} className="admin-btn admin-btn--ghost" style={{ marginRight: 6 }}>
-                    Edit
+                <td className="admin-table__num">{c.sectionCount}</td>
+                <td className="admin-table__num">{c.ratingAvg > 0 ? c.ratingAvg.toFixed(1) : "—"}</td>
+                <td className="admin-table__num">{c.enrollmentCount.toLocaleString("en-US")}</td>
+                <td className="admin-table__quiet">{formatDate(c.updatedAt)}</td>
+                <td className="admin-table__actions">
+                  <Link
+                    href={`/admin/courses/${c.slug}/edit`}
+                    className="admin-btn admin-btn--ghost admin-btn--sm"
+                  >
+                    <Pencil size={12} /> Edit
                   </Link>
                   {!c.deleted && (
-                    <button onClick={() => remove(c.slug)} className="admin-btn admin-btn--danger">
-                      Delete
-                    </button>
+                    <ConfirmButton
+                      label="Delete"
+                      question="Delete?"
+                      confirmLabel="Yes, delete"
+                      busy={busySlug === c.slug}
+                      icon={false}
+                      className="admin-btn admin-btn--danger admin-btn--sm"
+                      onConfirm={() => remove(c)}
+                    />
                   )}
+                  <Link
+                    href={`/admin/courses/detail?slug=${c.slug}`}
+                    className="admin-btn admin-btn--quiet admin-btn--icon"
+                    aria-label={`Open ${c.title}`}
+                  >
+                    <ChevronRight size={14} />
+                  </Link>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
+        <Pagination
+          page={safePage}
+          perPage={perPage}
+          total={filtered.length}
+          onPage={setPage}
+          onPerPage={setPerPage}
+          noun="courses"
+        />
       </div>
-
-      {toast && <AdminToast text={toast} />}
-    </div>
-  );
-}
-
-export function AdminToast({ text }: { text: string }) {
-  return (
-    <div className="fixed inset-x-0 bottom-16 z-40 mx-auto w-fit rounded-full bg-surface-raised px-4 py-2 text-xs text-text shadow-lg">
-      {text}
     </div>
   );
 }

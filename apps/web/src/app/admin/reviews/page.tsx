@@ -1,107 +1,180 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { AlertTriangle, Search } from "lucide-react";
 import { del, get } from "@/lib/api";
 import type { AdminReviewRow } from "@/lib/types";
-import { formatDate } from "@/lib/format";
-import { useToast } from "@/lib/useToast";
+import { relativeTime } from "@/lib/metrics";
+import { useAdminToast } from "@/components/admin/AdminToast";
+import ConfirmButton from "@/components/admin/ConfirmButton";
+import ExpandableText from "@/components/admin/ExpandableText";
+import Pagination, { clampPage } from "@/components/admin/Pagination";
 
 export default function AdminReviews() {
+  const toast = useAdminToast();
   const [reviews, setReviews] = useState<AdminReviewRow[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [query, setQuery] = useState("");
+  const [scope, setScope] = useState("all");
   const [busyId, setBusyId] = useState<string | null>(null);
-  const { toast, setToast } = useToast();
+  const [page, setPage] = useState(1);
+  const [perPage, setPerPage] = useState(25);
 
   useEffect(() => {
     get<AdminReviewRow[]>("/admin/reviews")
       .then(setReviews)
-      .catch((e) => setToast(e.message));
-  }, [setToast]);
+      .catch((e) => toast.error(e.message))
+      .finally(() => setLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  const remove = async (id: string) => {
-    if (!confirm("Delete this review and its replies?")) return;
-    setBusyId(id);
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return reviews.filter((r) => {
+      if (q && !`${r.author.name} ${r.author.email} ${r.course.title} ${r.body}`.toLowerCase().includes(q)) return false;
+      if (scope === "spoilers" && !r.containsSpoilers) return false;
+      if (scope === "discussed" && r.replyCount === 0) return false;
+      return true;
+    });
+  }, [reviews, query, scope]);
+
+  const safePage = clampPage(page, filtered.length, perPage);
+  const visible = filtered.slice((safePage - 1) * perPage, safePage * perPage);
+
+  const remove = async (r: AdminReviewRow) => {
+    setBusyId(r.id);
     try {
-      await del(`/admin/reviews/${id}`);
-      setReviews((p) => p.filter((r) => r.id !== id));
-      setToast("Review deleted");
-    } catch (e: any) {
-      setToast(e.message);
+      await del(`/admin/reviews/${r.id}`);
+      setReviews((p) => p.filter((x) => x.id !== r.id));
+      toast.success(`Review by ${r.author.name} deleted`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not delete that review");
     } finally {
       setBusyId(null);
     }
   };
 
+  const spoilers = reviews.filter((r) => r.containsSpoilers).length;
+
   return (
     <div>
       <div className="admin-page-head">
         <div>
-          <h1>Reviews &amp; Discussion</h1>
+          <h1>Reviews &amp; discussion</h1>
           <p className="page-desc">
-            {reviews.length} recent review(s) — remove spam, spoilers or abusive content.
+            Remove spam, spoilers or abusive content. Deleting a review takes its replies with it.
           </p>
         </div>
       </div>
 
-      <div className="admin-card" style={{ padding: 0, overflow: "hidden" }}>
-        {reviews.length === 0 && (
-          <p style={{ padding: 24, textAlign: "center", color: "rgba(255,255,255,0.4)", fontSize: 13 }}>
-            No reviews yet.
+      <div className="admin-toolbar">
+        <span className="admin-search">
+          <Search size={14} />
+          <input
+            className="admin-input"
+            placeholder="Author, course or review text…"
+            value={query}
+            onChange={(e) => {
+              setQuery(e.target.value);
+              setPage(1);
+            }}
+            aria-label="Search reviews"
+          />
+        </span>
+        <div className="admin-seg" role="group" aria-label="Filter reviews">
+          {[
+            ["all", "All"],
+            ["spoilers", `Spoilers${spoilers ? ` (${spoilers})` : ""}`],
+            ["discussed", "Has replies"],
+          ].map(([val, label]) => (
+            <button
+              key={val}
+              type="button"
+              aria-pressed={scope === val}
+              onClick={() => {
+                setScope(val);
+                setPage(1);
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        <span className="admin-toolbar__count">
+          {filtered.length === reviews.length ? `${reviews.length} loaded` : `${filtered.length} of ${reviews.length}`}
+        </span>
+      </div>
+
+      <div className="admin-card admin-card--flush">
+        {loading &&
+          Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="admin-row">
+              <span className="admin-skeleton" style={{ height: 44, flex: 1 }} />
+            </div>
+          ))}
+        {!loading && visible.length === 0 && (
+          <p className="admin-empty">
+            {reviews.length === 0 ? "No reviews yet." : "Nothing matches those filters."}
           </p>
         )}
-        {reviews.map((r) => (
-          <div
-            key={r.id}
-            style={{
-              display: "flex",
-              gap: 12,
-              padding: "12px 16px",
-              borderBottom: "1px solid rgba(255,255,255,0.06)",
-            }}
-          >
-            <div
-              className="h-8 w-8 shrink-0 overflow-hidden rounded-full bg-surface"
-              style={{ width: 32, height: 32 }}
-            >
+        {visible.map((r) => (
+          <div key={r.id} className="admin-row admin-row--top">
+            <span className="admin-avatar">
               {r.author.avatarUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={r.author.avatarUrl} alt="" className="h-full w-full object-cover" />
+                <img src={r.author.avatarUrl} alt="" />
               ) : (
-                <div className="flex h-full w-full items-center justify-center text-sm font-bold text-accent">
-                  {r.author.name.charAt(0).toUpperCase()}
-                </div>
+                r.author.name.charAt(0).toUpperCase()
               )}
-            </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                <span style={{ fontWeight: 600, fontSize: 13, color: "#fff" }}>{r.author.name}</span>
-                <span style={{ fontSize: 11, color: "rgba(255,255,255,0.4)" }}>on</span>
-                <span style={{ fontSize: 12, color: "#f59e0b" }}>{r.course.title}</span>
-                {r.containsSpoilers && <span className="admin-badge admin-badge--gray">SPOILERS</span>}
+            </span>
+            <div className="admin-row__main">
+              <div className="admin-inline" style={{ gap: 7, flexWrap: "wrap" }}>
+                <Link href={`/admin/users/detail?id=${r.author.id}`} className="admin-row__title">
+                  {r.author.name}
+                </Link>
+                <span className="admin-dim">on</span>
+                <Link href={`/admin/courses/detail?slug=${r.course.slug}`} className="admin-cell-link" style={{ fontSize: 12 }}>
+                  {r.course.title}
+                </Link>
+                {r.containsSpoilers && (
+                  <span className="admin-status admin-status--warn">
+                    <AlertTriangle size={11} /> Spoilers
+                  </span>
+                )}
               </div>
-              <p style={{ fontSize: 13, color: "rgba(255,255,255,0.8)", margin: "4px 0", lineHeight: 1.5 }}>
-                {r.body}
-              </p>
-              <div style={{ fontSize: 11, color: "rgba(255,255,255,0.4)" }}>
-                {formatDate(r.createdAt)} · ↑ {r.upvoteCount} · {r.replyCount} repl{r.replyCount === 1 ? "y" : "ies"}
+              <ExpandableText text={r.body} lines={3} className="admin-row__body" />
+              <div className="admin-row__meta">
+                {relativeTime(r.createdAt)} · {r.upvoteCount} upvote{r.upvoteCount === 1 ? "" : "s"} · {r.replyCount}{" "}
+                repl{r.replyCount === 1 ? "y" : "ies"} · {r.author.email}
               </div>
             </div>
-            <button
-              onClick={() => remove(r.id)}
-              disabled={busyId === r.id}
-              className="admin-btn admin-btn--danger"
-              style={{ alignSelf: "flex-start", flexShrink: 0 }}
-            >
-              {busyId === r.id ? "…" : "Delete"}
-            </button>
+            <div className="admin-row__actions">
+              <ConfirmButton
+                label="Delete"
+                question="Delete this review and its replies?"
+                confirmLabel="Yes, delete"
+                busy={busyId === r.id}
+                icon={false}
+                className="admin-btn admin-btn--danger admin-btn--sm"
+                onConfirm={() => remove(r)}
+              />
+            </div>
           </div>
         ))}
+        <Pagination
+          page={safePage}
+          perPage={perPage}
+          total={filtered.length}
+          onPage={setPage}
+          onPerPage={setPerPage}
+          noun="reviews"
+        />
       </div>
 
-      {toast && (
-        <div className="fixed inset-x-0 bottom-16 z-40 mx-auto w-fit rounded-full bg-surface-raised px-4 py-2 text-xs text-text shadow-lg">
-          {toast}
-        </div>
-      )}
+      <p className="admin-section-head__hint" style={{ marginTop: 10 }}>
+        This list holds the 100 most recent reviews on the platform — older ones are not loaded.
+      </p>
     </div>
   );
 }

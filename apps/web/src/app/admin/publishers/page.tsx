@@ -1,65 +1,125 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
+import { Plus, Search, X } from "lucide-react";
+import { useSearchParams } from "next/navigation";
 import { del, get, post, patch } from "@/lib/api";
 import type { AdminPublisherRow } from "@/lib/types";
-import { useToast } from "@/lib/useToast";
+import { useAdminToast } from "@/components/admin/AdminToast";
+import ConfirmButton from "@/components/admin/ConfirmButton";
+import ExpandableText from "@/components/admin/ExpandableText";
 
-export default function AdminPublishers() {
+const ORG_TYPES = [
+  ["publisher", "Publisher"],
+  ["university", "University"],
+  ["company", "Company"],
+] as const;
+
+export default function AdminPublishersPage() {
+  return (
+    <Suspense fallback={<div className="admin-skeleton" style={{ height: 180, display: "block" }} />}>
+      <AdminPublishers />
+    </Suspense>
+  );
+}
+
+function AdminPublishers() {
+  const toast = useAdminToast();
+  const wantsNew = useSearchParams().get("new") === "1";
   const [rows, setRows] = useState<AdminPublisherRow[]>([]);
-  const [editing, setEditing] = useState<AdminPublisherRow | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [query, setQuery] = useState("");
+  const [typeFilter, setTypeFilter] = useState("all");
+  const [editing, setEditing] = useState<AdminPublisherRow | null | undefined>(undefined);
   const [name, setName] = useState("");
   const [orgType, setOrgType] = useState("publisher");
   const [logoUrl, setLogoUrl] = useState("");
   const [description, setDescription] = useState("");
-  const { toast, setToast } = useToast();
+  const [saving, setSaving] = useState(false);
+  const [busyId, setBusyId] = useState<string | null>(null);
 
   useEffect(() => {
     get<AdminPublisherRow[]>("/admin/publishers")
       .then(setRows)
-      .catch((e) => setToast(e.message));
-  }, [setToast]);
+      .catch((e) => toast.error(e.message))
+      .finally(() => setLoading(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-  const startEdit = (p: AdminPublisherRow | null) => {
+  useEffect(() => {
+    if (wantsNew) open(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [wantsNew]);
+
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return rows.filter((p) => {
+      if (q && !`${p.name} ${p.description ?? ""}`.toLowerCase().includes(q)) return false;
+      if (typeFilter !== "all" && p.orgType !== typeFilter) return false;
+      return true;
+    });
+  }, [rows, query, typeFilter]);
+
+  function open(p: AdminPublisherRow | null) {
     setEditing(p);
     setName(p?.name ?? "");
     setOrgType(p?.orgType ?? "publisher");
     setLogoUrl(p?.logoUrl ?? "");
     setDescription(p?.description ?? "");
-  };
+  }
+  const close = () => setEditing(undefined);
 
   const save = async () => {
-    if (!name.trim()) return setToast("Name is required");
+    if (!name.trim()) return toast.error("A name is required");
+    setSaving(true);
+    const body = { name, orgType, logoUrl: logoUrl || null, description: description || null };
     try {
-      const body = { name, orgType, logoUrl: logoUrl || null, description: description || null };
       if (editing) {
         const res = await patch<{ id: string; name: string }>(`/admin/publishers/${editing.id}`, body);
         setRows((p) =>
-          p.map((x) => (x.id === res.id ? { ...x, name: res.name, orgType, logoUrl: logoUrl || null, description: description || null } : x)),
+          p.map((x) =>
+            x.id === res.id
+              ? { ...x, name: res.name, orgType, logoUrl: logoUrl || null, description: description || null }
+              : x,
+          ),
         );
-        setToast("Publisher updated");
+        toast.success(`${res.name} updated`);
       } else {
         const res = await post<{ id: string; name: string; slug: string }>("/admin/publishers", body);
         setRows((p) => [
           ...p,
-          { id: res.id, name: res.name, slug: res.slug, orgType, logoUrl: logoUrl || null, description: description || null, subscribers: 0, courseCount: 0, createdAt: new Date().toISOString() },
+          {
+            id: res.id,
+            name: res.name,
+            slug: res.slug,
+            orgType,
+            logoUrl: logoUrl || null,
+            description: description || null,
+            subscribers: 0,
+            courseCount: 0,
+            createdAt: new Date().toISOString(),
+          },
         ]);
-        setToast("Publisher created");
+        toast.success(`${res.name} added`);
       }
-      startEdit(null);
-    } catch (e: any) {
-      setToast(e.message);
+      close();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not save that publisher");
+    } finally {
+      setSaving(false);
     }
   };
 
   const remove = async (p: AdminPublisherRow) => {
-    if (!confirm(`Delete publisher "${p.name}"?`)) return;
+    setBusyId(p.id);
     try {
       await del(`/admin/publishers/${p.id}`);
       setRows((rows) => rows.filter((x) => x.id !== p.id));
-      setToast("Publisher deleted");
-    } catch (e: any) {
-      setToast(e.message);
+      toast.success(`${p.name} deleted`);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not delete that publisher");
+    } finally {
+      setBusyId(null);
     }
   };
 
@@ -68,95 +128,146 @@ export default function AdminPublishers() {
       <div className="admin-page-head">
         <div>
           <h1>Publishers</h1>
-          <p className="page-desc">Schools, companies and channels — {rows.length} on the platform.</p>
+          <p className="page-desc">
+            Schools, companies and channels that own courses — {rows.length.toLocaleString("en-US")} on the platform.
+          </p>
         </div>
-        {!editing && (
-          <button className="admin-btn admin-btn--primary" onClick={() => startEdit(null)}>
-            + New publisher
+        <div className="admin-page-head__actions">
+          <button type="button" className="admin-btn admin-btn--primary" onClick={() => open(null)}>
+            <Plus size={13} /> New publisher
           </button>
-        )}
+        </div>
       </div>
 
-      {editing !== null && (
-        <div className="admin-card">
-          <h3>{editing ? `Edit: ${editing.name}` : "New publisher"}</h3>
-          <div style={{ display: "grid", gap: 10, gridTemplateColumns: "1fr 1fr", marginBottom: 12 }}>
-            <input className="admin-input" placeholder="Name *" value={name} onChange={(e) => setName(e.target.value)} />
-            <select className="admin-select" value={orgType} onChange={(e) => setOrgType(e.target.value)}>
-              <option value="publisher">Publisher</option>
-              <option value="university">University</option>
-              <option value="company">Company</option>
-            </select>
-            <input className="admin-input" placeholder="Logo URL" value={logoUrl} onChange={(e) => setLogoUrl(e.target.value)} />
-            <input
-              className="admin-input"
-              placeholder="Description"
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-            />
-          </div>
-          <div style={{ display: "flex", gap: 8 }}>
-            <button className="admin-btn admin-btn--primary" onClick={save}>
-              Save
+      {editing !== undefined && (
+        <div className="admin-panel">
+          <div className="admin-panel__head">
+            <span className="admin-panel__title">{editing ? `Edit ${editing.name}` : "New publisher"}</span>
+            <button type="button" className="admin-btn admin-btn--quiet admin-btn--icon" onClick={close} aria-label="Close">
+              <X size={14} />
             </button>
-            <button className="admin-btn admin-btn--ghost" onClick={() => startEdit(null)}>
+          </div>
+          <div className="admin-form-grid">
+            <label className="admin-field">
+              <span className="admin-label">Name</span>
+              <input className="admin-input" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
+            </label>
+            <label className="admin-field">
+              <span className="admin-label">Type</span>
+              <select className="admin-select" value={orgType} onChange={(e) => setOrgType(e.target.value)}>
+                {ORG_TYPES.map(([val, label]) => (
+                  <option key={val} value={val}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label className="admin-field admin-field--wide">
+              <span className="admin-label">Logo URL</span>
+              <input
+                className="admin-input"
+                placeholder="https://…"
+                value={logoUrl}
+                onChange={(e) => setLogoUrl(e.target.value)}
+              />
+            </label>
+            <label className="admin-field admin-field--wide">
+              <span className="admin-label">Description</span>
+              <textarea
+                className="admin-textarea"
+                value={description}
+                onChange={(e) => setDescription(e.target.value)}
+              />
+            </label>
+          </div>
+          <div className="admin-form-actions">
+            <button type="button" className="admin-btn admin-btn--primary" onClick={save} disabled={saving}>
+              {saving ? "Saving…" : editing ? "Save changes" : "Create publisher"}
+            </button>
+            <button type="button" className="admin-btn admin-btn--ghost" onClick={close}>
               Cancel
             </button>
           </div>
         </div>
       )}
 
-      <div className="admin-card" style={{ padding: 0, overflow: "hidden" }}>
-        {rows.length === 0 && (
-          <p style={{ padding: 24, textAlign: "center", color: "rgba(255,255,255,0.4)", fontSize: 13 }}>
-            No publishers yet.
-          </p>
+      <div className="admin-toolbar">
+        <span className="admin-search">
+          <Search size={14} />
+          <input
+            className="admin-input"
+            placeholder="Name or description…"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            aria-label="Search publishers"
+          />
+        </span>
+        <div className="admin-seg" role="group" aria-label="Filter by type">
+          <button type="button" aria-pressed={typeFilter === "all"} onClick={() => setTypeFilter("all")}>
+            All
+          </button>
+          {ORG_TYPES.map(([val, label]) => (
+            <button key={val} type="button" aria-pressed={typeFilter === val} onClick={() => setTypeFilter(val)}>
+              {label}
+            </button>
+          ))}
+        </div>
+        <span className="admin-toolbar__count">
+          {filtered.length === rows.length ? `${rows.length} total` : `${filtered.length} of ${rows.length}`}
+        </span>
+      </div>
+
+      <div className="admin-card admin-card--flush">
+        {loading &&
+          Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="admin-row">
+              <span className="admin-skeleton" style={{ height: 34, flex: 1 }} />
+            </div>
+          ))}
+        {!loading && filtered.length === 0 && (
+          <p className="admin-empty">{rows.length === 0 ? "No publishers yet." : "Nothing matches those filters."}</p>
         )}
-        {rows.map((p) => (
-          <div
-            key={p.id}
-            style={{
-              display: "flex",
-              gap: 12,
-              alignItems: "center",
-              padding: "12px 16px",
-              borderBottom: "1px solid rgba(255,255,255,0.06)",
-            }}
-          >
-            <div className="h-9 w-9 shrink-0 overflow-hidden rounded bg-surface" style={{ width: 36, height: 36 }}>
+        {filtered.map((p) => (
+          <div key={p.id} className="admin-row admin-row--top">
+            <span className="admin-avatar admin-avatar--sq">
               {p.logoUrl ? (
                 // eslint-disable-next-line @next/next/no-img-element
-                <img src={p.logoUrl} alt="" className="h-full w-full object-contain" />
+                <img src={p.logoUrl} alt="" style={{ objectFit: "contain" }} />
               ) : (
-                <div className="flex h-full w-full items-center justify-center text-sm font-bold text-accent">
-                  {p.name.charAt(0).toUpperCase()}
-                </div>
+                p.name.charAt(0).toUpperCase()
+              )}
+            </span>
+            <div className="admin-row__main">
+              <div className="admin-inline" style={{ gap: 7 }}>
+                <span className="admin-row__title">{p.name}</span>
+                <span className="admin-badge admin-badge--gray">{p.orgType}</span>
+                <span className="admin-badge admin-badge--gray">
+                  {p.courseCount} course{p.courseCount === 1 ? "" : "s"}
+                </span>
+              </div>
+              {p.description ? (
+                <ExpandableText text={p.description} className="admin-row__body" />
+              ) : (
+                <div className="admin-row__meta">No description yet</div>
               )}
             </div>
-            <div style={{ flex: 1, minWidth: 0 }}>
-              <div style={{ fontWeight: 600, fontSize: 13, color: "#fff" }}>
-                {p.name} <span className="admin-badge admin-badge--gray">{p.orgType.toUpperCase()}</span>
-              </div>
-              <div style={{ fontSize: 11, color: "rgba(255,255,255,0.45)" }}>
-                {p.courseCount} course(s)
-                {p.description ? ` · ${p.description.slice(0, 70)}` : ""}
-              </div>
+            <div className="admin-row__actions">
+              <button type="button" className="admin-btn admin-btn--ghost admin-btn--sm" onClick={() => open(p)}>
+                Edit
+              </button>
+              <ConfirmButton
+                label="Delete"
+                question={`Delete ${p.name}?`}
+                confirmLabel="Yes, delete"
+                busy={busyId === p.id}
+                icon={false}
+                className="admin-btn admin-btn--danger admin-btn--sm"
+                onConfirm={() => remove(p)}
+              />
             </div>
-            <button className="admin-btn admin-btn--ghost" onClick={() => startEdit(p)}>
-              Edit
-            </button>
-            <button className="admin-btn admin-btn--danger" onClick={() => remove(p)}>
-              Delete
-            </button>
           </div>
         ))}
       </div>
-
-      {toast && (
-        <div className="fixed inset-x-0 bottom-16 z-40 mx-auto w-fit rounded-full bg-surface-raised px-4 py-2 text-xs text-text shadow-lg">
-          {toast}
-        </div>
-      )}
     </div>
   );
 }

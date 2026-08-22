@@ -1,28 +1,24 @@
 "use client";
 
 import Link from "next/link";
-import { useAuth } from "@/lib/auth";
+import { ArrowLeft } from "lucide-react";
 import { CourseForm } from "@/components/admin/CourseForm";
 
+/** The admin layout already gates on a staff session, so this page only frames
+ *  the form. */
 export default function NewCoursePage() {
-  const { user, token } = useAuth();
-
-  if (!token) {
-    return (
-      <div className="p-4 text-center text-sm text-muted">
-        <Link href="/auth?next=/admin/courses/new" className="font-medium text-accent">Sign in</Link> to access the admin panel.
-      </div>
-    );
-  }
-  if (user && !user.isStaff) {
-    return <div className="p-4 text-center text-sm text-muted">Admin access is limited to staff accounts.</div>;
-  }
-
   return (
     <div>
-      <div className="border-b border-border px-4 py-3">
-        <Link href="/admin" className="text-xs font-medium text-accent">← Admin</Link>
-        <h1 className="mt-0.5 text-lg font-bold text-text">New course</h1>
+      <Link href="/admin/courses" className="admin-back">
+        <ArrowLeft size={13} /> Courses
+      </Link>
+      <div className="admin-page-head">
+        <div>
+          <h1>New course</h1>
+          <p className="page-desc">
+            Title and description are required. Everything else can be filled in later from the edit screen.
+          </p>
+        </div>
       </div>
       <CourseForm />
     </div>

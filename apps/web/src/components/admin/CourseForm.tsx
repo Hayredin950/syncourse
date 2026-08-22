@@ -2,8 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { AlertTriangle, Plus, Trash2, X } from "lucide-react";
 import { get, post, patch } from "@/lib/api";
 import type { AdminCourseDetail, AdminSection } from "@/lib/types";
+import { useAdminToast } from "./AdminToast";
 
 const CONTENT_TYPES = ["course", "mini-course", "cheat-sheet", "roadmap"];
 const LESSON_TYPES = ["video", "article", "quiz", "notes"];
@@ -15,6 +17,7 @@ interface Props {
 
 export function CourseForm({ initial }: Props) {
   const router = useRouter();
+  const toast = useAdminToast();
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
   const [busyField, setBusyField] = useState<"thumb" | "banner" | null>(null);
@@ -142,11 +145,13 @@ export function CourseForm({ initial }: Props) {
     try {
       if (initial) {
         await patch(`/admin/courses/${initial.slug}`, body);
+        toast.success(`“${body.title}” saved`);
+        router.push(`/admin/courses/detail?slug=${initial.slug}`);
       } else {
         const created = await post<{ slug: string }>("/admin/courses", body);
-        router.replace(`/admin/courses/${created.slug}/edit`);
+        toast.success(`“${body.title}” created`);
+        router.push(`/admin/courses/detail?slug=${created.slug}`);
       }
-      router.push("/admin");
       router.refresh();
     } catch (e: any) {
       setError(e?.message || "Save failed");
@@ -154,250 +159,428 @@ export function CourseForm({ initial }: Props) {
     }
   };
 
-  const inputCls =
-    "w-full rounded-lg border border-border bg-bg px-3 py-2 text-sm text-text placeholder:text-dim focus:border-accent focus:outline-none";
-  const labelCls = "mb-1 block text-[11px] font-semibold uppercase tracking-wide text-dim";
-
   return (
-    <div className="space-y-4 p-4">
-      <div>
-        <label className={labelCls}>Title *</label>
-        <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="e.g. Complete React Course" className={inputCls} />
-      </div>
-
-      <div>
-        <label className={labelCls}>Description *</label>
-        <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={4} placeholder="What will students learn?" className={inputCls} />
-      </div>
-
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className={labelCls}>Content type</label>
-          <select value={contentType} onChange={(e) => setContentType(e.target.value)} className={inputCls}>
-            {CONTENT_TYPES.map((t) => (
-              <option key={t} value={t}>{t}</option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label className={labelCls}>Language</label>
-          <input value={language} onChange={(e) => setLanguage(e.target.value)} className={inputCls} />
-        </div>
-      </div>
-
-      <div>
-        <label className={labelCls}>Level</label>
-        <input value={levelName} onChange={(e) => setLevelName(e.target.value)} list="adm-levels" placeholder="Beginner / Intermediate / Advanced" className={inputCls} />
-        <datalist id="adm-levels">{suggestions.levels.map((l) => <option key={l} value={l} />)}</datalist>
-      </div>
-
-      <div>
-        <label className={labelCls}>Lecturer</label>
-        <input value={lecturerName} onChange={(e) => setLecturerName(e.target.value)} list="adm-lecturers" placeholder="Instructor name" className={inputCls} />
-        <datalist id="adm-lecturers">{suggestions.lecturers.map((l) => <option key={l} value={l} />)}</datalist>
-      </div>
-
-      <div>
-        <label className={labelCls}>Organization / channel</label>
-        <input value={organizationName} onChange={(e) => setOrganizationName(e.target.value)} list="adm-orgs" placeholder="Channel or school name" className={inputCls} />
-        <datalist id="adm-orgs">{suggestions.orgs.map((l) => <option key={l} value={l} />)}</datalist>
-      </div>
-
-      <div>
-        <label className={labelCls}>Categories (comma separated)</label>
-        <input value={categories} onChange={(e) => setCategories(e.target.value)} list="adm-cats" placeholder="Programming, AI, Design…" className={inputCls} />
-        <datalist id="adm-cats">{suggestions.categories.map((l) => <option key={l} value={l} />)}</datalist>
-      </div>
-
-      <div>
-        <label className={labelCls}>Tags (comma separated)</label>
-        <input value={tags} onChange={(e) => setTags(e.target.value)} placeholder="react, hooks, frontend…" className={inputCls} />
-      </div>
-
-      <div>
-        <label className={labelCls}>Target audience (comma separated)</label>
-        <input value={audience} onChange={(e) => setAudience(e.target.value)} placeholder="beginners, developers…" className={inputCls} />
-      </div>
-
-      <div>
-        <label className={labelCls}>Prerequisites</label>
-        <input value={prerequisites} onChange={(e) => setPrerequisites(e.target.value)} placeholder="e.g. Basic JavaScript" className={inputCls} />
-      </div>
-
-      <div className="grid grid-cols-2 gap-3">
-        <div>
-          <label className={labelCls}>Original price ($)</label>
-          <input value={originalPrice} onChange={(e) => setOriginalPrice(e.target.value)} inputMode="decimal" placeholder="49.99" className={inputCls} />
-        </div>
-        <div className="flex items-end gap-3 pb-1">
-          <label className="flex items-center gap-1.5 text-xs text-muted">
-            <input type="checkbox" checked={isPremium} onChange={(e) => setIsPremium(e.target.checked)} className="accent-accent" />
-            Premium
+    <div className="admin-stack">
+      <div className="admin-card">
+        <h3>Basics</h3>
+        <div className="admin-form-grid">
+          <label className="admin-field admin-field--wide">
+            <span className="admin-label">Title</span>
+            <input
+              className="admin-input admin-input--full"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="e.g. Complete React Course"
+            />
           </label>
-          <label className="flex items-center gap-1.5 text-xs text-muted">
-            <input type="checkbox" checked={isFeatured} onChange={(e) => setIsFeatured(e.target.checked)} className="accent-accent" />
-            Featured
+          <label className="admin-field admin-field--wide">
+            <span className="admin-label">Description</span>
+            <textarea
+              className="admin-textarea"
+              rows={4}
+              value={description}
+              onChange={(e) => setDescription(e.target.value)}
+              placeholder="What will students learn?"
+            />
+          </label>
+          <label className="admin-field">
+            <span className="admin-label">Content type</span>
+            <select
+              className="admin-select admin-input--full"
+              value={contentType}
+              onChange={(e) => setContentType(e.target.value)}
+            >
+              {CONTENT_TYPES.map((t) => (
+                <option key={t} value={t}>
+                  {t}
+                </option>
+              ))}
+            </select>
+          </label>
+          <label className="admin-field">
+            <span className="admin-label">Language</span>
+            <input
+              className="admin-input admin-input--full"
+              value={language}
+              onChange={(e) => setLanguage(e.target.value)}
+            />
           </label>
         </div>
       </div>
 
-      {/* media */}
-      <div className="rounded-lg border border-border bg-surface p-3">
-        <div className="mb-2 text-[11px] font-semibold uppercase tracking-wide text-dim">Cover image</div>
-        <input value={thumbnailUrl} onChange={(e) => setThumbnailUrl(e.target.value)} placeholder="https://… image URL" className={inputCls} />
-        <div className="mt-2 flex items-center gap-2">
-          <button onClick={() => thumbRef.current?.click()} disabled={busyField !== null} className="rounded-full border border-border px-3 py-1.5 text-xs text-muted hover:text-text disabled:opacity-40">
+      <div className="admin-card">
+        <h3>Attribution</h3>
+        <div className="admin-form-grid">
+          <label className="admin-field">
+            <span className="admin-label">Level</span>
+            <input
+              className="admin-input admin-input--full"
+              value={levelName}
+              onChange={(e) => setLevelName(e.target.value)}
+              list="adm-levels"
+              placeholder="Beginner / Intermediate / Advanced"
+            />
+            <datalist id="adm-levels">
+              {suggestions.levels.map((l) => (
+                <option key={l} value={l} />
+              ))}
+            </datalist>
+          </label>
+          <label className="admin-field">
+            <span className="admin-label">Lecturer</span>
+            <input
+              className="admin-input admin-input--full"
+              value={lecturerName}
+              onChange={(e) => setLecturerName(e.target.value)}
+              list="adm-lecturers"
+              placeholder="Instructor name"
+            />
+            <datalist id="adm-lecturers">
+              {suggestions.lecturers.map((l) => (
+                <option key={l} value={l} />
+              ))}
+            </datalist>
+          </label>
+          <label className="admin-field">
+            <span className="admin-label">Publisher or channel</span>
+            <input
+              className="admin-input admin-input--full"
+              value={organizationName}
+              onChange={(e) => setOrganizationName(e.target.value)}
+              list="adm-orgs"
+              placeholder="Channel or school name"
+            />
+            <datalist id="adm-orgs">
+              {suggestions.orgs.map((l) => (
+                <option key={l} value={l} />
+              ))}
+            </datalist>
+          </label>
+          <label className="admin-field">
+            <span className="admin-label">Categories</span>
+            <input
+              className="admin-input admin-input--full"
+              value={categories}
+              onChange={(e) => setCategories(e.target.value)}
+              list="adm-cats"
+              placeholder="Programming, AI, Design…"
+            />
+            <datalist id="adm-cats">
+              {suggestions.categories.map((l) => (
+                <option key={l} value={l} />
+              ))}
+            </datalist>
+            <span className="admin-field__hint">Comma separated. Existing names autocomplete.</span>
+          </label>
+        </div>
+      </div>
+
+      <div className="admin-card">
+        <h3>Positioning &amp; pricing</h3>
+        <div className="admin-form-grid">
+          <label className="admin-field">
+            <span className="admin-label">Tags</span>
+            <input
+              className="admin-input admin-input--full"
+              value={tags}
+              onChange={(e) => setTags(e.target.value)}
+              placeholder="react, hooks, frontend…"
+            />
+          </label>
+          <label className="admin-field">
+            <span className="admin-label">Target audience</span>
+            <input
+              className="admin-input admin-input--full"
+              value={audience}
+              onChange={(e) => setAudience(e.target.value)}
+              placeholder="beginners, developers…"
+            />
+          </label>
+          <label className="admin-field">
+            <span className="admin-label">Prerequisites</span>
+            <input
+              className="admin-input admin-input--full"
+              value={prerequisites}
+              onChange={(e) => setPrerequisites(e.target.value)}
+              placeholder="e.g. Basic JavaScript"
+            />
+          </label>
+          <label className="admin-field">
+            <span className="admin-label">Original price ($)</span>
+            <input
+              className="admin-input admin-input--full"
+              value={originalPrice}
+              onChange={(e) => setOriginalPrice(e.target.value)}
+              inputMode="decimal"
+              placeholder="49.99"
+            />
+          </label>
+          <div className="admin-field admin-field--wide">
+            <span className="admin-label">Visibility</span>
+            <div className="admin-inline" style={{ gap: 16 }}>
+              <label className="admin-inline" style={{ gap: 7, fontSize: 12.5, cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  className="admin-check"
+                  checked={isPremium}
+                  onChange={(e) => setIsPremium(e.target.checked)}
+                />
+                Premium only
+              </label>
+              <label className="admin-inline" style={{ gap: 7, fontSize: 12.5, cursor: "pointer" }}>
+                <input
+                  type="checkbox"
+                  className="admin-check"
+                  checked={isFeatured}
+                  onChange={(e) => setIsFeatured(e.target.checked)}
+                />
+                Featured on the home page
+              </label>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className="admin-card">
+        <h3>Media</h3>
+        <div className="admin-form-grid">
+          <label className="admin-field admin-field--wide">
+            <span className="admin-label">Cover image</span>
+            <input
+              className="admin-input admin-input--full"
+              value={thumbnailUrl}
+              onChange={(e) => setThumbnailUrl(e.target.value)}
+              placeholder="https://… image URL"
+            />
+          </label>
+        </div>
+        <div className="admin-inline" style={{ marginTop: -6, marginBottom: 14 }}>
+          <button
+            type="button"
+            className="admin-btn admin-btn--ghost admin-btn--sm"
+            onClick={() => thumbRef.current?.click()}
+            disabled={busyField !== null}
+          >
             {busyField === "thumb" ? "Uploading…" : "Upload image"}
           </button>
           {thumbnailUrl && (
-            <span className="relative inline-flex">
-              <img src={thumbnailUrl} alt="thumb" className="h-10 w-8 rounded object-cover" />
+            <span className="admin-preview">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={thumbnailUrl} alt="Cover preview" style={{ width: 32, height: 42 }} />
               <button
                 type="button"
+                className="admin-preview__x"
                 title="Remove cover"
+                aria-label="Remove cover"
                 onClick={() => setThumbnailUrl("")}
-                className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-danger text-[10px] leading-none text-white"
               >
-                ✕
+                <X size={10} />
               </button>
             </span>
           )}
         </div>
-        <input ref={thumbRef} type="file" accept="image/*" className="hidden" onChange={(e) => e.target.files?.[0] && uploadImage(e.target.files[0], "thumb")} />
+        <input ref={thumbRef} type="file" accept="image/*" className="admin-sr" onChange={(e) => e.target.files?.[0] && uploadImage(e.target.files[0], "thumb")} />
 
-        <div className="mt-3 mb-1 text-[11px] font-semibold uppercase tracking-wide text-dim">Banner (optional)</div>
-        <input value={bannerUrl} onChange={(e) => setBannerUrl(e.target.value)} placeholder="https://… banner URL" className={inputCls} />
-        <div className="mt-2 flex items-center gap-2">
-          <button onClick={() => bannerRef.current?.click()} disabled={busyField !== null} className="rounded-full border border-border px-3 py-1.5 text-xs text-muted hover:text-text disabled:opacity-40">
+        <div className="admin-form-grid">
+          <label className="admin-field admin-field--wide">
+            <span className="admin-label">Banner</span>
+            <input
+              className="admin-input admin-input--full"
+              value={bannerUrl}
+              onChange={(e) => setBannerUrl(e.target.value)}
+              placeholder="https://… banner URL"
+            />
+          </label>
+        </div>
+        <div className="admin-inline" style={{ marginTop: -6, marginBottom: 14 }}>
+          <button
+            type="button"
+            className="admin-btn admin-btn--ghost admin-btn--sm"
+            onClick={() => bannerRef.current?.click()}
+            disabled={busyField !== null}
+          >
             {busyField === "banner" ? "Uploading…" : "Upload banner"}
           </button>
           {bannerUrl && (
-            <span className="relative inline-flex">
-              <img src={bannerUrl} alt="banner" className="h-8 w-14 rounded object-cover" />
+            <span className="admin-preview">
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={bannerUrl} alt="Banner preview" style={{ width: 56, height: 32 }} />
               <button
                 type="button"
+                className="admin-preview__x"
                 title="Remove banner"
+                aria-label="Remove banner"
                 onClick={() => setBannerUrl("")}
-                className="absolute -right-1.5 -top-1.5 flex h-4 w-4 items-center justify-center rounded-full bg-danger text-[10px] leading-none text-white"
               >
-                ✕
+                <X size={10} />
               </button>
             </span>
           )}
         </div>
-        <input ref={bannerRef} type="file" accept="image/*" className="hidden" onChange={(e) => e.target.files?.[0] && uploadImage(e.target.files[0], "banner")} />
+        <input ref={bannerRef} type="file" accept="image/*" className="admin-sr" onChange={(e) => e.target.files?.[0] && uploadImage(e.target.files[0], "banner")} />
+
+        <div className="admin-form-grid" style={{ marginBottom: 0 }}>
+          <label className="admin-field admin-field--wide">
+            <span className="admin-label">Preview video URL</span>
+            <input
+              className="admin-input admin-input--full"
+              value={previewVideoUrl}
+              onChange={(e) => setPreviewVideoUrl(e.target.value)}
+              placeholder="https://… mp4 or stream"
+            />
+            <span className="admin-field__hint">Optional. Plays on the course page before enrolment.</span>
+          </label>
+        </div>
       </div>
 
-      <div>
-        <label className={labelCls}>Preview video URL (optional)</label>
-        <input value={previewVideoUrl} onChange={(e) => setPreviewVideoUrl(e.target.value)} placeholder="https://… mp4 or stream" className={inputCls} />
-      </div>
-
-      {/* curriculum */}
-      <div>
-        <div className="mb-2 flex items-center justify-between">
-          <span className="text-[11px] font-semibold uppercase tracking-wide text-dim">Curriculum</span>
+      <div className="admin-card">
+        <div className="admin-panel__head">
+          <span className="admin-panel__title">Curriculum</span>
           <button
+            type="button"
+            className="admin-btn admin-btn--sm"
             onClick={() => setSections((p) => [...p, { title: "", lessons: [{ ...emptyLesson }] }])}
-            className="rounded-full bg-accent px-3 py-1 text-xs font-bold text-black"
           >
-            + Section
+            <Plus size={12} /> Add section
           </button>
         </div>
-        <div className="space-y-3">
+        <div className="admin-stack" style={{ gap: 10 }}>
+          {sections.length === 0 && (
+            <p className="admin-empty" style={{ padding: "18px 0" }}>
+              No sections yet. A course needs at least one to be worth publishing.
+            </p>
+          )}
           {sections.map((s, si) => (
-            <div key={si} className="rounded-lg border border-border bg-surface p-3">
-              <div className="flex items-center gap-2">
+            <div key={si} className="admin-subcard">
+              <div className="admin-inline" style={{ gap: 8, flexWrap: "nowrap" }}>
                 <input
+                  className="admin-input admin-input--full"
                   value={s.title}
                   onChange={(e) => updateSection(si, { title: e.target.value })}
                   placeholder={`Section ${si + 1} title`}
-                  className={inputCls}
                 />
                 <button
+                  type="button"
+                  className="admin-btn admin-btn--danger admin-btn--icon"
+                  aria-label={`Remove section ${si + 1}`}
                   onClick={() => setSections((p) => p.filter((_, i) => i !== si))}
-                  className="shrink-0 rounded-full border border-danger/40 px-2.5 py-1.5 text-xs text-danger"
                 >
-                  ✕
+                  <Trash2 size={13} />
                 </button>
               </div>
-              <div className="mt-2 space-y-2">
+
+              <div className="admin-stack" style={{ gap: 8, marginTop: 10 }}>
                 {s.lessons.map((l, li) => (
-                  <div key={li} className="rounded-md bg-bg p-2.5">
-                    <div className="flex items-center gap-2">
+                  <div key={li} className="admin-subcard" style={{ background: "var(--adm-raised)" }}>
+                    <div className="admin-inline" style={{ gap: 8, flexWrap: "nowrap" }}>
                       <input
+                        className="admin-input admin-input--full"
                         value={l.title}
                         onChange={(e) => updateLesson(si, li, { title: e.target.value })}
-                        placeholder="Lesson title"
-                        className={inputCls}
+                        placeholder={`Lesson ${li + 1} title`}
                       />
                       <button
+                        type="button"
+                        className="admin-btn admin-btn--quiet admin-btn--icon"
+                        aria-label={`Remove lesson ${li + 1}`}
                         onClick={() => updateSection(si, { lessons: s.lessons.filter((_, i) => i !== li) })}
-                        className="shrink-0 rounded-full border border-danger/40 px-2 py-1 text-[10px] text-danger"
                       >
-                        ✕
+                        <X size={13} />
                       </button>
                     </div>
-                    <div className="mt-2 grid grid-cols-2 gap-2">
-                      <select value={l.type} onChange={(e) => updateLesson(si, li, { type: e.target.value })} className={inputCls}>
-                        {LESSON_TYPES.map((t) => (
-                          <option key={t} value={t}>{t}</option>
-                        ))}
-                      </select>
-                      <input
-                        value={String(l.durationSec || "")}
-                        onChange={(e) => updateLesson(si, li, { durationSec: Number(e.target.value) || 0 })}
-                        placeholder="Seconds"
-                        inputMode="numeric"
-                        className={inputCls}
-                      />
-                    </div>
-                    <div className="mt-2 flex items-center gap-2">
-                      <input
-                        value={l.videoUrl ?? ""}
-                        onChange={(e) => updateLesson(si, li, { videoUrl: e.target.value })}
-                        placeholder="Video URL (optional)"
-                        className={inputCls}
-                      />
-                      <label className="flex shrink-0 items-center gap-1 text-[11px] text-muted">
-                        <input type="checkbox" checked={l.isPreview} onChange={(e) => updateLesson(si, li, { isPreview: e.target.checked })} className="accent-accent" />
-                        Preview
+
+                    <div className="admin-form-grid" style={{ marginTop: 8, marginBottom: 0, gap: 8 }}>
+                      <label className="admin-field">
+                        <span className="admin-label">Type</span>
+                        <select
+                          className="admin-select admin-input--full"
+                          value={l.type}
+                          onChange={(e) => updateLesson(si, li, { type: e.target.value })}
+                        >
+                          {LESSON_TYPES.map((t) => (
+                            <option key={t} value={t}>
+                              {t}
+                            </option>
+                          ))}
+                        </select>
                       </label>
-                    </div>
-                    <div className="mt-2 flex items-center gap-2">
-                      <input
-                        value={l.fileUrl ?? ""}
-                        onChange={(e) => updateLesson(si, li, { fileUrl: e.target.value })}
-                        placeholder="ZIP / file URL (optional — students can download this)"
-                        className={inputCls}
-                      />
-                      {l.fileUrl ? (
-                        <span className="shrink-0 rounded bg-accent-soft px-2 py-1 text-[10px] font-bold text-accent">FILE</span>
-                      ) : null}
+                      <label className="admin-field">
+                        <span className="admin-label">Duration (seconds)</span>
+                        <input
+                          className="admin-input admin-input--full"
+                          value={String(l.durationSec || "")}
+                          onChange={(e) => updateLesson(si, li, { durationSec: Number(e.target.value) || 0 })}
+                          placeholder="0"
+                          inputMode="numeric"
+                        />
+                      </label>
+                      <label className="admin-field admin-field--wide">
+                        <span className="admin-label">Video URL</span>
+                        <div className="admin-inline" style={{ gap: 12, flexWrap: "nowrap" }}>
+                          <input
+                            className="admin-input admin-input--full"
+                            value={l.videoUrl ?? ""}
+                            onChange={(e) => updateLesson(si, li, { videoUrl: e.target.value })}
+                            placeholder="https://… optional"
+                          />
+                          <span
+                            className="admin-inline"
+                            style={{ gap: 6, flexShrink: 0, fontSize: 12, whiteSpace: "nowrap" }}
+                          >
+                            <input
+                              type="checkbox"
+                              className="admin-check"
+                              checked={l.isPreview}
+                              onChange={(e) => updateLesson(si, li, { isPreview: e.target.checked })}
+                            />
+                            Free preview
+                          </span>
+                        </div>
+                      </label>
+                      <label className="admin-field admin-field--wide">
+                        <span className="admin-label">Downloadable file</span>
+                        <input
+                          className="admin-input admin-input--full"
+                          value={l.fileUrl ?? ""}
+                          onChange={(e) => updateLesson(si, li, { fileUrl: e.target.value })}
+                          placeholder="ZIP or file URL — students can download this"
+                        />
+                      </label>
                     </div>
                   </div>
                 ))}
-                <button
-                  onClick={() => updateSection(si, { lessons: [...s.lessons, { ...emptyLesson }] })}
-                  className="rounded-full border border-border px-3 py-1 text-xs text-muted hover:text-text"
-                >
-                  + Lesson
-                </button>
+                <div>
+                  <button
+                    type="button"
+                    className="admin-btn admin-btn--ghost admin-btn--sm"
+                    onClick={() => updateSection(si, { lessons: [...s.lessons, { ...emptyLesson }] })}
+                  >
+                    <Plus size={12} /> Add lesson
+                  </button>
+                </div>
               </div>
             </div>
           ))}
         </div>
       </div>
 
-      {error && <div className="rounded-lg border border-danger/40 bg-danger/10 p-3 text-xs text-danger">{error}</div>}
+      {error && (
+        <div className="admin-alert admin-alert--bad" role="alert">
+          <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 1 }} />
+          <span>{error}</span>
+        </div>
+      )}
 
-      <div className="flex gap-2 pb-8">
-        <button onClick={save} disabled={saving} className="flex-1 rounded-full bg-accent py-2.5 text-sm font-bold text-black disabled:opacity-50">
+      <div className="admin-form-actions" style={{ paddingBottom: 20 }}>
+        <button type="button" className="admin-btn admin-btn--primary" onClick={save} disabled={saving}>
           {saving ? "Saving…" : initial ? "Save changes" : "Create course"}
         </button>
-        <button onClick={() => router.push("/admin")} className="rounded-full border border-border px-4 text-sm text-muted hover:text-text">
+        <button type="button" className="admin-btn admin-btn--ghost" onClick={() => router.push("/admin/courses")}>
           Cancel
         </button>
+        <span className="admin-field__hint" style={{ marginLeft: 4 }}>
+          Sections and lessons without a title are dropped on save.
+        </span>
       </div>
     </div>
   );

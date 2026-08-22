@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useAuth } from "@/lib/auth";
 import AdminShell from "@/components/admin/AdminShell";
+// Console-only design system — importing it here keeps it off every public page.
+import "./admin.css";
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const { user, token } = useAuth();

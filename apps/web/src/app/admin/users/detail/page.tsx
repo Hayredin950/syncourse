@@ -1,0 +1,356 @@
+"use client";
+
+import { Suspense, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
+import { useSearchParams } from "next/navigation";
+import {
+  ArrowLeft,
+  BadgeCheck,
+  CircleDollarSign,
+  Copy,
+  ShieldCheck,
+  ShieldOff,
+  Star,
+} from "lucide-react";
+import { get, patch } from "@/lib/api";
+import type { AdminPaymentRow, AdminReviewRow, AdminUserRow } from "@/lib/types";
+import { formatDate } from "@/lib/format";
+import { compactCurrency, relativeTime } from "@/lib/metrics";
+import { useAuth } from "@/lib/auth";
+import { useAdminToast } from "@/components/admin/AdminToast";
+import ConfirmButton from "@/components/admin/ConfirmButton";
+import ExpandableText from "@/components/admin/ExpandableText";
+
+/**
+ * Account drill-down.
+ *
+ * A query-param route rather than /admin/users/[id]: the web app is a static
+ * export, so a dynamic segment would need every user id enumerated at build
+ * time — which is both impossible and something we would not want in a public
+ * bundle. ?id= keeps the ids where they belong, behind the admin API.
+ *
+ * The API has no per-user endpoint, so this composes the three list endpoints it
+ * does have. Two of them are capped at 100 rows server-side, so this page says
+ * so on screen instead of quietly showing a partial history as if it were whole.
+ */
+export default function AdminUserDetailPage() {
+  return (
+    <Suspense fallback={<div className="admin-skeleton" style={{ height: 220, display: "block" }} />}>
+      <UserDetail />
+    </Suspense>
+  );
+}
+
+function UserDetail() {
+  const id = useSearchParams().get("id");
+  const { user: me } = useAuth();
+  const toast = useAdminToast();
+  const [users, setUsers] = useState<AdminUserRow[] | null>(null);
+  const [reviews, setReviews] = useState<AdminReviewRow[]>([]);
+  const [payments, setPayments] = useState<AdminPaymentRow[]>([]);
+  const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    get<AdminUserRow[]>("/admin/users")
+      .then(setUsers)
+      .catch(() => setUsers([]));
+    get<AdminReviewRow[]>("/admin/reviews").then(setReviews).catch(() => {});
+    get<AdminPaymentRow[]>("/admin/payments").then(setPayments).catch(() => {});
+  }, []);
+
+  const account = users?.find((u) => u.id === id) ?? null;
+  const mine = useMemo(() => {
+    if (!id) return { reviews: [], payments: [], spend: 0 };
+    const rs = reviews.filter((r) => r.author.id === id);
+    const ps = payments.filter((p) => p.user.id === id);
+    return {
+      reviews: rs,
+      payments: ps,
+      spend: ps.filter((p) => p.status === "approved").reduce((a, p) => a + p.amount, 0),
+    };
+  }, [id, reviews, payments]);
+
+  const setRole = async (isStaff: boolean) => {
+    if (!account) return;
+    setBusy(true);
+    try {
+      const res = await patch<{ isStaff: boolean; message: string }>(`/admin/users/${account.id}/role`, { isStaff });
+      setUsers((p) => (p ?? []).map((x) => (x.id === account.id ? { ...x, isStaff: res.isStaff } : x)));
+      toast.success(res.message);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not change that role");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const copy = async (text: string, what: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+      toast.success(`${what} copied`);
+    } catch {
+      toast.error("The browser blocked clipboard access");
+    }
+  };
+
+  if (!id) {
+    return (
+      <div>
+        <Link href="/admin/users" className="admin-back">
+          <ArrowLeft size={13} /> Users
+        </Link>
+        <p className="admin-empty">No account was specified. Open an account from the users list.</p>
+      </div>
+    );
+  }
+
+  if (users === null) {
+    return (
+      <div>
+        <Link href="/admin/users" className="admin-back">
+          <ArrowLeft size={13} /> Users
+        </Link>
+        <div className="admin-stack">
+          <span className="admin-skeleton" style={{ height: 46, width: 280, display: "block" }} />
+          <span className="admin-skeleton" style={{ height: 150, display: "block" }} />
+        </div>
+      </div>
+    );
+  }
+
+  if (!account) {
+    return (
+      <div>
+        <Link href="/admin/users" className="admin-back">
+          <ArrowLeft size={13} /> Users
+        </Link>
+        <p className="admin-empty">No account with that id — it may have been removed.</p>
+      </div>
+    );
+  }
+
+  const isSelf = account.id === me?.id;
+
+  return (
+    <div>
+      <Link href="/admin/users" className="admin-back">
+        <ArrowLeft size={13} /> Users
+      </Link>
+
+      <div className="admin-page-head">
+        <div className="admin-detail-head">
+          <span className="admin-avatar">
+            {account.avatarUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={account.avatarUrl} alt="" />
+            ) : (
+              account.name.charAt(0).toUpperCase()
+            )}
+          </span>
+          <div>
+            <h1 className="admin-inline" style={{ gap: 7 }}>
+              {account.name}
+              {account.isStaff && <span className="admin-badge admin-badge--accent">Staff</span>}
+              {account.planType === "premium" && <span className="admin-badge admin-badge--green">Premium</span>}
+              {isSelf && <span className="admin-badge admin-badge--gray">You</span>}
+            </h1>
+            <p className="page-desc">
+              {account.email} · @{account.username} · joined {formatDate(account.createdAt)}
+            </p>
+          </div>
+        </div>
+        <div className="admin-page-head__actions">
+          <button
+            type="button"
+            className="admin-btn admin-btn--ghost"
+            onClick={() => copy(account.email, "Email address")}
+          >
+            <Copy size={13} /> Copy email
+          </button>
+          {!isSelf &&
+            (account.isStaff ? (
+              <ConfirmButton
+                label="Revoke staff"
+                question="Remove admin access?"
+                confirmLabel="Yes, revoke"
+                busy={busy}
+                icon={false}
+                className="admin-btn admin-btn--danger"
+                onConfirm={() => setRole(false)}
+              />
+            ) : (
+              <button type="button" className="admin-btn" disabled={busy} onClick={() => setRole(true)}>
+                <ShieldCheck size={13} /> Make staff
+              </button>
+            ))}
+        </div>
+      </div>
+
+      <div className="admin-minitiles" style={{ marginBottom: 14 }}>
+        <div className="admin-minitile">
+          <strong>{account.enrollments.toLocaleString("en-US")}</strong>
+          <span>Enrolled</span>
+        </div>
+        <div className="admin-minitile">
+          <strong>{account.reviews.toLocaleString("en-US")}</strong>
+          <span>Reviews</span>
+        </div>
+        <div className="admin-minitile">
+          <strong>{account.lists.toLocaleString("en-US")}</strong>
+          <span>Lists</span>
+        </div>
+      </div>
+
+      <div className="admin-detail-grid">
+        <div className="admin-stack">
+          <div className="admin-card admin-card--flush">
+            <div className="admin-card__head">
+              <h3>
+                <Star size={13} style={{ verticalAlign: -2, marginRight: 6 }} />
+                Reviews
+              </h3>
+              <Link href="/admin/reviews" className="admin-section-head__hint">
+                All reviews →
+              </Link>
+            </div>
+            {mine.reviews.length === 0 ? (
+              <p className="admin-empty">
+                {account.reviews > 0
+                  ? "None in the 100 most recent reviews — older ones are not loaded."
+                  : "This account has not written a review."}
+              </p>
+            ) : (
+              <div>
+                {mine.reviews.map((r) => (
+                  <div key={r.id} className="admin-row admin-row--top">
+                    <div className="admin-row__main">
+                      <Link href={`/admin/courses/detail?slug=${r.course.slug}`} className="admin-row__title">
+                        {r.course.title}
+                      </Link>
+                      <ExpandableText text={r.body} className="admin-row__body" />
+                      <div className="admin-row__meta">
+                        {relativeTime(r.createdAt)} · {r.upvoteCount} upvotes · {r.replyCount} replies
+                        {r.containsSpoilers && " · flagged spoilers"}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="admin-card admin-card--flush">
+            <div className="admin-card__head">
+              <h3>
+                <CircleDollarSign size={13} style={{ verticalAlign: -2, marginRight: 6 }} />
+                Payments
+              </h3>
+              <Link href="/admin/payments" className="admin-section-head__hint">
+                Payment queue →
+              </Link>
+            </div>
+            {mine.payments.length === 0 ? (
+              <p className="admin-empty">Nothing in the 100 most recent payments for this account.</p>
+            ) : (
+              <table className="admin-table">
+                <thead>
+                  <tr>
+                    <th>Plan</th>
+                    <th>Method</th>
+                    <th className="admin-table__num">Amount</th>
+                    <th>Status</th>
+                    <th>Submitted</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {mine.payments.map((p) => (
+                    <tr key={p.id}>
+                      <td className="admin-cell-title">{p.planName}</td>
+                      <td className="admin-table__quiet">{p.paymentMethod}</td>
+                      <td className="admin-table__num">
+                        {p.amount.toLocaleString("en-US")} {p.currency}
+                      </td>
+                      <td>
+                        <PaymentStatus status={p.status} />
+                      </td>
+                      <td className="admin-table__quiet">{formatDate(p.createdAt)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+
+        <div className="admin-stack">
+          <div className="admin-card">
+            <h3>Account</h3>
+            <dl className="admin-kv">
+              <dt>Plan</dt>
+              <dd>{account.planType === "premium" ? "Premium" : "Free"}</dd>
+              <dt>Email status</dt>
+              <dd>
+                {account.isVerified ? (
+                  <span className="admin-status admin-status--good">
+                    <BadgeCheck size={12} /> Verified
+                  </span>
+                ) : (
+                  <span className="admin-status admin-status--idle">Never verified</span>
+                )}
+              </dd>
+              <dt>Role</dt>
+              <dd>
+                {account.isStaff ? (
+                  <span className="admin-status admin-status--good">
+                    <ShieldCheck size={12} /> Staff
+                  </span>
+                ) : (
+                  <span className="admin-status admin-status--idle">
+                    <ShieldOff size={12} /> Member
+                  </span>
+                )}
+              </dd>
+              <dt>Approved spend</dt>
+              <dd>{mine.spend > 0 ? compactCurrency(mine.spend) : "—"}</dd>
+              <dt>Joined</dt>
+              <dd>{formatDate(account.createdAt)}</dd>
+              <dt>Username</dt>
+              <dd>@{account.username}</dd>
+              <dt>User id</dt>
+              <dd>
+                <button
+                  type="button"
+                  className="admin-btn admin-btn--quiet admin-btn--sm"
+                  onClick={() => copy(account.id, "User id")}
+                  style={{ fontFamily: "var(--app-font-mono)", fontSize: 11 }}
+                >
+                  {account.id}
+                </button>
+              </dd>
+            </dl>
+          </div>
+
+          <div className="admin-card">
+            <h3>Where this comes from</h3>
+            <p className="page-desc" style={{ margin: 0 }}>
+              Counts and account fields come from the full user record. The reviews and payments below are drawn from
+              the 100 most recent of each across the whole platform, so a long-standing account may show fewer rows
+              here than it really has.
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PaymentStatus({ status }: { status: string }) {
+  if (status === "approved")
+    return (
+      <span className="admin-status admin-status--good">
+        <BadgeCheck size={12} /> Approved
+      </span>
+    );
+  if (status === "rejected") return <span className="admin-status admin-status--bad">Rejected</span>;
+  return <span className="admin-status admin-status--warn">Pending</span>;
+}
