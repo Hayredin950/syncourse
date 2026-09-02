@@ -10,6 +10,8 @@ import {
 import {
   IsArray,
   IsBoolean,
+  IsIn,
+  IsInt,
   IsNumber,
   IsOptional,
   IsString,
@@ -242,6 +244,33 @@ class AdminLegalDto {
   minorEdit?: boolean;
 }
 
+/** Which Cloudinary bucket the browser is about to upload into. */
+class SignUploadDto {
+  @IsIn(['image', 'video', 'file'])
+  kind: 'image' | 'video' | 'file';
+}
+
+class TelegramLinkDto {
+  @IsString()
+  url: string;
+}
+
+class TelegramImportDto {
+  @IsString()
+  channel: string;
+
+  @IsInt()
+  from: number;
+
+  @IsInt()
+  to: number;
+}
+
+class BroadcastDto {
+  @IsString()
+  text: string;
+}
+
 @Controller('admin')
 export class AdminController {
   constructor(private readonly admin: AdminService) {}
@@ -422,5 +451,88 @@ export class AdminController {
     @Body() dto: AdminLegalDto,
   ) {
     return this.admin.updateLegal(user.id, type, dto);
+  }
+
+  // -----------------------------------------------------------------
+  // Direct uploads
+  // -----------------------------------------------------------------
+
+  /**
+   * Staff-only. Signature for a browser-to-Cloudinary upload, so a video or a
+   * lesson attachment never has to fit through this API's 15 MB JSON body.
+   */
+  @Post('uploads/sign')
+  signUpload(@CurrentUser() user: AuthUser, @Body() dto: SignUploadDto) {
+    return this.admin.signUpload(user.id, dto.kind);
+  }
+
+  // -----------------------------------------------------------------
+  // Telegram — the bot's file commands, from the console
+  // -----------------------------------------------------------------
+
+  /** Staff-only. Bot health, this operator's pairing state and the connect link. */
+  @Get('telegram')
+  telegram(@CurrentUser() user: AuthUser) {
+    return this.admin.telegramConsole(user.id);
+  }
+
+  /** Staff-only. `/broadcast` — reaches accounts that completed pairing. */
+  @Post('telegram/broadcast')
+  broadcast(@CurrentUser() user: AuthUser, @Body() dto: BroadcastDto) {
+    return this.admin.broadcastTelegram(user.id, dto.text);
+  }
+
+  /** Staff-only. The files attached to a course, grouped into modules. */
+  @Get('courses/:slug/telegram')
+  courseFiles(@CurrentUser() user: AuthUser, @Param('slug') slug: string) {
+    return this.admin.courseTelegramFiles(user.id, slug);
+  }
+
+  /** Staff-only. `/link <t.me link>` — attach one file by its message link. */
+  @Post('courses/:slug/telegram/link')
+  linkFile(
+    @CurrentUser() user: AuthUser,
+    @Param('slug') slug: string,
+    @Body() dto: TelegramLinkDto,
+  ) {
+    return this.admin.attachTelegramLink(user.id, slug, dto.url);
+  }
+
+  /** Staff-only. Attach whatever the operator last forwarded to the bot. */
+  @Post('courses/:slug/telegram/forwarded')
+  linkForwarded(@CurrentUser() user: AuthUser, @Param('slug') slug: string) {
+    return this.admin.attachForwardedFile(user.id, slug);
+  }
+
+  /** Staff-only. `/import <channel> <from>-<to>` — bulk attach a message range. */
+  @Post('courses/:slug/telegram/import')
+  importFiles(
+    @CurrentUser() user: AuthUser,
+    @Param('slug') slug: string,
+    @Body() dto: TelegramImportDto,
+  ) {
+    return this.admin.importTelegramRange(user.id, slug, dto);
+  }
+
+  /** Staff-only. Send the course's files to the operator's own DM. */
+  @Post('courses/:slug/telegram/test')
+  testDelivery(@CurrentUser() user: AuthUser, @Param('slug') slug: string) {
+    return this.admin.testTelegramDelivery(user.id, slug);
+  }
+
+  /** Staff-only. Detach every file from the course. */
+  @Delete('courses/:slug/telegram')
+  unlinkAll(@CurrentUser() user: AuthUser, @Param('slug') slug: string) {
+    return this.admin.removeTelegramFile(user.id, slug);
+  }
+
+  /** Staff-only. Detach one file. */
+  @Delete('courses/:slug/telegram/:linkId')
+  unlinkOne(
+    @CurrentUser() user: AuthUser,
+    @Param('slug') slug: string,
+    @Param('linkId') linkId: string,
+  ) {
+    return this.admin.removeTelegramFile(user.id, slug, linkId);
   }
 }

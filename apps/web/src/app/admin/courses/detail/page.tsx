@@ -18,6 +18,7 @@ import { formatDate } from "@/lib/format";
 import { relativeTime } from "@/lib/metrics";
 import { useAdminToast } from "@/components/admin/AdminToast";
 import ConfirmButton from "@/components/admin/ConfirmButton";
+import CourseFilesPanel from "@/components/admin/CourseFilesPanel";
 import ExpandableText from "@/components/admin/ExpandableText";
 
 /**
@@ -219,6 +220,8 @@ function CourseDetail() {
               </div>
             )}
           </div>
+
+          <CourseFilesPanel slug={course.slug} />
 
           <div className="admin-card admin-card--flush">
             <div className="admin-card__head">

@@ -6,6 +6,8 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { CloudinaryService, type UploadKind } from '../cloudinary/cloudinary.service';
+import { TelegramService } from '../telegram/telegram.service';
 import { bumpVersion, legalTitle } from '../legal/legal.constants';
 
 export interface AdminLessonInput {
@@ -83,7 +85,11 @@ export interface AdminLegalInput {
 
 @Injectable()
 export class AdminService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly cloudinary: CloudinaryService,
+    private readonly telegram: TelegramService,
+  ) {}
 
   private async assertStaff(userId: string): Promise<void> {
     const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { isStaff: true } });
@@ -1036,7 +1042,199 @@ export class AdminService {
     }
     return slug;
   }
+
+  // ---------------------------------------------------------------
+  // Direct uploads
+  // ---------------------------------------------------------------
+
+  /**
+   * Hand the browser a Cloudinary signature so the file never passes through
+   * this API. Staff-only: an upload spends storage and bandwidth, and the
+   * public avatar path (`POST /images/upload`) already covers ordinary users.
+   */
+  async signUpload(userId: string, kind: UploadKind) {
+    await this.assertStaff(userId);
+    try {
+      return this.cloudinary.signUpload(kind);
+    } catch (e) {
+      throw new BadRequestException(e instanceof Error ? e.message : 'Could not sign the upload');
+    }
+  }
+
+  // ---------------------------------------------------------------
+  // Telegram bridge — the bot's file commands, driven from the console
+  // ---------------------------------------------------------------
+
+  /**
+   * Reading an existing Telegram message means forwarding it somewhere the bot
+   * can post, so every web-driven link needs one operator's DM as scratch
+   * space. That is what pairing buys, and why these calls fail with an
+   * actionable message rather than a 500 when the operator hasn't paired.
+   */
+  private async operatorChat(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { telegramId: true },
+    });
+    if (!user?.telegramId) {
+      throw new BadRequestException(
+        'Connect your Telegram account first — open Admin → Telegram and tap Connect Telegram.',
+      );
+    }
+    return { chatId: Number(user.telegramId), telegramUserId: user.telegramId };
+  }
+
+  private async courseBySlug(slug: string) {
+    const course = await this.prisma.course.findUnique({
+      where: { slug },
+      select: { id: true, title: true, slug: true, deletedAt: true },
+    });
+    if (!course || course.deletedAt) throw new NotFoundException('Course not found');
+    return course;
+  }
+
+  /** Bot health, this operator's pairing state, and the pending forwarded file. */
+  async telegramConsole(userId: string) {
+    await this.assertStaff(userId);
+    const [status, user] = await Promise.all([
+      this.telegram.botStatus(),
+      this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { telegramId: true, telegramUsername: true },
+      }),
+    ]);
+    const forwarded = user?.telegramId ? await this.telegram.forwardedFile(user.telegramId) : null;
+    return {
+      ...status,
+      paired: Boolean(user?.telegramId),
+      telegramUsername: user?.telegramUsername ?? null,
+      pairingLink: this.telegram.pairingLink(userId),
+      forwarded: forwarded
+        ? { fileName: forwarded.fileName, fileSizeMb: forwarded.fileSizeMb, at: forwarded.updatedAt }
+        : null,
+    };
+  }
+
+  /** The files attached to a course, grouped into modules. */
+  async courseTelegramFiles(userId: string, slug: string) {
+    await this.assertStaff(userId);
+    const course = await this.courseBySlug(slug);
+    const modules = await this.telegram.courseFiles(course.id);
+    return {
+      modules: modules.map((m) => ({
+        title: m.title,
+        order: m.order,
+        sizeMb: Number(m.sizeMb.toFixed(1)),
+        files: m.files.map((f) => ({
+          id: f.id,
+          fileName: f.fileName,
+          fileSizeMb: f.fileSizeMb,
+          partIndex: f.partIndex,
+          chatUsername: f.chatUsername,
+          messageId: String(f.fileMessageId),
+          hasFileId: Boolean(f.fileId),
+          createdAt: f.createdAt,
+        })),
+      })),
+    };
+  }
+
+  /** `/link <t.me link> <slug>` from the web. */
+  async attachTelegramLink(userId: string, slug: string, url: string) {
+    await this.assertStaff(userId);
+    const course = await this.courseBySlug(slug);
+    const { chatId } = await this.operatorChat(userId);
+    const res = await this.telegram.attachFromMessageLink(course.id, url, chatId);
+    if (!res.ok) throw new BadRequestException(ATTACH_ERRORS[res.code](res.detail));
+    return { attached: true, created: res.created, fileName: res.fileName, fileSizeMb: res.fileSizeMb };
+  }
+
+  /** `/link <slug>` with a file already forwarded to the bot. */
+  async attachForwardedFile(userId: string, slug: string) {
+    await this.assertStaff(userId);
+    const course = await this.courseBySlug(slug);
+    const { chatId, telegramUserId } = await this.operatorChat(userId);
+    const res = await this.telegram.attachForwardedFile({ courseId: course.id, telegramUserId, viaChatId: chatId });
+    if (!res.ok) {
+      throw new BadRequestException(
+        'No forwarded file waiting. Send or forward the ZIP to the bot in Telegram, then try again.',
+      );
+    }
+    return { attached: true, created: res.created, fileName: res.fileName, fileSizeMb: res.fileSizeMb };
+  }
+
+  /** `/import <channel> <from>-<to> <slug>` from the web. */
+  async importTelegramRange(
+    userId: string,
+    slug: string,
+    input: { channel: string; from: number; to: number },
+  ) {
+    await this.assertStaff(userId);
+    const course = await this.courseBySlug(slug);
+    const { chatId } = await this.operatorChat(userId);
+    const channel = input.channel.trim().replace(/^@/, '').replace(/^https?:\/\/t\.me\//, '');
+    if (!channel) throw new BadRequestException('Which channel? Give its @username.');
+    if (!Number.isInteger(input.from) || !Number.isInteger(input.to) || input.from < 1) {
+      throw new BadRequestException('The message ids must be whole numbers.');
+    }
+    if (input.to < input.from) throw new BadRequestException('The range end must not be before the start.');
+    if (input.to - input.from + 1 > MAX_IMPORT_RANGE) {
+      throw new BadRequestException(
+        `That range is ${input.to - input.from + 1} messages — import at most ${MAX_IMPORT_RANGE} at a time.`,
+      );
+    }
+    const res = await this.telegram.importFilesFromChannel({
+      courseId: course.id,
+      channel,
+      from: input.from,
+      to: input.to,
+      viaChatId: chatId,
+    });
+    if (!res.ok) throw new BadRequestException(res.error);
+    return res;
+  }
+
+  /** Detach one file, or every file when `linkId` is omitted. */
+  async removeTelegramFile(userId: string, slug: string, linkId?: string) {
+    await this.assertStaff(userId);
+    const course = await this.courseBySlug(slug);
+    if (!linkId) return { removed: await this.telegram.unlinkAllFiles(course.id) };
+    const gone = await this.telegram.unlinkFile(course.id, linkId);
+    if (!gone) throw new NotFoundException('That file is already detached');
+    return { removed: 1 };
+  }
+
+  /** Send the course's files to the operator's own DM, to check delivery works. */
+  async testTelegramDelivery(userId: string, slug: string) {
+    await this.assertStaff(userId);
+    const course = await this.courseBySlug(slug);
+    const { chatId } = await this.operatorChat(userId);
+    await this.telegram.deliverCourseTo(chatId, course.slug);
+    return { sent: true };
+  }
+
+  /** `/broadcast` from the web. Reaches paired accounts only. */
+  async broadcastTelegram(userId: string, text: string) {
+    await this.assertStaff(userId);
+    const body = text.trim();
+    if (body.length < 4) throw new BadRequestException('Write the announcement first.');
+    if (body.length > 3000) throw new BadRequestException('Telegram caps a message at about 4000 characters.');
+    return this.telegram.broadcastToLinkedUsers(body);
+  }
 }
+
+/** Same wording the bot uses, so an operator gets one explanation, not two. */
+const ATTACH_ERRORS: Record<string, (detail?: string) => string> = {
+  unparsable: () => 'That does not look like a t.me message link. Tap a file in Telegram → Copy Link.',
+  unresolved: (d) => `Could not find that chat: ${d ?? 'unknown'}. Check the @username.`,
+  unreachable: (d) =>
+    `The bot cannot read that message (${d ?? 'not found'}). Add it to the chat — as an admin if it is a channel — ` +
+    'or forward the file to the bot and use "Attach forwarded file" instead.',
+  nofile: () => 'That message has no file attached (document, video or audio).',
+};
+
+/** Telegram is read one message at a time, so a big range means a long request. */
+const MAX_IMPORT_RANGE = 200;
 
 function slugify(title: string): string {
   return title

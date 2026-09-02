@@ -1,4 +1,5 @@
 import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { TelegramCourseLink } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CloudinaryService } from '../cloudinary/cloudinary.service';
@@ -6,6 +7,35 @@ import { partFromFile, organizeParts } from '../telegram-ingest/telegram-feed.pa
 
 /** One attached Telegram file row — a course has many (one per module part). */
 type TelegramFileRow = TelegramCourseLink;
+
+/** Outcome of attaching one file, shaped so both the bot and the web can format it. */
+export type AttachResult =
+  | { ok: true; created: boolean; fileName: string | null; fileSizeMb: number | null }
+  | { ok: false; code: 'unparsable' | 'unresolved' | 'unreachable' | 'nofile'; detail?: string };
+
+/** Outcome of a bulk channel import. */
+export interface ImportResult {
+  files: number;
+  created: number;
+  updated: number;
+  skipped: number;
+  unreadable: number;
+  totalMb: number;
+  modules: { title: string; parts: number }[];
+}
+
+/** What the web admin shows about the bot's health. */
+export interface BotStatus {
+  configured: boolean;
+  online: boolean;
+  username: string | null;
+  error: string | null;
+  courses: number;
+  linkedFiles: number;
+  pairedUsers: number;
+  downloads: number;
+  recent: { at: Date; kind: string; detail: string }[];
+}
 
 interface TelegramUpdate {
   update_id: number;
@@ -505,6 +535,8 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
           await this.sendCourseFile(chatId, payload.slice(3), threadId);
         } else if (payload.startsWith('download_')) {
           await this.sendLessonLink(chatId, payload.slice(9));
+        } else if (payload.startsWith('pair_')) {
+          await this.pairFromStart(chatId, payload, msg.from, threadId);
         } else {
           await this.pushNav(fromId, { key: 'home' });
           await this.sendWelcome(chatId, threadId, undefined, fromId);
@@ -2209,57 +2241,86 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     const parsed = parseTelegramLink(url);
     if (!parsed) return this.sendText(chatId, 'Could not parse that t.me link. It should look like https://t.me/group/2/41', threadId);
 
+    const res = await this.attachFromMessageLink(course.id, url, chatId);
+    if (!res.ok) {
+      if (res.code === 'unresolved') {
+        return this.sendText(chatId, `Could not resolve the group: ${res.detail}`, threadId);
+      }
+      if (res.code === 'nofile') {
+        return this.sendText(chatId, 'That message does not contain a file (document/video/audio). Attach a ZIP or video and try again.', threadId);
+      }
+      return this.sendRich(
+        chatId,
+        `${this.brandHeader('Link a File')}\n\n` +
+          `❌ I can't read message <b>${parsed.messageId}</b> in that chat.\n` +
+          `<i>${esc(res.detail ?? 'not found')}</i>\n\n` +
+          `${DIV}\n` +
+          `<b>Linking by t.me link needs me to be in that chat.</b>\n` +
+          `• Group → add <b>@${BOT_USERNAME}</b> as a member\n` +
+          `• Channel → add <b>@${BOT_USERNAME}</b> as an <b>admin</b>\n\n` +
+          `<b>No membership needed — do this instead:</b>\n` +
+          `1️⃣ Forward the ZIP straight to me here\n` +
+          `2️⃣ Send <code>/link ${esc(course.slug)}</code>\n\n` +
+          `That works for any file you can open, wherever it lives.`,
+        threadId,
+      );
+    }
+    return this.sendRich(
+      chatId,
+      `${this.brandHeader('File Linked')}\n\n` +
+        `✅ <b>“${esc(course.title)}”</b> is now linked.\n` +
+        `📦 <b>${esc(res.fileName ?? 'file')}</b>${res.fileSizeMb ? ` · ${res.fileSizeMb.toFixed(1)} MB` : ''}\n` +
+        `🔑 <code>/download ${course.slug}</code>\n\n` +
+        `Users can grab it from the bot or the <a href="${APP_URL}/courses/${course.slug}">app</a>.`,
+      threadId,
+      [[{ text: '📥 Test download', callback_data: `dl:${course.id}` }]],
+    );
+  }
+
+  /**
+   * Attach the file sitting at a t.me message link to a course.
+   *
+   * Shared by `/link` and the web admin. The Bot API has no "read a message by
+   * id" method — `getMessage` does not exist and 404s exactly like a misspelled
+   * method would. The only way for a bot to inspect an existing message is to
+   * forward it to a chat it can post in, read the file off the copy, then delete
+   * the copy. That scratch chat is `viaChatId`: the admin's own DM with the bot.
+   * It needs the bot to be a MEMBER of the source chat (admin for channels);
+   * otherwise Telegram answers "message to forward not found".
+   */
+  async attachFromMessageLink(courseId: string, url: string, viaChatId: number): Promise<AttachResult> {
+    const parsed = parseTelegramLink(url);
+    if (!parsed) return { ok: false, code: 'unparsable' };
     try {
-      // Resolve the chat (username or numeric id) to a chat id
-      let chatResolve = parsed.chatUsername
+      const chatRes = parsed.chatUsername
         ? await this.api('getChat', { chat_id: `@${parsed.chatUsername}` })
         : await this.api('getChat', { chat_id: parsed.chatId });
-      const chatJson = (await chatResolve.json()) as { ok: boolean; result?: { id: number; username?: string }; description?: string };
-      if (!chatJson.ok) return this.sendText(chatId, `Could not resolve the group: ${chatJson.description}`, threadId);
-      const groupChatId = chatJson.result!.id;
+      const chatJson = (await chatRes.json()) as { ok: boolean; result?: { id: number; username?: string }; description?: string };
+      if (!chatJson.ok || !chatJson.result) {
+        return { ok: false, code: 'unresolved', detail: chatJson.description ?? 'unknown chat' };
+      }
+      const groupChatId = chatJson.result.id;
 
-      // The Bot API has no "read a message by id" method — getMessage does not
-      // exist and 404s exactly like a misspelled method would. The only way for
-      // a bot to inspect an existing message is to forward it to a chat it can
-      // post in, read the file off the copy, then delete the copy. This needs
-      // the bot to be a MEMBER of the source chat (admin for channels);
-      // otherwise Telegram answers "message to forward not found".
       const fwdRes = await this.api('forwardMessage', {
-        chat_id: chatId,
+        chat_id: viaChatId,
         from_chat_id: groupChatId,
         message_id: parsed.messageId,
         disable_notification: true,
       });
       const msgJson = (await fwdRes.json()) as TelegramMessage;
       if (!msgJson.ok || !msgJson.result) {
-        return this.sendRich(
-          chatId,
-          `${this.brandHeader('Link a File')}\n\n` +
-            `❌ I can't read message <b>${parsed.messageId}</b> in that chat.\n` +
-            `<i>${esc(msgJson.description ?? 'not found')}</i>\n\n` +
-            `${DIV}\n` +
-            `<b>Linking by t.me link needs me to be in that chat.</b>\n` +
-            `• Group → add <b>@${BOT_USERNAME}</b> as a member\n` +
-            `• Channel → add <b>@${BOT_USERNAME}</b> as an <b>admin</b>\n\n` +
-            `<b>No membership needed — do this instead:</b>\n` +
-            `1️⃣ Forward the ZIP straight to me here\n` +
-            `2️⃣ Send <code>/link ${esc(course.slug)}</code>\n\n` +
-            `That works for any file you can open, wherever it lives.`,
-          threadId,
-        );
+        return { ok: false, code: 'unreachable', detail: msgJson.description ?? 'not found' };
       }
       const m = msgJson.result;
       // clean up the temporary copy — the admin doesn't need to see it
-      if (m.message_id) await this.deleteMessage(chatId, m.message_id);
+      if (m.message_id) await this.deleteMessage(viaChatId, m.message_id);
       const doc = m.document ?? m.video ?? m.audio;
-      if (!doc) {
-        return this.sendText(chatId, 'That message does not contain a file (document/video/audio). Attach a ZIP or video and try again.', threadId);
-      }
+      if (!doc) return { ok: false, code: 'nofile' };
 
-      await this.saveLink({
-        courseId: course.id,
+      const saved = await this.saveLink({
+        courseId,
         chatId: BigInt(groupChatId),
-        chatUsername: parsed.chatUsername ?? chatJson.result?.username ?? null,
+        chatUsername: parsed.chatUsername ?? chatJson.result.username ?? null,
         messageThreadId: parsed.messageThreadId ? BigInt(parsed.messageThreadId) : null,
         fileMessageId: BigInt(parsed.messageId),
         fileId: doc.file_id,
@@ -2267,19 +2328,15 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
         fileSizeMb: doc.file_size ? Number((doc.file_size / 1024 / 1024).toFixed(1)) : null,
         caption: m.caption ?? null,
       });
-      return this.sendRich(
-        chatId,
-        `${this.brandHeader('File Linked')}\n\n` +
-          `✅ <b>“${esc(course.title)}”</b> is now linked.\n` +
-          `📦 <b>${esc(doc.file_name ?? 'file')}</b>${doc.file_size ? ` · ${(doc.file_size / 1024 / 1024).toFixed(1)} MB` : ''}\n` +
-          `🔑 <code>/download ${course.slug}</code>\n\n` +
-          `Users can grab it from the bot or the <a href="${APP_URL}/courses/${course.slug}">app</a>.`,
-        threadId,
-        [[{ text: '📥 Test download', callback_data: `dl:${course.id}` }]],
-      );
+      return {
+        ok: true,
+        created: saved.created,
+        fileName: doc.file_name ?? null,
+        fileSizeMb: doc.file_size ? Number((doc.file_size / 1024 / 1024).toFixed(1)) : null,
+      };
     } catch (err) {
       this.logger.error(`link failed: ${(err as Error).message}`);
-      return this.sendText(chatId, 'Something went wrong while linking. Check the bot has access to the group.', threadId);
+      return { ok: false, code: 'unreachable', detail: (err as Error).message };
     }
   }
 
@@ -2371,35 +2428,11 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
 
   private async broadcast(chatId: number, text: string, threadId?: number | null) {
     if (!text) return this.sendText(chatId, 'Usage: /broadcast <message text>', threadId);
-    const users = await this.prisma.user.findMany({
-      where: { telegramId: { not: null } },
-      select: { telegramId: true },
-      take: 500,
-    });
-    const html =
-      `${this.brandHeader('Announcement')}\n\n` +
-      `${esc(text)}\n\n` +
-      `${DIV}\n` +
-      `🎓 <b>Syncourse</b> · <a href="${APP_URL}">Open the app →</a>`;
-    let sent = 0;
-    for (const u of users) {
-      try {
-        const res = await this.api('sendMessage', {
-          chat_id: String(u.telegramId),
-          text: html,
-          parse_mode: 'HTML',
-          disable_web_page_preview: true,
-        });
-        if ((await res.json()).ok) sent++;
-      } catch {
-        /* skip */
-      }
-    }
-    await this.logActivity(null, chatId, 'broadcast', `sent ${sent}/${users.length}`);
+    const { sent, total } = await this.broadcastToLinkedUsers(text);
     return this.sendRich(
       chatId,
       `${this.brandHeader('Broadcast')}\n\n` +
-        `📢 Sent to <b>${sent}/${users.length}</b> linked users.\n\n` +
+        `📢 Sent to <b>${sent}/${total}</b> linked users.\n\n` +
         `${esc(text.slice(0, 120))}${text.length > 120 ? '…' : ''}`,
       threadId,
     );
@@ -2734,13 +2767,6 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       );
     }
 
-    const chatRes = await this.api('getChat', { chat_id: `@${channel}` });
-    const chatJson = (await chatRes.json()) as { ok: boolean; result?: { id: number }; description?: string };
-    if (!chatJson.ok || !chatJson.result) {
-      return this.sendText(chatId, `Could not resolve @${channel}: ${chatJson.description ?? 'unknown error'}`, threadId);
-    }
-    const sourceChatId = chatJson.result.id;
-
     const progressId = await this.sendRich(
       chatId,
       `${this.brandHeader('Bulk Import')}\n\n` +
@@ -2749,6 +2775,79 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       threadId,
     );
 
+    const res = await this.importFilesFromChannel({
+      courseId: course.id,
+      channel,
+      from,
+      to,
+      viaChatId: chatId,
+    });
+    const say = async (html: string, kb?: KbButton[][]) => {
+      if (progressId) await this.editRich(chatId, progressId, html, kb);
+      else await this.sendRich(chatId, html, threadId, kb);
+    };
+
+    if (!res.ok) {
+      return say(`${this.brandHeader('Bulk Import')}\n\n❌ ${esc(res.error)}`);
+    }
+    if (res.files === 0) {
+      return say(
+        `${this.brandHeader('Bulk Import')}\n\n` +
+          `❌ Found no files in <b>@${esc(channel)}</b> messages ${from}–${to}.\n\n` +
+          (res.unreadable > 0
+            ? `<b>${res.unreadable}</b> messages were unreadable — I'm probably not in that chat.\n` +
+              `Add <b>@${BOT_USERNAME}</b> as an admin and try again.\n\n`
+            : `<b>${res.skipped}</b> messages had no attached file.\n\n`) +
+          `Check the ids by tapping a ZIP → Copy link.`,
+      );
+    }
+
+    await this.logActivity(null, chatId, 'link', `imported ${res.files} files -> ${course.slug}`);
+    return say(
+      `${this.brandHeader('Bulk Import')}\n\n` +
+        `✅ <b>“${esc(course.title)}”</b> now has <b>${res.files}</b> files.\n` +
+        `${DIV}\n` +
+        `📂 <b>${res.modules.length}</b> modules · ${fmtSize(res.totalMb)}\n` +
+        `🆕 ${res.created} added${res.updated ? ` · ♻️ ${res.updated} updated` : ''}` +
+        (res.skipped ? ` · ⏭️ ${res.skipped} non-file skipped` : '') +
+        (res.unreadable ? ` · ⚠️ ${res.unreadable} unreadable` : '') +
+        `\n${DIV}\n` +
+        res.modules
+          .slice(0, 12)
+          .map((m, i) => `${String(i + 1).padStart(2, '0')}. ${esc(m.title.slice(0, 44))}${m.parts > 1 ? ` <i>(${m.parts} parts)</i>` : ''}`)
+          .join('\n') +
+        (res.modules.length > 12 ? `\n<i>…and ${res.modules.length - 12} more</i>` : ''),
+      [
+        [{ text: '📥 Test download', callback_data: `dl:${course.id}` }],
+        [{ text: '📚 Catalog', callback_data: 'courses' }, { text: '📊 Stats', callback_data: 'stats' }],
+      ],
+    );
+  }
+
+  /**
+   * Read a range of channel messages and attach every file to a course.
+   *
+   * Shared by `/import` and the web admin, so both agree on how a filename maps
+   * to a module + part. `viaChatId` is the scratch chat the messages are
+   * forwarded through and immediately deleted from — see
+   * {@link attachFromMessageLink} for why a forward is the only way to read an
+   * existing message.
+   */
+  async importFilesFromChannel(input: {
+    courseId: string;
+    channel: string;
+    from: number;
+    to: number;
+    viaChatId: number;
+  }): Promise<({ ok: true } & ImportResult) | { ok: false; error: string }> {
+    const { courseId, channel, from, to, viaChatId } = input;
+    const chatRes = await this.api('getChat', { chat_id: `@${channel}` });
+    const chatJson = (await chatRes.json()) as { ok: boolean; result?: { id: number }; description?: string };
+    if (!chatJson.ok || !chatJson.result) {
+      return { ok: false, error: `Could not resolve @${channel}: ${chatJson.description ?? 'unknown error'}` };
+    }
+    const sourceChatId = chatJson.result.id;
+
     type Found = { fileName: string; fileId: string; fileSizeMb: number | null; messageId: number; threadId: number | null };
     const found: Found[] = [];
     let skipped = 0;
@@ -2756,7 +2855,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
 
     for (let id = from; id <= to; id++) {
       const fwd = await this.api('forwardMessage', {
-        chat_id: chatId,
+        chat_id: viaChatId,
         from_chat_id: sourceChatId,
         message_id: id,
         disable_notification: true,
@@ -2772,7 +2871,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
         continue;
       }
       const m = json.result;
-      if (m.message_id) await this.deleteMessage(chatId, m.message_id);
+      if (m.message_id) await this.deleteMessage(viaChatId, m.message_id);
       const doc = m.document ?? m.video ?? m.audio;
       if (!doc || (m.document && isCoverImage(m.document))) {
         skipped++;
@@ -2788,22 +2887,11 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       await sleep(900); // stay well under Telegram's per-chat rate limit
     }
 
-    if (found.length === 0) {
-      const html =
-        `${this.brandHeader('Bulk Import')}\n\n` +
-        `❌ Found no files in <b>@${esc(channel)}</b> messages ${from}–${to}.\n\n` +
-        (unreadable > 0
-          ? `<b>${unreadable}</b> messages were unreadable — I'm probably not in that chat.\n` +
-            `Add <b>@${BOT_USERNAME}</b> as an admin and try again.\n\n`
-          : `<b>${skipped}</b> messages had no attached file.\n\n`) +
-        `Check the ids by tapping a ZIP → Copy link.`;
-      if (progressId) await this.editRich(chatId, progressId, html);
-      else await this.sendRich(chatId, html, threadId);
-      return;
-    }
+    const empty = { files: 0, created: 0, updated: 0, skipped, unreadable, totalMb: 0, modules: [] };
+    if (found.length === 0) return { ok: true, ...empty };
 
-    // group into modules using the feed parser, so /import and the feed
-    // importer agree on how a filename maps to a module + part.
+    // Group into modules using the feed parser, so /import and the feed importer
+    // agree on how a filename maps to a module + part.
     // Index by orderIndex, NOT filename: channels post the same filename more
     // than once (the 6 identical 14_Neural_Networks uploads), and a filename
     // key would collapse those into one row and silently drop files.
@@ -2813,17 +2901,17 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     // course already has a curriculum, and adding module rows next to it would
     // duplicate the outline — courseModules() groups on moduleTitle anyway, so
     // sectionId is a convenience, not a requirement.
-    const hasCurriculum = (await this.prisma.section.count({ where: { courseId: course.id } })) > 0;
+    const hasCurriculum = (await this.prisma.section.count({ where: { courseId } })) > 0;
 
     let created = 0;
     let updated = 0;
     for (const [order, section] of sections.entries()) {
       let sectionId: string | null = null;
       if (!hasCurriculum) {
-        const deterministicId = `${course.id}-m${order}`; // keeps re-imports idempotent
+        const deterministicId = `${courseId}-m${order}`; // keeps re-imports idempotent
         const dbSection = await this.prisma.section.upsert({
           where: { id: deterministicId },
-          create: { id: deterministicId, courseId: course.id, title: section.title, orderIndex: order },
+          create: { id: deterministicId, courseId, title: section.title, orderIndex: order },
           update: { title: section.title, orderIndex: order },
         });
         sectionId = dbSection.id;
@@ -2831,8 +2919,8 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       for (const [pi, part] of section.parts.entries()) {
         const f = found[part.orderIndex];
         if (!f) continue;
-        const res = await this.saveLink({
-          courseId: course.id,
+        const saved = await this.saveLink({
+          courseId,
           chatId: BigInt(sourceChatId),
           chatUsername: channel,
           messageThreadId: f.threadId ? BigInt(f.threadId) : null,
@@ -2846,33 +2934,21 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
           moduleOrder: order,
           partIndex: part.partNo ?? pi + 1,
         });
-        if (res.created) created++;
+        if (saved.created) created++;
         else updated++;
       }
     }
 
-    const totalMb = found.reduce((n, f) => n + (f.fileSizeMb ?? 0), 0);
-    await this.logActivity(null, chatId, 'link', `imported ${found.length} files -> ${course.slug}`);
-    const summary =
-      `${this.brandHeader('Bulk Import')}\n\n` +
-      `✅ <b>“${esc(course.title)}”</b> now has <b>${found.length}</b> files.\n` +
-      `${DIV}\n` +
-      `📂 <b>${sections.length}</b> modules · ${fmtSize(totalMb)}\n` +
-      `🆕 ${created} added${updated ? ` · ♻️ ${updated} updated` : ''}` +
-      (skipped ? ` · ⏭️ ${skipped} non-file skipped` : '') +
-      (unreadable ? ` · ⚠️ ${unreadable} unreadable` : '') +
-      `\n${DIV}\n` +
-      sections
-        .slice(0, 12)
-        .map((s, i) => `${String(i + 1).padStart(2, '0')}. ${esc(s.title.slice(0, 44))}${s.parts.length > 1 ? ` <i>(${s.parts.length} parts)</i>` : ''}`)
-        .join('\n') +
-      (sections.length > 12 ? `\n<i>…and ${sections.length - 12} more</i>` : '');
-    const kb: KbButton[][] = [
-      [{ text: '📥 Test download', callback_data: `dl:${course.id}` }],
-      [{ text: '📚 Catalog', callback_data: 'courses' }, { text: '📊 Stats', callback_data: 'stats' }],
-    ];
-    if (progressId) await this.editRich(chatId, progressId, summary, kb);
-    else await this.sendRich(chatId, summary, threadId, kb);
+    return {
+      ok: true,
+      files: found.length,
+      created,
+      updated,
+      skipped,
+      unreadable,
+      totalMb: found.reduce((n, f) => n + (f.fileSizeMb ?? 0), 0),
+      modules: sections.map((s) => ({ title: s.title, parts: s.parts.length })),
+    };
   }
 
   /** start=download_<lessonId> — legacy flow: send the lesson link text. */
@@ -3135,6 +3211,236 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       g.sizeMb += f.fileSizeMb ?? 0;
     }
     return [...groups.values()].sort((a, b) => a.order - b.order);
+  }
+
+  // ---------------------------------------------------------------
+  // Account pairing — the join between a Syncourse login and a Telegram user
+  // ---------------------------------------------------------------
+
+  /**
+   * `User.telegramId` is what makes the bot and the web the same system: it is
+   * how `/broadcast` finds recipients, how a staff account gets bot admin
+   * without being listed in TELEGRAM_ADMIN_IDS, and how the web admin borrows
+   * an operator's DM as the scratch chat for reading channel files.
+   *
+   * Pairing is a signed deep link rather than a stored code: the payload is
+   * `pair_<userId>_<hmac>`, the HMAC covers the user id and a 10-minute window,
+   * and both the current and previous window verify. Nothing to persist, so a
+   * Render restart mid-flow can't invalidate a link, and a leaked link stops
+   * working within 20 minutes.
+   */
+  private static readonly PAIR_WINDOW_MS = 10 * 60 * 1000;
+
+  private pairSig(appUserId: string, window: number): string {
+    return createHmac('sha256', process.env.JWT_SECRET || 'syncourse-dev')
+      .update(`${appUserId}:${window}`)
+      .digest('base64url')
+      .slice(0, 16);
+  }
+
+  /** The `?start=` payload that binds this account when sent to the bot. */
+  pairingPayload(appUserId: string): string {
+    const window = Math.floor(Date.now() / TelegramService.PAIR_WINDOW_MS);
+    return `pair_${appUserId}_${this.pairSig(appUserId, window)}`;
+  }
+
+  /** One-tap deep link for the web admin's "Connect Telegram" button. */
+  pairingLink(appUserId: string): string {
+    return `https://t.me/${BOT_USERNAME}?start=${this.pairingPayload(appUserId)}`;
+  }
+
+  private verifyPairing(payload: string): string | null {
+    const body = payload.slice('pair_'.length);
+    const cut = body.lastIndexOf('_');
+    if (cut <= 0) return null;
+    const appUserId = body.slice(0, cut);
+    const given = Buffer.from(body.slice(cut + 1));
+    const window = Math.floor(Date.now() / TelegramService.PAIR_WINDOW_MS);
+    for (const w of [window, window - 1]) {
+      const want = Buffer.from(this.pairSig(appUserId, w));
+      if (want.length === given.length && timingSafeEqual(want, given)) return appUserId;
+    }
+    return null;
+  }
+
+  /** `/start pair_…` — bind this Telegram account to the Syncourse account. */
+  private async pairFromStart(
+    chatId: number,
+    payload: string,
+    from: { id: number; username?: string } | undefined,
+    threadId?: number | null,
+  ) {
+    if (!from) return;
+    const appUserId = this.verifyPairing(payload);
+    if (!appUserId) {
+      return this.sendRich(
+        chatId,
+        `${this.brandHeader('Connect Account')}\n\n` +
+          `⌛ That connect link has expired.\n\n` +
+          `Open <a href="${APP_URL}/admin/telegram">the Telegram page</a> in Syncourse and tap <b>Connect Telegram</b> again — links are good for about 15 minutes.`,
+        threadId,
+      );
+    }
+    const user = await this.prisma.user.findUnique({
+      where: { id: appUserId },
+      select: { id: true, name: true, email: true, isStaff: true },
+    });
+    if (!user) return this.sendText(chatId, 'That account no longer exists.', threadId);
+
+    const tgId = BigInt(from.id);
+    // telegramId is unique — release it from any other account before claiming
+    // it, so re-pairing to a different login just works instead of erroring.
+    await this.prisma.user.updateMany({
+      where: { telegramId: tgId, id: { not: user.id } },
+      data: { telegramId: null },
+    });
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: { telegramId: tgId, telegramUsername: from.username ?? undefined },
+    });
+    await this.logActivity(from.id, chatId, 'pair', `paired ${user.email}`);
+    return this.sendRich(
+      chatId,
+      `${this.brandHeader('Connected')}\n\n` +
+        `✅ This Telegram account is now linked to <b>${esc(user.name || user.email)}</b>.\n\n` +
+        `${DIV}\n` +
+        (user.isStaff
+          ? `🛠 You have <b>admin</b> rights here — <code>/link</code>, <code>/import</code>, <code>/newcourse</code>, <code>/broadcast</code> and <code>/stats</code> are all open to you.\n` +
+            `The web admin can now attach channel files on your behalf: forward a ZIP to me and it appears there.\n\n`
+          : `🔔 You'll get lesson reminders and announcements here.\n\n`) +
+        `<a href="${APP_URL}">Open Syncourse →</a>`,
+      threadId,
+    );
+  }
+
+  // ---------------------------------------------------------------
+  // Web admin bridge — the same operations as the bot commands, callable
+  // from the admin console. Formatting stays in the bot; these return data.
+  // ---------------------------------------------------------------
+
+  /** A course's attached files, grouped into modules exactly as the bot shows them. */
+  async courseFiles(courseId: string) {
+    return this.courseModules(courseId);
+  }
+
+  /** Detach one file. Returns false when the row is already gone. */
+  async unlinkFile(courseId: string, linkId: string): Promise<boolean> {
+    const { count } = await this.prisma.telegramCourseLink.deleteMany({
+      where: { id: linkId, courseId },
+    });
+    return count > 0;
+  }
+
+  /** Detach every file from a course — the `/unlink <slug>` equivalent. */
+  async unlinkAllFiles(courseId: string): Promise<number> {
+    const { count } = await this.prisma.telegramCourseLink.deleteMany({ where: { courseId } });
+    return count;
+  }
+
+  /** The last file this Telegram user forwarded to the bot, if any. */
+  async forwardedFile(telegramUserId: bigint) {
+    return this.prisma.telegramUserFile.findUnique({ where: { userId: telegramUserId } });
+  }
+
+  /**
+   * Attach the file an operator forwarded to the bot — the web equivalent of
+   * `/link <slug>` with no arguments. Telegram delivers by `fileId`, so the
+   * chat/message pair is only a fallback for the copyMessage path; a forwarded
+   * DM has no meaningful message id of its own, hence the synthetic one.
+   */
+  async attachForwardedFile(input: {
+    courseId: string;
+    telegramUserId: bigint;
+    viaChatId: number;
+  }): Promise<AttachResult> {
+    const cached = await this.forwardedFile(input.telegramUserId);
+    if (!cached) return { ok: false, code: 'nofile' };
+    const dupe = await this.prisma.telegramCourseLink.findFirst({
+      where: { courseId: input.courseId, fileId: cached.fileId },
+      select: { id: true },
+    });
+    if (dupe) {
+      return { ok: true, created: false, fileName: cached.fileName, fileSizeMb: cached.fileSizeMb };
+    }
+    await this.saveLink({
+      courseId: input.courseId,
+      chatId: BigInt(input.viaChatId),
+      chatUsername: null,
+      messageThreadId: null,
+      fileMessageId: BigInt(Date.now()),
+      fileId: cached.fileId,
+      fileName: cached.fileName,
+      fileSizeMb: cached.fileSizeMb,
+      caption: null,
+    });
+    return { ok: true, created: true, fileName: cached.fileName, fileSizeMb: cached.fileSizeMb };
+  }
+
+  /** Send a course's files to a chat — "test download" from the web. */
+  async deliverCourseTo(chatId: number, slug: string) {
+    await this.sendCourseFile(chatId, slug);
+  }
+
+  /** Bot health plus the numbers `/stats` reports, for the admin console. */
+  async botStatus(): Promise<BotStatus> {
+    const [courses, linkedFiles, pairedUsers, downloads, recent] = await Promise.all([
+      this.prisma.course.count({ where: { deletedAt: null } }),
+      this.prisma.telegramCourseLink.count(),
+      this.prisma.user.count({ where: { telegramId: { not: null } } }),
+      this.prisma.downloadEvent.count({ where: { method: 'bot' } }),
+      this.prisma.telegramActivity.findMany({
+        orderBy: { at: 'desc' },
+        take: 12,
+        select: { at: true, kind: true, detail: true },
+      }),
+    ]);
+    const base = { configured: this.enabled, courses, linkedFiles, pairedUsers, downloads, recent };
+    if (!this.enabled) {
+      return { ...base, online: false, username: null, error: 'TELEGRAM_BOT_TOKEN is not set' };
+    }
+    try {
+      const res = await this.api('getMe');
+      const json = (await res.json()) as { ok: boolean; result?: { username?: string }; description?: string };
+      return {
+        ...base,
+        online: json.ok,
+        username: json.result?.username ?? null,
+        error: json.ok ? null : (json.description ?? 'getMe failed'),
+      };
+    } catch (err) {
+      return { ...base, online: false, username: null, error: (err as Error).message };
+    }
+  }
+
+  /** `/broadcast` from the web. Only reaches accounts that completed pairing. */
+  async broadcastToLinkedUsers(text: string): Promise<{ sent: number; total: number }> {
+    const users = await this.prisma.user.findMany({
+      where: { telegramId: { not: null } },
+      select: { telegramId: true },
+      take: 500,
+    });
+    const html =
+      `${this.brandHeader('Announcement')}\n\n` +
+      `${esc(text)}\n\n` +
+      `${DIV}\n` +
+      `🎓 <b>Syncourse</b> · <a href="${APP_URL}">Open the app →</a>`;
+    let sent = 0;
+    for (const u of users) {
+      try {
+        const res = await this.api('sendMessage', {
+          chat_id: String(u.telegramId),
+          text: html,
+          parse_mode: 'HTML',
+          disable_web_page_preview: true,
+        });
+        if (((await res.json()) as { ok: boolean }).ok) sent++;
+      } catch {
+        /* skip */
+      }
+      await sleep(120); // 30 messages/second is the documented ceiling
+    }
+    await this.logActivity(null, 0, 'broadcast', `web broadcast sent ${sent}/${users.length}`);
+    return { sent, total: users.length };
   }
 
   // ---------------------------------------------------------------

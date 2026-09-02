@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, Plus, Trash2, X } from "lucide-react";
 import { get, post, patch } from "@/lib/api";
 import type { AdminCourseDetail, AdminSection } from "@/lib/types";
 import { useAdminToast } from "./AdminToast";
+import UploadField from "./UploadField";
 
 const CONTENT_TYPES = ["course", "mini-course", "cheat-sheet", "roadmap"];
 const LESSON_TYPES = ["video", "article", "quiz", "notes"];
@@ -20,7 +21,6 @@ export function CourseForm({ initial }: Props) {
   const toast = useAdminToast();
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const [busyField, setBusyField] = useState<"thumb" | "banner" | null>(null);
 
   const [suggestions, setSuggestions] = useState<{ levels: string[]; categories: string[]; lecturers: string[]; orgs: string[] }>({
     levels: [],
@@ -52,9 +52,6 @@ export function CourseForm({ initial }: Props) {
       : [{ title: "", lessons: [{ ...emptyLesson }] }],
   );
 
-  const thumbRef = useRef<HTMLInputElement>(null);
-  const bannerRef = useRef<HTMLInputElement>(null);
-
   useEffect(() => {
     Promise.all([
       get<{ results: { name: string }[] }>("/levels").catch(() => null),
@@ -70,26 +67,6 @@ export function CourseForm({ initial }: Props) {
       }),
     );
   }, []);
-
-  const uploadImage = async (file: File, field: "thumb" | "banner") => {
-    setBusyField(field);
-    setError("");
-    try {
-      const dataUrl = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(reader.result as string);
-        reader.onerror = () => reject(new Error("Could not read file"));
-        reader.readAsDataURL(file);
-      });
-      const up = await post<{ url: string }>("/images/upload", { dataUrl });
-      if (field === "thumb") setThumbnailUrl(up.url);
-      else setBannerUrl(up.url);
-    } catch (e: any) {
-      setError(e?.message || "Upload failed");
-    } finally {
-      setBusyField(null);
-    }
-  };
 
   const updateSection = (si: number, patch: Partial<AdminSection>) =>
     setSections((prev) => prev.map((s, i) => (i === si ? { ...s, ...patch } : s)));
@@ -343,93 +320,37 @@ export function CourseForm({ initial }: Props) {
 
       <div className="admin-card">
         <h3>Media</h3>
-        <div className="admin-form-grid">
-          <label className="admin-field admin-field--wide">
-            <span className="admin-label">Cover image</span>
-            <input
-              className="admin-input admin-input--full"
-              value={thumbnailUrl}
-              onChange={(e) => setThumbnailUrl(e.target.value)}
-              placeholder="https://… image URL"
-            />
-          </label>
-        </div>
-        <div className="admin-inline" style={{ marginTop: -6, marginBottom: 14 }}>
-          <button
-            type="button"
-            className="admin-btn admin-btn--ghost admin-btn--sm"
-            onClick={() => thumbRef.current?.click()}
-            disabled={busyField !== null}
-          >
-            {busyField === "thumb" ? "Uploading…" : "Upload image"}
-          </button>
-          {thumbnailUrl && (
-            <span className="admin-preview">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={thumbnailUrl} alt="Cover preview" style={{ width: 32, height: 42 }} />
-              <button
-                type="button"
-                className="admin-preview__x"
-                title="Remove cover"
-                aria-label="Remove cover"
-                onClick={() => setThumbnailUrl("")}
-              >
-                <X size={10} />
-              </button>
-            </span>
-          )}
-        </div>
-        <input ref={thumbRef} type="file" accept="image/*" className="admin-sr" onChange={(e) => e.target.files?.[0] && uploadImage(e.target.files[0], "thumb")} />
-
-        <div className="admin-form-grid">
-          <label className="admin-field admin-field--wide">
-            <span className="admin-label">Banner</span>
-            <input
-              className="admin-input admin-input--full"
-              value={bannerUrl}
-              onChange={(e) => setBannerUrl(e.target.value)}
-              placeholder="https://… banner URL"
-            />
-          </label>
-        </div>
-        <div className="admin-inline" style={{ marginTop: -6, marginBottom: 14 }}>
-          <button
-            type="button"
-            className="admin-btn admin-btn--ghost admin-btn--sm"
-            onClick={() => bannerRef.current?.click()}
-            disabled={busyField !== null}
-          >
-            {busyField === "banner" ? "Uploading…" : "Upload banner"}
-          </button>
-          {bannerUrl && (
-            <span className="admin-preview">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img src={bannerUrl} alt="Banner preview" style={{ width: 56, height: 32 }} />
-              <button
-                type="button"
-                className="admin-preview__x"
-                title="Remove banner"
-                aria-label="Remove banner"
-                onClick={() => setBannerUrl("")}
-              >
-                <X size={10} />
-              </button>
-            </span>
-          )}
-        </div>
-        <input ref={bannerRef} type="file" accept="image/*" className="admin-sr" onChange={(e) => e.target.files?.[0] && uploadImage(e.target.files[0], "banner")} />
-
+        <p className="page-desc" style={{ marginTop: -4 }}>
+          Paste a link, or upload straight from this machine — the file goes directly to Cloudinary, so size is
+          limited by your Cloudinary plan rather than by this form.
+        </p>
         <div className="admin-form-grid" style={{ marginBottom: 0 }}>
-          <label className="admin-field admin-field--wide">
-            <span className="admin-label">Preview video URL</span>
-            <input
-              className="admin-input admin-input--full"
-              value={previewVideoUrl}
-              onChange={(e) => setPreviewVideoUrl(e.target.value)}
-              placeholder="https://… mp4 or stream"
-            />
-            <span className="admin-field__hint">Optional. Plays on the course page before enrolment.</span>
-          </label>
+          <UploadField
+            label="Cover image"
+            kind="image"
+            value={thumbnailUrl}
+            onChange={setThumbnailUrl}
+            placeholder="https://… image URL"
+            preview={{ width: 32, height: 42 }}
+            hint="Portrait works best — it is the card image everywhere in the catalogue."
+          />
+          <UploadField
+            label="Banner"
+            kind="image"
+            value={bannerUrl}
+            onChange={setBannerUrl}
+            placeholder="https://… banner URL"
+            preview={{ width: 56, height: 32 }}
+            hint="Wide image behind the course title."
+          />
+          <UploadField
+            label="Preview video"
+            kind="video"
+            value={previewVideoUrl}
+            onChange={setPreviewVideoUrl}
+            placeholder="https://… mp4 or stream"
+            hint="Optional. Plays on the course page before enrolment."
+          />
         </div>
       </div>
 
@@ -514,15 +435,13 @@ export function CourseForm({ initial }: Props) {
                           inputMode="numeric"
                         />
                       </label>
-                      <label className="admin-field admin-field--wide">
-                        <span className="admin-label">Video URL</span>
-                        <div className="admin-inline" style={{ gap: 12, flexWrap: "nowrap" }}>
-                          <input
-                            className="admin-input admin-input--full"
-                            value={l.videoUrl ?? ""}
-                            onChange={(e) => updateLesson(si, li, { videoUrl: e.target.value })}
-                            placeholder="https://… optional"
-                          />
+                      <UploadField
+                        label="Video"
+                        kind="video"
+                        value={l.videoUrl ?? ""}
+                        onChange={(url) => updateLesson(si, li, { videoUrl: url })}
+                        placeholder="https://… or upload an mp4"
+                        aside={
                           <span
                             className="admin-inline"
                             style={{ gap: 6, flexShrink: 0, fontSize: 12, whiteSpace: "nowrap" }}
@@ -535,17 +454,16 @@ export function CourseForm({ initial }: Props) {
                             />
                             Free preview
                           </span>
-                        </div>
-                      </label>
-                      <label className="admin-field admin-field--wide">
-                        <span className="admin-label">Downloadable file</span>
-                        <input
-                          className="admin-input admin-input--full"
-                          value={l.fileUrl ?? ""}
-                          onChange={(e) => updateLesson(si, li, { fileUrl: e.target.value })}
-                          placeholder="ZIP or file URL — students can download this"
-                        />
-                      </label>
+                        }
+                      />
+                      <UploadField
+                        label="Downloadable file"
+                        kind="file"
+                        value={l.fileUrl ?? ""}
+                        onChange={(url) => updateLesson(si, li, { fileUrl: url })}
+                        placeholder="ZIP or file URL — students can download this"
+                        hint="Small attachments only. Full course archives belong on Telegram — link them from the course page."
+                      />
                     </div>
                   </div>
                 ))}

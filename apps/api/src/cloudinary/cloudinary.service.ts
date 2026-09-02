@@ -7,9 +7,40 @@ export interface CloudinaryUpload {
   publicId: string;
 }
 
+/** What the browser needs to POST a file straight to Cloudinary. */
+export interface UploadSignature {
+  cloudName: string;
+  apiKey: string;
+  timestamp: string;
+  folder: string;
+  signature: string;
+  /** Cloudinary's own bucket for the file — part of the URL, never signed. */
+  resourceType: 'image' | 'video' | 'auto';
+  uploadUrl: string;
+}
+
+/** Which Cloudinary bucket each kind of authoring upload belongs in. */
+const KINDS = {
+  image: { resourceType: 'image', folder: 'syncourse' },
+  video: { resourceType: 'video', folder: 'syncourse/videos' },
+  // `auto` lets Cloudinary sort a mixed bag: an mp4 dropped into the
+  // attachment field still lands as a video, a ZIP lands as `raw`.
+  file: { resourceType: 'auto', folder: 'syncourse/files' },
+} as const;
+
+export type UploadKind = keyof typeof KINDS;
+
 /**
- * Cloudinary integration (images only — course covers, lecturer avatars,
- * note images). Video intentionally stays on R2, never Cloudinary.
+ * Cloudinary integration — course covers, banners, lecturer avatars, note
+ * images, and (via signed direct upload) short videos and lesson attachments.
+ *
+ * Two upload paths, deliberately:
+ * - `uploadDataUrl`/`uploadBuffer` push bytes through this API. Simple, and
+ *   fine for avatars, but Express caps the JSON body at 15 MB and base64
+ *   inflates by a third, so the real ceiling is ~11 MB.
+ * - `signUpload` hands the browser a signature and gets out of the way, so the
+ *   file goes straight to Cloudinary. No body limit, no Render bandwidth, and
+ *   upload progress the client can actually report.
  *
  * Pure `fetch` implementation — no SDK dependency. Every method degrades
  * gracefully: URL building falls back to the original URL and uploads throw
@@ -49,6 +80,43 @@ export class CloudinaryService {
     return `https://res.cloudinary.com/${this.cloudName}/image/upload/${transforms}/${input}`;
   }
 
+  /**
+   * Sign an upload the browser will perform itself.
+   *
+   * Cloudinary signs the timestamp plus every optional parameter sent with the
+   * file; `api_key`, `cloud_name`, `resource_type` and `file` are excluded. The
+   * signature is good for an hour, so a slow upload on a bad connection still
+   * lands.
+   */
+  signUpload(kind: UploadKind = 'image'): UploadSignature {
+    if (!this.enabled) {
+      throw new Error(
+        'Cloudinary is not configured — set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET',
+      );
+    }
+    const { resourceType, folder } = KINDS[kind] ?? KINDS.image;
+    const timestamp = String(Math.floor(Date.now() / 1000));
+    return {
+      cloudName: this.cloudName,
+      apiKey: this.apiKey,
+      timestamp,
+      folder,
+      signature: this.sign({ folder, timestamp }),
+      resourceType,
+      uploadUrl: `https://api.cloudinary.com/v1_1/${this.cloudName}/${resourceType}/upload`,
+    };
+  }
+
+  /** SHA-1 of the alphabetically sorted params plus the API secret. */
+  private sign(params: Record<string, string>): string {
+    const toSign =
+      Object.keys(params)
+        .sort()
+        .map((k) => `${k}=${params[k]}`)
+        .join('&') + this.apiSecret;
+    return createHash('sha1').update(toSign).digest('hex');
+  }
+
   /** Upload a raw image buffer (signed request). */
   async uploadBuffer(buffer: Buffer, mime: string, folder = 'syncourse'): Promise<CloudinaryUpload> {
     if (!this.enabled) {
@@ -56,13 +124,7 @@ export class CloudinaryService {
     }
 
     const timestamp = String(Math.floor(Date.now() / 1000));
-    const params: Record<string, string> = { timestamp, folder };
-    const toSign =
-      Object.keys(params)
-        .sort()
-        .map((k) => `${k}=${params[k]}`)
-        .join('&') + this.apiSecret;
-    const signature = createHash('sha1').update(toSign).digest('hex');
+    const signature = this.sign({ folder, timestamp });
 
     const ext = (mime.split('/')[1] ?? 'png').split(';')[0] || 'png';
     const form = new FormData();

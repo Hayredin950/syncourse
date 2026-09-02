@@ -542,3 +542,58 @@ export interface UserStats {
   hasPassword: boolean;
   emailVerified: boolean;
 }
+
+// --- Telegram bridge (admin) ------------------------------------------------
+
+export interface AdminTelegramFile {
+  id: string;
+  fileName: string | null;
+  fileSizeMb: number | null;
+  partIndex: number;
+  chatUsername: string | null;
+  messageId: string;
+  hasFileId: boolean;
+  createdAt: string;
+}
+
+/** Files parsed into modules by filename, the way the bot delivers them. */
+export interface AdminTelegramModule {
+  title: string | null;
+  order: number;
+  sizeMb: number;
+  files: AdminTelegramFile[];
+}
+
+export interface AdminTelegramConsole {
+  configured: boolean;
+  online: boolean;
+  username: string | null;
+  error: string | null;
+  courses: number;
+  linkedFiles: number;
+  pairedUsers: number;
+  downloads: number;
+  recent: { at: string; kind: string; detail: string }[];
+  /** Whether *this* operator's account is bound to a Telegram user. */
+  paired: boolean;
+  telegramUsername: string | null;
+  pairingLink: string;
+  forwarded: { fileName: string | null; fileSizeMb: number | null; at: string } | null;
+}
+
+export interface AdminTelegramImportResult {
+  files: number;
+  created: number;
+  updated: number;
+  skipped: number;
+  unreadable: number;
+  totalMb: number;
+  modules: { title: string; parts: number }[];
+}
+
+export interface AdminTelegramAttachResult {
+  attached: boolean;
+  created: boolean;
+  fileName: string | null;
+  fileSizeMb: number | null;
+}

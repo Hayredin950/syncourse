@@ -7,6 +7,7 @@ import {
   LayoutDashboard,
   Scale,
   ScrollText,
+  Send,
   Settings,
   Star,
   Tag,
@@ -76,6 +77,12 @@ export const ADMIN_NAV: AdminNavGroup[] = [
   {
     label: "System",
     items: [
+      {
+        href: "/admin/telegram",
+        label: "Telegram bot",
+        icon: Send,
+        keywords: "bot files link import unlink broadcast channel zip connect pair download",
+      },
       { href: "/admin/activity", label: "Activity log", icon: ScrollText, keywords: "audit history events trail" },
       {
         href: "/admin/legal",

@@ -21,6 +21,7 @@ export default function ConfirmButton({
   icon = true,
   className = "admin-btn admin-btn--danger",
   disabled = false,
+  ariaLabel,
 }: {
   onConfirm: () => void | Promise<void>;
   label?: string;
@@ -30,6 +31,8 @@ export default function ConfirmButton({
   icon?: boolean;
   className?: string;
   disabled?: boolean;
+  /** Required when `label` is empty — an icon-only button needs a name. */
+  ariaLabel?: string;
 }) {
   const [armed, setArmed] = useState(false);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -50,7 +53,14 @@ export default function ConfirmButton({
 
   if (!armed) {
     return (
-      <button type="button" className={className} disabled={disabled || busy} onClick={() => setArmed(true)}>
+      <button
+        type="button"
+        className={className}
+        aria-label={ariaLabel}
+        title={ariaLabel}
+        disabled={disabled || busy}
+        onClick={() => setArmed(true)}
+      >
         {icon && <Trash2 size={13} />}
         {label}
       </button>
