@@ -8,6 +8,7 @@ import type { AdminLecturerRow } from "@/lib/types";
 import { useAdminToast } from "@/components/admin/AdminToast";
 import ConfirmButton from "@/components/admin/ConfirmButton";
 import ExpandableText from "@/components/admin/ExpandableText";
+import UploadField from "@/components/admin/UploadField";
 
 export default function AdminLecturersPage() {
   return (
@@ -40,7 +41,10 @@ function AdminLecturers() {
   }, []);
 
   useEffect(() => {
-    if (wantsNew) setEditing(null);
+    // `open(null)` rather than `setEditing(null)`: the fields have to be reset
+    // too, or the panel opens holding whoever was edited last.
+    if (wantsNew) open(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [wantsNew]);
 
   const filtered = useMemo(() => {
@@ -143,15 +147,16 @@ function AdminLecturers() {
               <span className="admin-label">Name</span>
               <input className="admin-input" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
             </label>
-            <label className="admin-field">
-              <span className="admin-label">Photo URL</span>
-              <input
-                className="admin-input"
-                placeholder="https://…"
-                value={photoUrl}
-                onChange={(e) => setPhotoUrl(e.target.value)}
-              />
-            </label>
+            <UploadField
+              label="Photo"
+              kind="image"
+              value={photoUrl}
+              onChange={setPhotoUrl}
+              placeholder="https://… or upload"
+              preview={{ width: 34, height: 34 }}
+              hint="Square crops best — it is shown as a round avatar."
+              wide={false}
+            />
             <label className="admin-field admin-field--wide">
               <span className="admin-label">Bio</span>
               <textarea className="admin-textarea" value={bio} onChange={(e) => setBio(e.target.value)} />

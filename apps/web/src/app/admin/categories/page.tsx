@@ -8,6 +8,31 @@ import type { AdminCategoryRow } from "@/lib/types";
 import { useAdminToast } from "@/components/admin/AdminToast";
 import ConfirmButton from "@/components/admin/ConfirmButton";
 
+/**
+ * The icon is a category's whole visual identity in browse, so it gets a grid
+ * rather than a text box you have to paste into. Grouped by the subjects a
+ * course catalogue actually has, so the right one is findable by scanning.
+ */
+const CATEGORY_ICONS = [
+  // General learning
+  "📚", "📖", "🎓", "🏫", "📝", "✏️", "🧠", "💡", "🎯", "🗂️", "📜", "🧑‍🏫",
+  // Software & data
+  "💻", "🖥️", "⌨️", "🧑‍💻", "🌐", "📱", "🤖", "🧩", "🗄️", "💾", "⚙️", "🛠️",
+  "🐍", "☕", "🔗", "🧪", "🚀", "🕹️", "👾", "📡", "🔌", "🧵",
+  // Security & networking
+  "🔐", "🔑", "🛡️", "🚨", "🕵️", "🧯",
+  // Science & engineering
+  "🔬", "🧬", "⚗️", "🔭", "🧮", "📐", "📏", "⚛️", "🌡️", "🏗️", "🔧", "🛰️",
+  // Business, money & data viz
+  "📊", "📈", "📉", "💹", "💰", "💳", "🏦", "💼", "📋", "🤝", "🏷️", "📦",
+  // Design & media
+  "🎨", "🖌️", "🖼️", "📷", "🎥", "🎬", "🎧", "🎵", "🎹", "🎤", "✒️", "🪄",
+  // Health, life & language
+  "🩺", "💊", "🧘", "🏋️", "⚽", "🍳", "🌱", "🐾", "❤️", "🗣️", "🌍", "🧭",
+  // Time & status
+  "⏱️", "📅", "✅", "⭐", "🔥", "✨",
+];
+
 export default function AdminCategoriesPage() {
   return (
     <Suspense fallback={<div className="admin-skeleton" style={{ height: 180, display: "block" }} />}>
@@ -134,16 +159,29 @@ function AdminCategories() {
               <span className="admin-label">Name</span>
               <input className="admin-input" value={name} onChange={(e) => setName(e.target.value)} autoFocus />
             </label>
-            <label className="admin-field">
+            <div className="admin-field admin-field--wide">
               <span className="admin-label">Icon</span>
-              <input
-                className="admin-input"
-                value={icon}
-                onChange={(e) => setIcon(e.target.value)}
-                style={{ minWidth: 0, width: 88, fontSize: 16 }}
-              />
-              <span className="admin-field__hint">A single emoji reads best at browse size.</span>
-            </label>
+              <div className="admin-inline" style={{ gap: 9 }}>
+                <span style={{ fontSize: 21, lineHeight: 1, width: 26, textAlign: "center" }} aria-hidden="true">
+                  {icon}
+                </span>
+                <input
+                  className="admin-input"
+                  aria-label="Category icon"
+                  value={icon}
+                  onChange={(e) => setIcon(e.target.value)}
+                  style={{ minWidth: 0, width: 72, fontSize: 16 }}
+                />
+                <span className="admin-field__hint">Pick one below, or paste any emoji.</span>
+              </div>
+              <div className="admin-iconpick" role="group" aria-label="Suggested category icons">
+                {CATEGORY_ICONS.map((e) => (
+                  <button key={e} type="button" aria-pressed={icon === e} aria-label={`Use ${e}`} onClick={() => setIcon(e)}>
+                    {e}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
           <div className="admin-form-actions">
             <button type="button" className="admin-btn admin-btn--primary" onClick={save} disabled={saving}>

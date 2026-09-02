@@ -4,13 +4,21 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AlertTriangle, Plus, Trash2, X } from "lucide-react";
 import { get, post, patch } from "@/lib/api";
-import type { AdminCourseDetail, AdminSection } from "@/lib/types";
+import type {
+  AdminCategoryRow,
+  AdminCourseDetail,
+  AdminLecturerRow,
+  AdminPublisherRow,
+  AdminSection,
+} from "@/lib/types";
 import { useAdminToast } from "./AdminToast";
 import UploadField from "./UploadField";
+import { EntityPicker, MultiEntityPicker, type PickerOption } from "./EntityPicker";
 
 const CONTENT_TYPES = ["course", "mini-course", "cheat-sheet", "roadmap"];
 const LESSON_TYPES = ["video", "article", "quiz", "notes"];
 const emptyLesson = { title: "", type: "video", durationSec: 0, videoUrl: "", isPreview: false, fileUrl: "" };
+const courseCount = (n: number) => (n === 1 ? "1 course" : `${n} courses`);
 
 interface Props {
   initial?: AdminCourseDetail;
@@ -22,12 +30,13 @@ export function CourseForm({ initial }: Props) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
-  const [suggestions, setSuggestions] = useState<{ levels: string[]; categories: string[]; lecturers: string[]; orgs: string[] }>({
-    levels: [],
-    categories: [],
-    lecturers: [],
-    orgs: [],
-  });
+  const [options, setOptions] = useState<{
+    levels: PickerOption[];
+    categories: PickerOption[];
+    lecturers: PickerOption[];
+    orgs: PickerOption[];
+  }>({ levels: [], categories: [], lecturers: [], orgs: [] });
+
 
   const [title, setTitle] = useState(initial?.title ?? "");
   const [description, setDescription] = useState(initial?.description ?? "");
@@ -36,7 +45,7 @@ export function CourseForm({ initial }: Props) {
   const [levelName, setLevelName] = useState(initial?.levelName ?? "");
   const [lecturerName, setLecturerName] = useState(initial?.lecturerName ?? "");
   const [organizationName, setOrganizationName] = useState(initial?.organizationName ?? "");
-  const [categories, setCategories] = useState(initial?.categoryNames.join(", ") ?? "");
+  const [categories, setCategories] = useState<string[]>(initial?.categoryNames ?? []);
   const [tags, setTags] = useState(initial?.tags.join(", ") ?? "");
   const [audience, setAudience] = useState(initial?.audience.join(", ") ?? "");
   const [prerequisites, setPrerequisites] = useState(initial?.prerequisites ?? "");
@@ -52,18 +61,27 @@ export function CourseForm({ initial }: Props) {
       : [{ title: "", lessons: [{ ...emptyLesson }] }],
   );
 
+  /**
+   * The pickers read the *admin* lists, not the public ones. Two reasons, both
+   * of which used to make this form lie: `GET /categories` hides any category
+   * with no courses yet, which is exactly the category you just created and are
+   * trying to attach; and every public list returns a bare array, while this
+   * effect used to read `.results` off it — so the read threw, no state was set,
+   * and all four suggestion lists were permanently empty. Levels have no admin
+   * route and the public one is unfiltered, so that one stays.
+   */
   useEffect(() => {
     Promise.all([
-      get<{ results: { name: string }[] }>("/levels").catch(() => null),
-      get<{ results: { name: string }[] }>("/categories").catch(() => null),
-      get<{ results: { name: string }[] }>("/lecturers").catch(() => null),
-      get<{ results: { name: string }[] }>("/organizations").catch(() => null),
-    ]).then(([l, c, le, o]) =>
-      setSuggestions({
-        levels: l?.results.map((x) => x.name) ?? [],
-        categories: c?.results.map((x) => x.name) ?? [],
-        lecturers: le?.results.map((x) => x.name) ?? [],
-        orgs: o?.results.map((x) => x.name) ?? [],
+      get<{ name: string }[]>("/levels").catch(() => []),
+      get<AdminCategoryRow[]>("/admin/categories").catch(() => []),
+      get<AdminLecturerRow[]>("/admin/lecturers").catch(() => []),
+      get<AdminPublisherRow[]>("/admin/publishers").catch(() => []),
+    ]).then(([levels, cats, lecturers, orgs]) =>
+      setOptions({
+        levels: levels.map((l) => ({ name: l.name })),
+        categories: cats.map((c) => ({ name: c.name, icon: c.icon, meta: courseCount(c.courseCount) })),
+        lecturers: lecturers.map((l) => ({ name: l.name, image: l.photoUrl, meta: courseCount(l.courseCount) })),
+        orgs: orgs.map((o) => ({ name: o.name, image: o.logoUrl, meta: `${o.orgType} · ${courseCount(o.courseCount)}` })),
       }),
     );
   }, []);
@@ -93,7 +111,7 @@ export function CourseForm({ initial }: Props) {
       levelName: levelName.trim() || undefined,
       lecturerName: lecturerName.trim() || undefined,
       organizationName: organizationName.trim() || undefined,
-      categoryNames: categories.split(",").map((s) => s.trim()).filter(Boolean),
+      categoryNames: categories.map((s) => s.trim()).filter(Boolean),
       tags: tags.split(",").map((s) => s.trim()).filter(Boolean),
       audience: audience.split(",").map((s) => s.trim()).filter(Boolean),
       prerequisites: prerequisites.trim() || undefined,
@@ -187,68 +205,49 @@ export function CourseForm({ initial }: Props) {
 
       <div className="admin-card">
         <h3>Attribution</h3>
+        <p className="page-desc" style={{ marginTop: -4 }}>
+          All four are shared rows with their own pages. Pick from the list where you can — a name that matches
+          nothing is created on save, so a typo quietly becomes a second lecturer or a second category.
+        </p>
         <div className="admin-form-grid">
-          <label className="admin-field">
-            <span className="admin-label">Level</span>
-            <input
-              className="admin-input admin-input--full"
-              value={levelName}
-              onChange={(e) => setLevelName(e.target.value)}
-              list="adm-levels"
-              placeholder="Beginner / Intermediate / Advanced"
-            />
-            <datalist id="adm-levels">
-              {suggestions.levels.map((l) => (
-                <option key={l} value={l} />
-              ))}
-            </datalist>
-          </label>
-          <label className="admin-field">
-            <span className="admin-label">Lecturer</span>
-            <input
-              className="admin-input admin-input--full"
-              value={lecturerName}
-              onChange={(e) => setLecturerName(e.target.value)}
-              list="adm-lecturers"
-              placeholder="Instructor name"
-            />
-            <datalist id="adm-lecturers">
-              {suggestions.lecturers.map((l) => (
-                <option key={l} value={l} />
-              ))}
-            </datalist>
-          </label>
-          <label className="admin-field">
-            <span className="admin-label">Publisher or channel</span>
-            <input
-              className="admin-input admin-input--full"
-              value={organizationName}
-              onChange={(e) => setOrganizationName(e.target.value)}
-              list="adm-orgs"
-              placeholder="Channel or school name"
-            />
-            <datalist id="adm-orgs">
-              {suggestions.orgs.map((l) => (
-                <option key={l} value={l} />
-              ))}
-            </datalist>
-          </label>
-          <label className="admin-field">
-            <span className="admin-label">Categories</span>
-            <input
-              className="admin-input admin-input--full"
-              value={categories}
-              onChange={(e) => setCategories(e.target.value)}
-              list="adm-cats"
-              placeholder="Programming, AI, Design…"
-            />
-            <datalist id="adm-cats">
-              {suggestions.categories.map((l) => (
-                <option key={l} value={l} />
-              ))}
-            </datalist>
-            <span className="admin-field__hint">Comma separated. Existing names autocomplete.</span>
-          </label>
+          <EntityPicker
+            label="Level"
+            value={levelName}
+            onChange={setLevelName}
+            options={options.levels}
+            placeholder="Choose a level"
+            createNote="will be added as a new level"
+            emptyNote="No levels defined yet."
+          />
+          <EntityPicker
+            label="Lecturer"
+            value={lecturerName}
+            onChange={setLecturerName}
+            options={options.lecturers}
+            placeholder="Search or type an instructor name"
+            createNote="will be added as a new lecturer"
+            emptyNote="No lecturers yet — type a name to add one."
+            hint="Photo and bio are set on the Lecturers page."
+          />
+          <EntityPicker
+            label="Publisher or channel"
+            value={organizationName}
+            onChange={setOrganizationName}
+            options={options.orgs}
+            placeholder="Search or type a publisher"
+            createNote="will be added as a new publisher"
+            emptyNote="No publishers yet — type a name to add one."
+            hint="Who produced the course, not where you found the files."
+          />
+          <MultiEntityPicker
+            label="Categories"
+            values={categories}
+            onChange={setCategories}
+            options={options.categories}
+            placeholder="Search categories…"
+            emptyNote="No categories yet — type a name to add one."
+            hint="Click to add or remove. Highlighted chips do not exist yet and will be created on save."
+          />
         </div>
       </div>
 

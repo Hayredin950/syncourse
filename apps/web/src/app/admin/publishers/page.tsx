@@ -8,6 +8,7 @@ import type { AdminPublisherRow } from "@/lib/types";
 import { useAdminToast } from "@/components/admin/AdminToast";
 import ConfirmButton from "@/components/admin/ConfirmButton";
 import ExpandableText from "@/components/admin/ExpandableText";
+import UploadField from "@/components/admin/UploadField";
 
 const ORG_TYPES = [
   ["publisher", "Publisher"],
@@ -162,15 +163,15 @@ function AdminPublishers() {
                 ))}
               </select>
             </label>
-            <label className="admin-field admin-field--wide">
-              <span className="admin-label">Logo URL</span>
-              <input
-                className="admin-input"
-                placeholder="https://…"
-                value={logoUrl}
-                onChange={(e) => setLogoUrl(e.target.value)}
-              />
-            </label>
+            <UploadField
+              label="Logo"
+              kind="image"
+              value={logoUrl}
+              onChange={setLogoUrl}
+              placeholder="https://… or upload"
+              preview={{ width: 40, height: 40 }}
+              hint="Shown at small sizes — a square mark reads better than a wordmark."
+            />
             <label className="admin-field admin-field--wide">
               <span className="admin-label">Description</span>
               <textarea
