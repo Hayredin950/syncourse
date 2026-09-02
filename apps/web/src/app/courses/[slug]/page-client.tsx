@@ -503,7 +503,7 @@ export function CourseDetailView({ slug }: { slug: string }) {
                         <Download size={16} className="muted" />
                         <div style={{ flex: 1, minWidth: 0 }}>
                           <div style={{ fontWeight: 600, fontSize: 12, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                            {file.moduleTitle ? `${file.moduleTitle} — Part ${file.partIndex + 1}` : `Part ${file.partIndex + 1}`}
+                            {file.moduleTitle ? `${file.moduleTitle} — Part ${file.partIndex}` : `Part ${file.partIndex}`}
                           </div>
                           {file.fileName && (
                             <div className="muted mono" style={{ fontSize: 10, marginTop: 1 }}>
@@ -683,7 +683,7 @@ export function CourseDetailView({ slug }: { slug: string }) {
                   >
                     <Download size={14} className="rating" />
                     <span style={{ flex: 1 }}>
-                      {f.moduleTitle ? `${f.moduleTitle} · Part ${f.partIndex + 1}` : `Part ${f.partIndex + 1}`}
+                      {f.moduleTitle ? `${f.moduleTitle} · Part ${f.partIndex}` : `Part ${f.partIndex}`}
                       {f.fileName && <span className="muted mono" style={{ marginLeft: 6, fontSize: 10 }}>{f.fileName}</span>}
                       {f.fileSizeMb && <span className="muted mono" style={{ marginLeft: 4, fontSize: 10 }}>{f.fileSizeMb} MB</span>}
                     </span>

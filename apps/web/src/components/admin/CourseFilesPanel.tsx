@@ -26,11 +26,18 @@ import ConfirmButton from "./ConfirmButton";
  * copy and delete it again. That scratch chat is the operator's own DM with the
  * bot — hence "Connect Telegram" before anything else works.
  */
+/** The trailing number of a t.me message link, so "Copy Link" can be pasted straight in. */
+const messageIdOf = (raw: string): string => {
+  const nums = raw.trim().split(/[^0-9]+/).filter(Boolean);
+  return nums.length ? nums[nums.length - 1] : "";
+};
+
 export default function CourseFilesPanel({ slug }: { slug: string }) {
   const toast = useAdminToast();
   const [modules, setModules] = useState<AdminTelegramModule[] | null>(null);
   const [bot, setConsole] = useState<AdminTelegramConsole | null>(null);
   const [busy, setBusy] = useState("");
+  const [loadError, setLoadError] = useState("");
   const [link, setLink] = useState("");
   const [channel, setChannel] = useState("");
   const [from, setFrom] = useState("");
@@ -38,8 +45,16 @@ export default function CourseFilesPanel({ slug }: { slug: string }) {
 
   const load = useCallback(() => {
     get<{ modules: AdminTelegramModule[] }>(`/admin/courses/${slug}/telegram`)
-      .then((d) => setModules(d.modules))
-      .catch(() => setModules([]));
+      .then((d) => {
+        setModules(d.modules);
+        setLoadError("");
+      })
+      .catch((e) => {
+        // Swallowing this printed "Nothing attached" for a request that never
+        // arrived — indistinguishable from a course with no files.
+        setModules([]);
+        setLoadError(e instanceof Error ? e.message : "Could not read the attached files");
+      });
   }, [slug]);
 
   useEffect(() => {
@@ -70,11 +85,27 @@ export default function CourseFilesPanel({ slug }: { slug: string }) {
         <span className="admin-section-head__hint">
           {modules === null
             ? "Loading…"
-            : fileCount === 0
-              ? "Nothing attached"
-              : `${fileCount} file${fileCount === 1 ? "" : "s"} · ${totalMb.toFixed(1)} MB`}
+            : loadError
+              ? "Could not load"
+              : fileCount === 0
+                ? "Nothing attached"
+                : `${fileCount} file${fileCount === 1 ? "" : "s"} · ${totalMb.toFixed(1)} MB`}
         </span>
       </div>
+
+      {loadError && (
+        <div style={{ padding: "12px 14px 0" }}>
+          <div className="admin-alert admin-alert--warn" role="status">
+            <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 1 }} />
+            <span>
+              {loadError} — this course may still have files attached.{" "}
+              <button type="button" className="admin-btn admin-btn--quiet admin-btn--sm" onClick={load}>
+                Try again
+              </button>
+            </span>
+          </div>
+        </div>
+      )}
 
       {bot && !bot.paired && (
         <div style={{ padding: "12px 14px 0" }}>
@@ -88,7 +119,7 @@ export default function CourseFilesPanel({ slug }: { slug: string }) {
         </div>
       )}
 
-      {modules !== null && fileCount === 0 && (
+      {modules !== null && fileCount === 0 && !loadError && (
         <p className="admin-empty">
           No files attached. Students will see this course but have nothing to download.
         </p>
@@ -222,33 +253,33 @@ export default function CourseFilesPanel({ slug }: { slug: string }) {
                 style={{ minWidth: 150, flex: 1 }}
                 value={channel}
                 onChange={(e) => setChannel(e.target.value)}
-                placeholder="@channel_username"
+                placeholder="@channel or t.me link"
               />
               <input
                 className="admin-input"
                 style={{ minWidth: 78, width: 78 }}
                 value={from}
                 onChange={(e) => setFrom(e.target.value)}
+                onBlur={(e) => setFrom(messageIdOf(e.target.value))}
                 placeholder="from"
-                inputMode="numeric"
               />
               <input
                 className="admin-input"
                 style={{ minWidth: 78, width: 78 }}
                 value={to}
                 onChange={(e) => setTo(e.target.value)}
+                onBlur={(e) => setTo(messageIdOf(e.target.value))}
                 placeholder="to"
-                inputMode="numeric"
               />
               <button
                 type="button"
                 className="admin-btn admin-btn--ghost admin-btn--sm"
-                disabled={busy !== "" || !channel.trim() || !from || !to}
+                disabled={busy !== "" || !channel.trim() || !messageIdOf(from) || !messageIdOf(to)}
                 onClick={() =>
                   run("import", async () => {
                     const r = await post<AdminTelegramImportResult>(
                       `/admin/courses/${slug}/telegram/import`,
-                      { channel: channel.trim(), from: Number(from), to: Number(to) },
+                      { channel: channel.trim(), from: Number(messageIdOf(from)), to: Number(messageIdOf(to)) },
                     );
                     return `${r.created} attached, ${r.updated} updated, ${r.skipped} skipped · ${r.totalMb.toFixed(
                       1,
@@ -261,8 +292,10 @@ export default function CourseFilesPanel({ slug }: { slug: string }) {
               </button>
             </div>
             <span className="admin-field__hint">
-              Reads one message per second, so a 200-message range takes a few minutes. Part numbers and module
-              names come from the filenames.
+              Paste the channel&apos;s @username, or a link to any message in it. For the bounds, long-press the first
+              and last file → Copy Link and paste those here — the message id is picked out for you. The bot must be
+              in that chat, an admin if it is a channel. Reads about one message a second, so keep a range under 60
+              or the request times out; part numbers and module names come from the filenames.
             </span>
           </div>
 

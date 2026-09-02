@@ -7,7 +7,7 @@ import {
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CloudinaryService, type UploadKind } from '../cloudinary/cloudinary.service';
-import { TelegramService } from '../telegram/telegram.service';
+import { parseChatRef, TelegramService } from '../telegram/telegram.service';
 import { bumpVersion, legalTitle } from '../legal/legal.constants';
 
 export interface AdminLessonInput {
@@ -1172,8 +1172,18 @@ export class AdminService {
     await this.assertStaff(userId);
     const course = await this.courseBySlug(slug);
     const { chatId } = await this.operatorChat(userId);
-    const channel = input.channel.trim().replace(/^@/, '').replace(/^https?:\/\/t\.me\//, '');
-    if (!channel) throw new BadRequestException('Which channel? Give its @username.');
+    // Whatever was pasted is handed to the bot as-is: parseChatRef there is the
+    // single place that knows @name from a t.me link from a -100 id. Stripping
+    // only "@" and "https://t.me/" here is what turned a copied message link
+    // into the unresolvable chat "@syncourse/2".
+    const channel = input.channel.trim();
+    const ref = parseChatRef(channel);
+    if (!ref) {
+      throw new BadRequestException(
+        'Which channel? Give its @username, a link to any message in it (https://t.me/name/41), ' +
+          'or its numeric id (-1001234567890).',
+      );
+    }
     if (!Number.isInteger(input.from) || !Number.isInteger(input.to) || input.from < 1) {
       throw new BadRequestException('The message ids must be whole numbers.');
     }

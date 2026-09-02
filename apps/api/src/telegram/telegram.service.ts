@@ -716,6 +716,15 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       await this.sendCourseFile(chatId, await this.slugFromPayload(data.slice(3)));
       // a download tap completes the interactive download picker
       await this.clearWizard(uid);
+    } else if (data.startsWith('dlmp:')) {
+      // dlmp:<courseId>:<moduleIndex> — list that module's parts as buttons
+      const [, courseId, idx] = data.split(':');
+      await this.sendModuleParts(chatId, courseId, Number(idx));
+    } else if (data.startsWith('dlp:')) {
+      // dlp:<courseId>:<moduleIndex>:<partOrdinal> — send one chosen part
+      const [, courseId, idx, part] = data.split(':');
+      await this.sendCoursePart(chatId, courseId, Number(idx), Number(part));
+      await this.clearWizard(uid);
     } else if (data.startsWith('dlm:')) {
       // dlm:<courseId>:<moduleIndex> — send one module's parts
       const [, courseId, idx] = data.split(':');
@@ -2521,13 +2530,20 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     if (fileCount === 1) {
       return this.deliverFiles(chatId, course, modules[0].files, threadId);
     }
-    // Multi-part course: offer a module per button rather than dumping several
-    // GB into the chat unasked.
+    // One module, several parts: a module list of exactly one row was the bug
+    // users hit — "Files · 3 parts" and "Send everything" were two buttons doing
+    // the same thing. Skip straight to the part picker.
+    if (modules.length === 1) {
+      return this.sendModuleParts(chatId, course.id, 0, threadId);
+    }
+    // Multi-module course: offer a module per button rather than dumping several
+    // GB into the chat unasked. A module with parts opens its part picker; a
+    // one-file module has nothing to choose, so it sends on the first tap.
     const totalMb = modules.reduce((n, m) => n + m.sizeMb, 0);
     const kb: KbButton[][] = modules.map((m, i) => [
       {
         text: `${m.title ? m.title.slice(0, 36) : 'Files'} · ${m.files.length > 1 ? `${m.files.length} parts` : fmtSize(m.sizeMb)}`,
-        callback_data: `dlm:${course.id}:${i}`,
+        callback_data: m.files.length > 1 ? `dlmp:${course.id}:${i}` : `dlm:${course.id}:${i}`,
       },
     ]);
     kb.push([{ text: `⬇️ Send everything (${fmtSize(totalMb)})`, callback_data: `dlall:${course.id}` }]);
@@ -2537,11 +2553,89 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       `${this.brandHeader('Download')}\n\n` +
         `🎴 <b>${esc(course.title)}</b>\n` +
         `${DIV}\n` +
-        `📦 <b>${fileCount}</b> files · ${fmtSize(totalMb)} · <b>${modules.length}</b> modules\n\n` +
+        `📦 <b>${fileCount}</b> file${fileCount === 1 ? '' : 's'} · ${fmtSize(totalMb)} · ` +
+        `<b>${modules.length}</b> module${modules.length === 1 ? '' : 's'}\n\n` +
         `Pick a module below, or grab the whole course at once.`,
       threadId,
       kb,
     );
+  }
+
+  /**
+   * The parts of one module, one button each.
+   *
+   * A 283 MB course arriving unasked is worse than a second tap: mobile data,
+   * a full Telegram cache, and no way to re-request just the part that failed.
+   * So a multi-part module lists its parts and sends only what is chosen, with
+   * "all parts" still one tap away.
+   */
+  private async sendModuleParts(chatId: number, courseId: string, moduleIndex: number, threadId?: number | null) {
+    const course = await this.prisma.course.findUnique({
+      where: { id: courseId },
+      select: { id: true, title: true, slug: true },
+    });
+    if (!course) return this.sendText(chatId, 'That course is no longer available.', threadId);
+    const modules = await this.courseModules(course.id);
+    const mod = modules[moduleIndex];
+    if (!mod) return this.sendText(chatId, 'That module no longer exists — open the course again.', threadId);
+
+    const kb: KbButton[][] = mod.files.map((f, i) => [
+      {
+        // The stored part number is what the website shows, so the button has to
+        // agree with it — the array index is only the callback's addressing.
+        text: `⬇️ Part ${f.partIndex}${f.fileSizeMb ? ` · ${fmtSize(f.fileSizeMb)}` : ''}`,
+        callback_data: `dlp:${course.id}:${moduleIndex}:${i}`,
+      },
+    ]);
+    kb.push([
+      {
+        text: `📦 All ${mod.files.length} parts (${fmtSize(mod.sizeMb)})`,
+        callback_data: `dlm:${course.id}:${moduleIndex}`,
+      },
+    ]);
+    kb.push(
+      modules.length > 1
+        ? [
+            { text: '⬅️ Modules', callback_data: `dl:${course.id}` },
+            { text: '🏠 Home', callback_data: 'home' },
+          ]
+        : [
+            { text: '📚 All courses', callback_data: 'courses' },
+            { text: '🏠 Home', callback_data: 'home' },
+          ],
+    );
+    return this.sendRich(
+      chatId,
+      `${this.brandHeader('Download')}\n\n` +
+        `🎴 <b>${esc(course.title)}</b>\n` +
+        (mod.title ? `📂 <b>${esc(mod.title)}</b>\n` : '') +
+        `${DIV}\n` +
+        `📦 <b>${mod.files.length}</b> parts · ${fmtSize(mod.sizeMb)}\n\n` +
+        `Tap a part to get just that file, or send them all at once.`,
+      threadId,
+      kb,
+    );
+  }
+
+  /** Deliver a single part out of a module — the `dlp:` button. */
+  private async sendCoursePart(
+    chatId: number,
+    courseId: string,
+    moduleIndex: number,
+    partOrdinal: number,
+    threadId?: number | null,
+  ) {
+    const course = await this.prisma.course.findUnique({
+      where: { id: courseId },
+      select: { id: true, title: true, slug: true, ratingAvg: true, lecturer: { select: { name: true } } },
+    });
+    if (!course) return this.sendText(chatId, 'That course is no longer available.', threadId);
+    const modules = await this.courseModules(course.id);
+    const file = modules[moduleIndex]?.files[partOrdinal];
+    if (!file) {
+      return this.sendText(chatId, 'That part is no longer attached — open the course again.', threadId);
+    }
+    return this.deliverFiles(chatId, course, [file], threadId, modules[moduleIndex].title);
   }
 
   /**
@@ -2560,10 +2654,14 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
   ) {
     let sent = 0;
     for (const [i, f] of files.entries()) {
-      const partLabel = files.length > 1 ? ` · part ${i + 1}/${files.length}` : '';
+      // Label from the stored part number, not the loop index: sending part 2 on
+      // its own must still say "part 2", and it has to match what the website
+      // and the picker buttons show.
+      const partLabel = f.partIndex > 1 || files.length > 1 ? `🧩 Part ${f.partIndex}\n` : '';
       const caption =
         `🎓 <b>${esc(course.title)}</b>\n` +
-        (moduleTitle ? `📂 ${esc(moduleTitle)}${partLabel}\n` : '') +
+        (moduleTitle ? `📂 ${esc(moduleTitle)}\n` : '') +
+        partLabel +
         `${DIV}\n` +
         (f.fileSizeMb ? `📦 ${esc(f.fileName ?? 'file')} · ${f.fileSizeMb} MB\n` : '') +
         `${DIV}\n` +
@@ -2742,7 +2840,11 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
         threadId,
       );
     }
-    const channel = parts[0].replace(/^@/, '').replace(/^https?:\/\/t\.me\//, '');
+    // Left as pasted: importFilesFromChannel() understands @name, a t.me message
+    // link and a numeric id, and it is the only place that should decide.
+    const channel = parts[0];
+    const channelLabel = parseChatRef(channel)?.username ?? null;
+    const channelName = channelLabel ? `@${esc(channelLabel)}` : esc(channel);
     const rangeMatch = parts[1].match(/^(\d+)\s*-\s*(\d+)$/);
     const slug = parts.slice(2).join(' ');
     if (!rangeMatch) {
@@ -2770,7 +2872,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     const progressId = await this.sendRich(
       chatId,
       `${this.brandHeader('Bulk Import')}\n\n` +
-        `⏳ Reading <b>${to - from + 1}</b> messages from <b>@${esc(channel)}</b>…\n` +
+        `⏳ Reading <b>${to - from + 1}</b> messages from <b>${channelName}</b>…\n` +
         `<i>This takes a moment — I read them one at a time.</i>`,
       threadId,
     );
@@ -2793,7 +2895,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     if (res.files === 0) {
       return say(
         `${this.brandHeader('Bulk Import')}\n\n` +
-          `❌ Found no files in <b>@${esc(channel)}</b> messages ${from}–${to}.\n\n` +
+          `❌ Found no files in <b>${channelName}</b> messages ${from}–${to}.\n\n` +
           (res.unreadable > 0
             ? `<b>${res.unreadable}</b> messages were unreadable — I'm probably not in that chat.\n` +
               `Add <b>@${BOT_USERNAME}</b> as an admin and try again.\n\n`
@@ -2807,7 +2909,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       `${this.brandHeader('Bulk Import')}\n\n` +
         `✅ <b>“${esc(course.title)}”</b> now has <b>${res.files}</b> files.\n` +
         `${DIV}\n` +
-        `📂 <b>${res.modules.length}</b> modules · ${fmtSize(res.totalMb)}\n` +
+        `📂 <b>${res.modules.length}</b> module${res.modules.length === 1 ? '' : 's'} · ${fmtSize(res.totalMb)}\n` +
         `🆕 ${res.created} added${res.updated ? ` · ♻️ ${res.updated} updated` : ''}` +
         (res.skipped ? ` · ⏭️ ${res.skipped} non-file skipped` : '') +
         (res.unreadable ? ` · ⚠️ ${res.unreadable} unreadable` : '') +
@@ -2841,17 +2943,45 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     viaChatId: number;
   }): Promise<({ ok: true } & ImportResult) | { ok: false; error: string }> {
     const { courseId, channel, from, to, viaChatId } = input;
-    const chatRes = await this.api('getChat', { chat_id: `@${channel}` });
-    const chatJson = (await chatRes.json()) as { ok: boolean; result?: { id: number }; description?: string };
+    const ref = parseChatRef(channel);
+    if (!ref) {
+      return {
+        ok: false,
+        error:
+          `“${channel}” is not a chat I can look up. Give the channel's @username, ` +
+          `a link to any message in it (https://t.me/name/41), or its numeric id (-1001234567890).`,
+      };
+    }
+    const chatRes = await this.api('getChat', { chat_id: ref.chatId });
+    const chatJson = (await chatRes.json()) as {
+      ok: boolean;
+      result?: { id: number; username?: string; title?: string };
+      description?: string;
+    };
     if (!chatJson.ok || !chatJson.result) {
-      return { ok: false, error: `Could not resolve @${channel}: ${chatJson.description ?? 'unknown error'}` };
+      const why = chatJson.description ?? 'unknown error';
+      return {
+        ok: false,
+        error:
+          `Could not open ${ref.chatId}: ${why}. ` +
+          (ref.username
+            ? `Check the spelling, and add @${BOT_USERNAME} to that chat — as an admin if it is a channel. ` +
+              `Private channels have no @username: open a message there, Copy Link, and paste that instead.`
+            : `Private chats need @${BOT_USERNAME} added as an admin before it can read them.`),
+      };
     }
     const sourceChatId = chatJson.result.id;
+    // Prefer the username Telegram reports over whatever was pasted: it is the
+    // one that makes `https://t.me/<username>/<id>` work in the admin panel, and
+    // a numeric ref has no username to paste in the first place.
+    const sourceUsername = chatJson.result.username ?? ref.username ?? null;
 
     type Found = { fileName: string; fileId: string; fileSizeMb: number | null; messageId: number; threadId: number | null };
     const found: Found[] = [];
     let skipped = 0;
     let unreadable = 0;
+    let lastError: string | null = null;
+    let retries = 0;
 
     for (let id = from; id <= to; id++) {
       const fwd = await this.api('forwardMessage', {
@@ -2860,14 +2990,35 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
         message_id: id,
         disable_notification: true,
       });
-      const json = (await fwd.json()) as TelegramMessage & { parameters?: { retry_after?: number } };
+      const json = (await fwd.json()) as TelegramMessage & {
+        parameters?: { retry_after?: number };
+        description?: string;
+      };
       if (!json.ok || !json.result) {
-        if (json.parameters?.retry_after) {
+        // A 429 is worth waiting out, but not forever: a chat that keeps
+        // throttling would otherwise pin the request open until the gateway
+        // gives up, with nothing to show for it.
+        if (json.parameters?.retry_after && retries < 8) {
+          retries++;
           await sleep((json.parameters.retry_after + 1) * 1000);
           id--; // retry this id
           continue;
         }
         unreadable++;
+        lastError = json.description ?? lastError;
+        // Every message failing means the bot cannot read the chat at all, not
+        // that the range is empty. Say so after a few tries instead of grinding
+        // through 200 ids at a second each to report "0 attached".
+        if (unreadable >= 5 && found.length === 0 && skipped === 0) {
+          return {
+            ok: false,
+            error:
+              `I could not read any of the first ${unreadable} messages in ` +
+              `${sourceUsername ? `@${sourceUsername}` : String(sourceChatId)} (${lastError ?? 'not found'}). ` +
+              `Add @${BOT_USERNAME} to that chat — as an admin if it is a channel — then try again. ` +
+              `Or forward the files to the bot and attach them one at a time.`,
+          };
+        }
         continue;
       }
       const m = json.result;
@@ -2922,7 +3073,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
         const saved = await this.saveLink({
           courseId,
           chatId: BigInt(sourceChatId),
-          chatUsername: channel,
+          chatUsername: sourceUsername,
           messageThreadId: f.threadId ? BigInt(f.threadId) : null,
           fileMessageId: BigInt(f.messageId),
           fileId: f.fileId,
@@ -3177,14 +3328,59 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
         chatId: input.chatId,
         fileMessageId: input.fileMessageId,
       },
-      select: { id: true },
+      select: { id: true, partIndex: true },
     });
     if (existing) {
-      await this.prisma.telegramCourseLink.update({ where: { id: existing.id }, data: input });
+      // Keep the part number the row already has: a re-import must not shuffle
+      // numbering that students have already seen.
+      await this.prisma.telegramCourseLink.update({
+        where: { id: existing.id },
+        data: { ...input, partIndex: input.partIndex ?? existing.partIndex },
+      });
       return { created: false };
     }
-    await this.prisma.telegramCourseLink.create({ data: input });
-    return { created: true };
+    return this.prisma.telegramCourseLink
+      .create({ data: { ...input, partIndex: input.partIndex ?? (await this.nextPartIndex(input)) } })
+      .then(() => ({ created: true }));
+  }
+
+  /**
+   * The next free part number inside a module, 1-based.
+   *
+   * `/import` derives part numbers from the filenames, but every other attach
+   * path — a forwarded ZIP, a t.me link, the web panel — adds one file at a time
+   * and cannot know how many came before it. Those relied on the column default
+   * of 1, so a three-ZIP course ended up with three rows all claiming to be
+   * part 1. Numbering is per module (`moduleTitle`), matching how
+   * `courseModules()` groups for delivery.
+   */
+  private async nextPartIndex(input: { courseId: string; moduleTitle?: string | null }): Promise<number> {
+    const top = await this.prisma.telegramCourseLink.aggregate({
+      where: { courseId: input.courseId, moduleTitle: input.moduleTitle ?? null },
+      _max: { partIndex: true },
+    });
+    return (top._max.partIndex ?? 0) + 1;
+  }
+
+  /**
+   * Close the gaps after a detach, so a module that lost part 2 reads 1, 2, 3
+   * rather than 1, 3, 4. Ordering is the delivery order, so renumbering never
+   * reorders anything — it only relabels.
+   */
+  private async renumberModule(courseId: string, moduleTitle: string | null) {
+    const rows = await this.prisma.telegramCourseLink.findMany({
+      where: { courseId, moduleTitle },
+      orderBy: [{ partIndex: 'asc' }, { createdAt: 'asc' }],
+      select: { id: true, partIndex: true },
+    });
+    await Promise.all(
+      rows.map((r, i) =>
+        r.partIndex === i + 1
+          ? null
+          : this.prisma.telegramCourseLink.update({ where: { id: r.id }, data: { partIndex: i + 1 } }),
+      ),
+    );
+    return rows.length;
   }
 
   /**
@@ -3325,10 +3521,14 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
 
   /** Detach one file. Returns false when the row is already gone. */
   async unlinkFile(courseId: string, linkId: string): Promise<boolean> {
-    const { count } = await this.prisma.telegramCourseLink.deleteMany({
+    const row = await this.prisma.telegramCourseLink.findFirst({
       where: { id: linkId, courseId },
+      select: { id: true, moduleTitle: true },
     });
-    return count > 0;
+    if (!row) return false;
+    await this.prisma.telegramCourseLink.delete({ where: { id: row.id } });
+    await this.renumberModule(courseId, row.moduleTitle);
+    return true;
   }
 
   /** Detach every file from a course — the `/unlink <slug>` equivalent. */
@@ -3710,10 +3910,57 @@ function slugify(s: string): string {
   );
 }
 
+/**
+ * Normalise whatever an operator pasted into a chat reference the Bot API will
+ * accept.
+ *
+ * `@channel_username` is the documented form, but it is not what anyone has to
+ * hand — what they have is a link copied off a message, which carries topic and
+ * message ids. Passing those through unchanged is what produced
+ * `Could not resolve @syncourse/2: Bad Request: chat not found`: only the
+ * leading `@` and `https://t.me/` were stripped, so the message id stayed glued
+ * to the username. Forms handled:
+ *
+ *   @name · name · t.me/name · https://t.me/name/2 · t.me/name/2/41
+ *   t.me/c/1234567890/41 (private, no username) · -1001234567890
+ *
+ * `messageId` is the trailing id when the paste was a message link, so a caller
+ * can offer it as the range bound instead of making someone retype it.
+ */
+export function parseChatRef(
+  raw: string,
+): { chatId: string; username: string | null; messageId: number | null } | null {
+  const text = raw.trim().replace(/^<|>$/g, '');
+  if (!text) return null;
+  const url = text.replace(/^https?:\/\//i, '').replace(/^(www\.)?(t|telegram)\.me\//i, '');
+  const segs = url.split('/').filter(Boolean);
+  if (segs.length === 0) return null;
+
+  const tail = segs.slice(1).filter((s) => /^\d+$/.test(s));
+  const messageId = tail.length ? Number(tail[tail.length - 1]) : null;
+  const head = segs[0].replace(/^@/, '');
+
+  // t.me/c/<internal id>/… — a private channel with no username. The Bot API
+  // wants the -100-prefixed form.
+  if (head === 'c' && /^\d+$/.test(segs[1] ?? '')) {
+    const rest = segs.slice(2).filter((s) => /^\d+$/.test(s));
+    return {
+      chatId: `-100${segs[1]}`,
+      username: null,
+      messageId: rest.length ? Number(rest[rest.length - 1]) : null,
+    };
+  }
+  // A raw chat id, as printed by /stats and the console.
+  if (/^-\d+$/.test(head)) return { chatId: head, username: null, messageId };
+  // A bare internal id, the number out of a t.me/c/ link pasted on its own.
+  if (/^\d{9,}$/.test(head)) return { chatId: `-100${head}`, username: null, messageId };
+  if (!/^[A-Za-z0-9_]{4,32}$/.test(head)) return null;
+  return { chatId: `@${head}`, username: head, messageId };
+}
+
 function parseTelegramLink(
   url: string,
-): { chatUsername?: string; chatId?: string; messageThreadId?: number; messageId: number } | null {
-  try {
+): { chatUsername?: string; chatId?: string; messageThreadId?: number; messageId: number } | null {  try {
     const u = new URL(url);
     if (u.hostname !== 't.me') return null;
     const segs = u.pathname.split('/').filter(Boolean);
