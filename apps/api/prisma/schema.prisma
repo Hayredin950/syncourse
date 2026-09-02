@@ -55,43 +55,41 @@ model Organization {
 }
 
 model Level {
-  id       String   @id @default(cuid())
-  name     String   @unique // Beginner / Intermediate / Advanced / All Levels
-  courses  Course[]
+  id      String   @id @default(cuid())
+  name    String   @unique // Beginner / Intermediate / Advanced / All Levels
+  courses Course[]
 }
 
 model Course {
-  id               String    @id @default(cuid())
-  title            String
-  slug             String    @unique
-  description      String
-  thumbnailUrl     String?
-  bannerUrl        String?
-  previewVideoUrl  String?
-  language         String    @default("English")
-  levelId          String?
-  level            Level?    @relation(fields: [levelId], references: [id])
-  lecturerId       String?
-  lecturer         Lecturer? @relation(fields: [lecturerId], references: [id])
-  organizationId   String?
-  organization     Organization? @relation(fields: [organizationId], references: [id])
-  originalPrice    Float?
-  price            Float?
-  isPremium        Boolean   @default(false)
-  isFeatured       Boolean   @default(false)
-  contentType      String    @default("course") // course | mini-course | cheat-sheet | roadmap
-  prerequisites    String?
-  ratingAvg        Float     @default(0)
-  ratingCount      Int       @default(0)
-  enrollmentCount  Int       @default(0)
-  downloadCount    Int       @default(0)
-  sourceUrl        String?   // where the course content lives (e.g. t.me/…/id) — set by feed ingestion
-  publishedAt      DateTime  @default(now())
-  createdAt        DateTime  @default(now())
-  updatedAt        DateTime  @updatedAt
-  deletedAt        DateTime? // soft delete — protects progress history
-
-  @@index([publishedAt])
+  id              String        @id @default(cuid())
+  title           String
+  slug            String        @unique
+  description     String
+  thumbnailUrl    String?
+  bannerUrl       String?
+  previewVideoUrl String?
+  language        String        @default("English")
+  levelId         String?
+  level           Level?        @relation(fields: [levelId], references: [id])
+  lecturerId      String?
+  lecturer        Lecturer?     @relation(fields: [lecturerId], references: [id])
+  organizationId  String?
+  organization    Organization? @relation(fields: [organizationId], references: [id])
+  originalPrice   Float?
+  price           Float?
+  isPremium       Boolean       @default(false)
+  isFeatured      Boolean       @default(false)
+  contentType     String        @default("course") // course | mini-course | cheat-sheet | roadmap
+  prerequisites   String?
+  ratingAvg       Float         @default(0)
+  ratingCount     Int           @default(0)
+  enrollmentCount Int           @default(0)
+  downloadCount   Int           @default(0)
+  sourceUrl       String? // where the course content lives (e.g. t.me/…/id) — set by feed ingestion
+  publishedAt     DateTime      @default(now())
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  deletedAt       DateTime? // soft delete — protects progress history
 
   categories      CourseCategory[]
   tags            CourseTag[]
@@ -107,6 +105,8 @@ model Course {
   likedBy         LikedCourse[]
   downloadEvents  DownloadEvent[]
   telegramFiles   TelegramCourseLink[]
+
+  @@index([publishedAt])
 }
 
 model CourseCategory {
@@ -150,9 +150,9 @@ model LearningPath {
 model LearningPathCourse {
   pathId   String
   courseId String
-  order    Int    @default(0)
+  order    Int          @default(0)
   path     LearningPath @relation(fields: [pathId], references: [id], onDelete: Cascade)
-  course   Course      @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  course   Course       @relation(fields: [courseId], references: [id], onDelete: Cascade)
 
   @@id([pathId, courseId])
 }
@@ -162,29 +162,29 @@ model LearningPathCourse {
 // ---------------------------------------------------------------
 
 model Section {
-  id         String  @id @default(cuid())
+  id         String @id @default(cuid())
   courseId   String
   title      String
-  orderIndex Int     @default(0)
-  course     Course  @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  orderIndex Int    @default(0)
+  course     Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
 
   lessons       Lesson[]
   telegramFiles TelegramCourseLink[]
 }
 
 model Lesson {
-  id            String  @id @default(cuid())
-  courseId      String
-  sectionId     String?
-  title         String
-  orderIndex    Int     @default(0)
-  type          String  @default("video") // video | article | quiz | notes
-  durationSec   Int     @default(0)
-  videoUrl      String? // private storage URL — served via signed URL only
-  sourceUrl     String? // t.me message link for this lesson/part — set by feed ingestion
-  isPreview     Boolean @default(false)
-  course        Course  @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  section       Section? @relation(fields: [sectionId], references: [id], onDelete: Cascade)
+  id          String   @id @default(cuid())
+  courseId    String
+  sectionId   String?
+  title       String
+  orderIndex  Int      @default(0)
+  type        String   @default("video") // video | article | quiz | notes
+  durationSec Int      @default(0)
+  videoUrl    String? // private storage URL — served via signed URL only
+  sourceUrl   String? // t.me message link for this lesson/part — set by feed ingestion
+  isPreview   Boolean  @default(false)
+  course      Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  section     Section? @relation(fields: [sectionId], references: [id], onDelete: Cascade)
 
   notes       Note[]
   files       LessonFile[]
@@ -194,39 +194,39 @@ model Lesson {
 }
 
 model LessonFile {
-  id            String  @id @default(cuid())
-  lessonId      String
-  label         String // "1080p" | "720p" | "480p" | "notes_pdf"
-  format        String  @default("mp4")
-  sizeMb        Float
-  durationSec   Int     @default(0)
-  codec         String?
-  hasSubtitles  Boolean @default(false)
-  audio         String?
-  isBest        Boolean @default(false)
-  lesson        Lesson  @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  id           String  @id @default(cuid())
+  lessonId     String
+  label        String // "1080p" | "720p" | "480p" | "notes_pdf"
+  format       String  @default("mp4")
+  sizeMb       Float
+  durationSec  Int     @default(0)
+  codec        String?
+  hasSubtitles Boolean @default(false)
+  audio        String?
+  isBest       Boolean @default(false)
+  lesson       Lesson  @relation(fields: [lessonId], references: [id], onDelete: Cascade)
 }
 
 model Note {
-  id            String  @id @default(cuid())
-  lessonId      String
-  courseId      String
-  title         String
-  richText      String
-  imageUrls     String  @default("[]") // JSON array of image URLs
-  pdfUrl        String?
-  isCheatsheet  Boolean @default(false)
-  lesson        Lesson  @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  id           String  @id @default(cuid())
+  lessonId     String
+  courseId     String
+  title        String
+  richText     String
+  imageUrls    String  @default("[]") // JSON array of image URLs
+  pdfUrl       String?
+  isCheatsheet Boolean @default(false)
+  lesson       Lesson  @relation(fields: [lessonId], references: [id], onDelete: Cascade)
 }
 
 model Attachment {
-  id        String  @id @default(cuid())
-  lessonId  String?
-  courseId  String?
-  fileUrl   String
-  fileType  String
-  sizeMb    Float
-  lesson    Lesson? @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  id       String  @id @default(cuid())
+  lessonId String?
+  courseId String?
+  fileUrl  String
+  fileType String
+  sizeMb   Float
+  lesson   Lesson? @relation(fields: [lessonId], references: [id], onDelete: Cascade)
 }
 
 // ---------------------------------------------------------------
@@ -265,23 +265,25 @@ model User {
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
-  enrollments     Enrollment[]
-  ratings         Rating[]
-  reviews         Review[]
-  lists           CollectionList[]
-  savedLists      SavedList[]
-  savedCourses    SavedCourse[]
-  likedCourses    LikedCourse[]
-  following       Follow[] @relation("following")
-  followers       Follow[] @relation("followers")
-  ownedCircles    Circle[] @relation("circleOwner")
-  circleMembers   CircleMember[]
-  sessions        Session[]
-  taste           TasteProfile[]
-  downloads       DownloadEvent[]
-  subscriptions   Subscription[]
-  reviewUpvotes   ReviewUpvote[]
-  notifications   Notification[]
+  enrollments      Enrollment[]
+  ratings          Rating[]
+  reviews          Review[]
+  lists            CollectionList[]
+  savedLists       SavedList[]
+  savedCourses     SavedCourse[]
+  likedCourses     LikedCourse[]
+  following        Follow[]          @relation("following")
+  followers        Follow[]          @relation("followers")
+  ownedCircles     Circle[]          @relation("circleOwner")
+  circleMembers    CircleMember[]
+  sessions         Session[]
+  taste            TasteProfile[]
+  downloads        DownloadEvent[]
+  subscriptions    Subscription[]
+  reviewUpvotes    ReviewUpvote[]
+  notifications    Notification[]
+  legalAcceptances LegalAcceptance[]
+  legalEdits       LegalDocument[]   @relation("legalEditor")
 }
 
 model Follow {
@@ -295,21 +297,21 @@ model Follow {
 }
 
 model TasteProfile {
-  id         String @id @default(cuid())
+  id         String   @id @default(cuid())
   userId     String
   categoryId String
-  weight     Int    @default(1)
+  weight     Int      @default(1)
   user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
   category   Category @relation(fields: [categoryId], references: [id], onDelete: Cascade)
 }
 
 model Circle {
-  id          String   @id @default(cuid())
+  id          String         @id @default(cuid())
   name        String
   description String?
   ownerId     String
-  owner       User     @relation("circleOwner", fields: [ownerId], references: [id], onDelete: Cascade)
-  createdAt   DateTime @default(now())
+  owner       User           @relation("circleOwner", fields: [ownerId], references: [id], onDelete: Cascade)
+  createdAt   DateTime       @default(now())
   members     CircleMember[]
 
   @@index([ownerId])
@@ -341,16 +343,16 @@ model Session {
 // ---------------------------------------------------------------
 
 model Enrollment {
-  id            String   @id @default(cuid())
-  userId        String
-  courseId      String
-  progressPct   Int      @default(0)
-  status        String   @default("in_progress") // in_progress | completed
-  lastLessonId  String?
-  enrolledAt    DateTime @default(now())
-  updatedAt     DateTime @updatedAt
-  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  course        Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  id           String   @id @default(cuid())
+  userId       String
+  courseId     String
+  progressPct  Int      @default(0)
+  status       String   @default("in_progress") // in_progress | completed
+  lastLessonId String?
+  enrolledAt   DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course       Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
 
   lessonProgress LessonProgress[]
 
@@ -358,13 +360,13 @@ model Enrollment {
 }
 
 model LessonProgress {
-  id         String @id @default(cuid())
+  id           String     @id @default(cuid())
   enrollmentId String
-  lessonId   String
-  completed  Boolean @default(false)
-  completedAt DateTime?
-  enrollment Enrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
-  lesson     Lesson     @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  lessonId     String
+  completed    Boolean    @default(false)
+  completedAt  DateTime?
+  enrollment   Enrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  lesson       Lesson     @relation(fields: [lessonId], references: [id], onDelete: Cascade)
 
   @@unique([enrollmentId, lessonId])
 }
@@ -402,19 +404,19 @@ model Rating {
 }
 
 model Review {
-  id               String    @id @default(cuid())
+  id               String         @id @default(cuid())
   userId           String
   courseId         String
   body             String
-  containsSpoilers Boolean   @default(false)
+  containsSpoilers Boolean        @default(false)
   parentId         String? // threaded replies
-  upvotes          Int       @default(0)
+  upvotes          Int            @default(0)
   editedAt         DateTime?
-  createdAt        DateTime  @default(now())
-  user             User      @relation(fields: [userId], references: [id], onDelete: Cascade)
-  course           Course    @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  parent           Review?   @relation("reviewThread", fields: [parentId], references: [id], onDelete: Cascade)
-  replies          Review[]  @relation("reviewThread")
+  createdAt        DateTime       @default(now())
+  user             User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course           Course         @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  parent           Review?        @relation("reviewThread", fields: [parentId], references: [id], onDelete: Cascade)
+  replies          Review[]       @relation("reviewThread")
   upvotedBy        ReviewUpvote[]
 
   @@index([courseId])
@@ -431,15 +433,15 @@ model ReviewUpvote {
 }
 
 model Notification {
-  id        String    @id @default(cuid())
+  id        String   @id @default(cuid())
   userId    String
   type      String // telegram_reminder | new_lesson | new_course | system
   title     String
   body      String
   deepLink  String?
-  read      Boolean   @default(false)
-  createdAt DateTime  @default(now())
-  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId, read])
 }
@@ -459,14 +461,14 @@ model CollectionList {
   updatedAt   DateTime @updatedAt
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  items      CollectionItem[]
-  savedBy    SavedList[]
+  items   CollectionItem[]
+  savedBy SavedList[]
 }
 
 model CollectionItem {
   listId   String
   courseId String
-  addedAt  DateTime @default(now())
+  addedAt  DateTime       @default(now())
   list     CollectionList @relation(fields: [listId], references: [id], onDelete: Cascade)
   course   Course         @relation(fields: [courseId], references: [id], onDelete: Cascade)
 
@@ -502,27 +504,27 @@ model DownloadEvent {
 }
 
 model Subscription {
-  id            String    @id @default(cuid())
+  id            String             @id @default(cuid())
   userId        String
   planName      String // 1_month | 3_months | 6_months
   paymentMethod String // telebirr | crypto | stripe | patreon
   amount        Float
-  currency      String   @default("ETB")
-  status        String   @default("pending") // pending | approved | rejected | expired
+  currency      String             @default("ETB")
+  status        String             @default("pending") // pending | approved | rejected | expired
   txReference   String?
   periodStart   DateTime?
   periodEnd     DateTime?
-  createdAt     DateTime @default(now())
-  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt     DateTime           @default(now())
+  user          User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   paymentRefs   PaymentReference[]
 }
 
 model PaymentReference {
-  id             String   @id @default(cuid())
+  id             String       @id @default(cuid())
   subscriptionId String
   reference      String
-  verified       Boolean  @default(false)
-  submittedAt    DateTime @default(now())
+  verified       Boolean      @default(false)
+  submittedAt    DateTime     @default(now())
   subscription   Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
 }
 
@@ -533,10 +535,10 @@ model TrendingQuery {
 }
 
 model AppVersion {
-  id           String   @id @default(cuid())
-  version      String   @unique
-  changelogMd  String
-  releasedAt   DateTime @default(now())
+  id          String   @id @default(cuid())
+  version     String   @unique
+  changelogMd String
+  releasedAt  DateTime @default(now())
 }
 
 // ---------------------------------------------------------------
@@ -574,22 +576,22 @@ model TelegramCourseLink {
 // `/link <slug>` works even after the API instance restarts (Render free
 // tier sleeps/redeploys wipe in-memory state).
 model TelegramUserFile {
-  userId     BigInt    @id
+  userId     BigInt   @id
   fileId     String
   fileName   String?
   fileSizeMb Float?
-  updatedAt  DateTime  @updatedAt
+  updatedAt  DateTime @updatedAt
 }
 
 // Ring-buffer-ish log of the last bot events — surfaced via /telegram/status
 // so link failures are diagnosable without Render log access.
 model TelegramActivity {
-  id        String   @id @default(cuid())
-  at        DateTime @default(now())
-  userId    BigInt?
-  chatId    BigInt?
-  kind      String // update | link | error | reply
-  detail    String
+  id     String   @id @default(cuid())
+  at     DateTime @default(now())
+  userId BigInt?
+  chatId BigInt?
+  kind   String // update | link | error | reply
+  detail String
 }
 
 // Persisted interactive wizard state (e.g. /newcourse) so a Render
@@ -613,10 +615,43 @@ model TelegramNav {
   updatedAt DateTime @updatedAt
 }
 
+// Terms / privacy / refund text, edited from /admin rather than shipped in code.
+// Publishing a change bumps `version`, which is what makes every earlier
+// acceptance stale: everyone who had agreed to the old text is notified and
+// re-prompted (see LegalAcceptance).
 model LegalDocument {
-  id          String   @id @default(cuid())
-  type        String   @unique // terms | privacy | refund
-  version     String
-  bodyMd      String
-  effectiveAt DateTime @default(now())
+  id                 String            @id @default(cuid())
+  type               String            @unique // terms | privacy | refund
+  title              String? // display heading; falls back to a built-in label
+  version            String
+  bodyMd             String
+  /// One-line "what changed", shown in the re-acceptance prompt and the notification.
+  changeSummary      String?
+  /// Informational documents (the refund policy, say) never prompt anyone.
+  requiresAcceptance Boolean           @default(true)
+  effectiveAt        DateTime          @default(now())
+  updatedAt          DateTime          @default(now()) @updatedAt
+  updatedById        String?
+  updatedBy          User?             @relation("legalEditor", fields: [updatedById], references: [id], onDelete: SetNull)
+  acceptances        LegalAcceptance[]
+}
+
+// One row per (user, document, version) — the audit trail of what each person
+// agreed to and when. Keeping a row per version instead of updating one in place
+// is the whole point: "did they accept the old terms before we changed them" has
+// to stay answerable after the change.
+model LegalAcceptance {
+  id         String   @id @default(cuid())
+  userId     String
+  documentId String
+  type       String // denormalised so "what is pending for this user" is one query
+  version    String
+  acceptedAt DateTime @default(now())
+  source     String   @default("web") // web | mobile | telegram
+
+  user     User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  document LegalDocument @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, documentId, version])
+  @@index([documentId, version])
 }

@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Course, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { legalTitle } from '../legal/legal.constants';
 
 type CourseWith = Prisma.CourseGetPayload<{
   include: {
@@ -454,12 +455,26 @@ export class CatalogService {
     };
   }
 
+  /**
+   * Public legal text. Returns the version and edit date alongside the body so a
+   * reader can tell whether they are looking at the document they agreed to —
+   * the pages render "v1.1 · effective 2 Sep 2026" from these fields.
+   */
   async legalDocuments(type?: string) {
-    const where = type ? { type } : undefined;
-    return this.prisma.legalDocument.findMany({
-      where,
-      select: { type: true, version: true, bodyMd: true, effectiveAt: true },
+    const rows = await this.prisma.legalDocument.findMany({
+      where: type ? { type } : undefined,
+      orderBy: { type: 'asc' },
     });
+    return rows.map((d) => ({
+      type: d.type,
+      title: legalTitle(d.type, d.title),
+      version: d.version,
+      bodyMd: d.bodyMd,
+      changeSummary: d.changeSummary,
+      requiresAcceptance: d.requiresAcceptance,
+      effectiveAt: d.effectiveAt,
+      updatedAt: d.updatedAt,
+    }));
   }
 
   /** Latest app versions for the in-app update/changelog card. */

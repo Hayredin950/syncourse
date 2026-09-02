@@ -3,6 +3,7 @@ import { Stack } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import React from "react";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
+import LegalConsent from "../components/LegalConsent";
 import UpdateBanner from "../components/UpdateBanner";
 import { AuthProvider } from "../lib/auth";
 import { colors } from "../lib/tokens";
@@ -38,8 +39,10 @@ export default function RootLayout() {
             <Stack.Screen name="organizations/index" options={{ title: "Channels & Schools" }} />
             <Stack.Screen name="paths/index" options={{ title: "Learning paths" }} />
             <Stack.Screen name="paths/[id]" options={{ title: "Learning path" }} />
+            <Stack.Screen name="legal/[type]" options={{ title: "Legal" }} />
           </Stack>
           <UpdateBanner />
+          <LegalConsent />
         </AuthProvider>
       </QueryClientProvider>
     </GestureHandlerRootView>

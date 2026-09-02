@@ -5,6 +5,7 @@ import {
   CreditCard,
   GraduationCap,
   LayoutDashboard,
+  Scale,
   ScrollText,
   Settings,
   Star,
@@ -76,6 +77,12 @@ export const ADMIN_NAV: AdminNavGroup[] = [
     label: "System",
     items: [
       { href: "/admin/activity", label: "Activity log", icon: ScrollText, keywords: "audit history events trail" },
+      {
+        href: "/admin/legal",
+        label: "Legal",
+        icon: Scale,
+        keywords: "terms privacy refund policy consent acceptance version",
+      },
       { href: "/admin/settings", label: "Settings", icon: Settings, keywords: "config support telegram plans" },
     ],
   },

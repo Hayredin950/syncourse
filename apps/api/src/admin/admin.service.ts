@@ -6,6 +6,7 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { bumpVersion, legalTitle } from '../legal/legal.constants';
 
 export interface AdminLessonInput {
   title: string;
@@ -63,6 +64,21 @@ export interface AdminCategoryInput {
   name?: string;
   icon?: string;
   sortOrder?: number;
+}
+
+export interface AdminLegalInput {
+  type?: string;
+  title?: string;
+  version?: string;
+  bodyMd?: string;
+  changeSummary?: string;
+  requiresAcceptance?: boolean;
+  effectiveAt?: string;
+  /**
+   * Fix a typo without bumping the version or prompting anyone. Any version
+   * typed alongside it is ignored — see updateLegal for why.
+   */
+  minorEdit?: boolean;
 }
 
 @Injectable()
@@ -776,6 +792,162 @@ export class AdminService {
     }
     await this.prisma.category.delete({ where: { id } });
     return { deleted: true, id };
+  }
+
+  // --- Legal documents ---
+
+  /**
+   * Every document plus how far its current version has spread. `acceptedCurrent`
+   * against `eligibleUsers` is the number an operator actually wants after
+   * publishing a change: how many people have caught up.
+   */
+  async listLegal(userId: string) {
+    await this.assertStaff(userId);
+    const docs = await this.prisma.legalDocument.findMany({
+      orderBy: { type: 'asc' },
+      include: { updatedBy: { select: { name: true, username: true } } },
+    });
+    const [eligibleUsers, counts] = await Promise.all([
+      this.prisma.user.count(),
+      this.prisma.legalAcceptance.groupBy({
+        by: ['documentId', 'version'],
+        _count: { _all: true },
+      }),
+    ]);
+    return docs.map((d) => ({
+      id: d.id,
+      type: d.type,
+      title: legalTitle(d.type, d.title),
+      customTitle: d.title,
+      version: d.version,
+      bodyMd: d.bodyMd,
+      changeSummary: d.changeSummary,
+      requiresAcceptance: d.requiresAcceptance,
+      effectiveAt: d.effectiveAt,
+      updatedAt: d.updatedAt,
+      updatedBy: d.updatedBy?.name ?? null,
+      acceptedCurrent: counts
+        .filter((c) => c.documentId === d.id && c.version === d.version)
+        .reduce((s, c) => s + c._count._all, 0),
+      acceptedAnyVersion: counts
+        .filter((c) => c.documentId === d.id)
+        .reduce((s, c) => s + c._count._all, 0),
+      eligibleUsers,
+    }));
+  }
+
+  async createLegal(userId: string, dto: AdminLegalInput) {
+    await this.assertStaff(userId);
+    const type = dto.type?.trim().toLowerCase();
+    if (!type) throw new BadRequestException('A type is required (terms, privacy, refund…)');
+    if (!/^[a-z0-9-]+$/.test(type)) {
+      throw new BadRequestException('Type may only contain lowercase letters, numbers and dashes');
+    }
+    if (!dto.bodyMd?.trim()) throw new BadRequestException('The document body cannot be empty');
+    const existing = await this.prisma.legalDocument.findUnique({ where: { type } });
+    if (existing) throw new BadRequestException(`A “${type}” document already exists — edit that one.`);
+
+    const doc = await this.prisma.legalDocument.create({
+      data: {
+        type,
+        title: dto.title?.trim() || null,
+        version: dto.version?.trim() || '1.0',
+        bodyMd: dto.bodyMd.trim(),
+        changeSummary: dto.changeSummary?.trim() || null,
+        requiresAcceptance: dto.requiresAcceptance ?? true,
+        effectiveAt: dto.effectiveAt ? new Date(dto.effectiveAt) : new Date(),
+        updatedById: userId,
+      },
+    });
+    return { id: doc.id, type: doc.type, version: doc.version, notified: 0 };
+  }
+
+  /**
+   * Publish an edit.
+   *
+   * A version change is what invalidates consent — acceptance rows are keyed by
+   * version, so bumping it puts the document back in front of everyone. That
+   * makes "version changed" and "users are re-prompted" the same event, and this
+   * method keeps them inseparable: a republish always notifies, and a minorEdit
+   * never changes the version. Letting an admin bump the version quietly would
+   * silently revoke everyone's consent with nothing to tell them why.
+   */
+  async updateLegal(userId: string, type: string, dto: AdminLegalInput) {
+    await this.assertStaff(userId);
+    const existing = await this.prisma.legalDocument.findUnique({ where: { type } });
+    if (!existing) throw new NotFoundException(`No “${type}” document — create it first.`);
+
+    const bodyMd = dto.bodyMd !== undefined ? dto.bodyMd.trim() : existing.bodyMd;
+    if (!bodyMd) throw new BadRequestException('The document body cannot be empty');
+    const typed = dto.version?.trim();
+    const republish = !dto.minorEdit && (bodyMd !== existing.bodyMd || (!!typed && typed !== existing.version));
+    const version = dto.minorEdit
+      ? existing.version
+      : republish
+        ? typed || bumpVersion(existing.version)
+        : typed || existing.version;
+    const requiresAcceptance = dto.requiresAcceptance ?? existing.requiresAcceptance;
+    const label = legalTitle(type, dto.title ?? existing.title);
+    const summary = dto.changeSummary !== undefined ? dto.changeSummary.trim() : existing.changeSummary;
+
+    const { doc, notified } = await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.legalDocument.update({
+        where: { type },
+        data: {
+          bodyMd,
+          version,
+          requiresAcceptance,
+          ...(dto.title !== undefined ? { title: dto.title.trim() || null } : {}),
+          ...(dto.changeSummary !== undefined ? { changeSummary: summary || null } : {}),
+          ...(dto.effectiveAt ? { effectiveAt: new Date(dto.effectiveAt) } : {}),
+          ...(republish && !dto.effectiveAt ? { effectiveAt: new Date() } : {}),
+          updatedById: userId,
+        },
+      });
+
+      if (!republish || !requiresAcceptance) return { doc: updated, notified: 0 };
+
+      // Whose agreement just went stale: anyone holding an acceptance for some
+      // other version of this document and none for the new one.
+      const [previous, current] = await Promise.all([
+        tx.legalAcceptance.findMany({
+          where: { documentId: updated.id, version: { not: version } },
+          select: { userId: true },
+          distinct: ['userId'],
+        }),
+        tx.legalAcceptance.findMany({
+          where: { documentId: updated.id, version },
+          select: { userId: true },
+        }),
+      ]);
+      const alreadyOnNew = new Set(current.map((r) => r.userId));
+      const targets = previous.map((r) => r.userId).filter((id) => !alreadyOnNew.has(id));
+      if (targets.length === 0) return { doc: updated, notified: 0 };
+
+      const created = await tx.notification.createMany({
+        data: targets.map((target) => ({
+          userId: target,
+          type: 'legal_update',
+          title: `${label} updated`,
+          body:
+            summary ||
+            `We've published version ${version}. Please review and accept the updated ${label.toLowerCase()}.`,
+          deepLink: `/legal/${type}`,
+        })),
+      });
+      return { doc: updated, notified: created.count };
+    });
+
+    return {
+      id: doc.id,
+      type: doc.type,
+      version: doc.version,
+      republished: republish,
+      notified,
+      message: republish
+        ? `${label} published as v${doc.version}${notified > 0 ? ` — ${notified} user${notified === 1 ? '' : 's'} notified to re-accept` : ''}`
+        : `${label} saved without a version change — nobody was prompted`,
+    };
   }
 
   // --- helpers ---

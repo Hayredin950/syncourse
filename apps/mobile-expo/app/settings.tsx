@@ -127,6 +127,18 @@ export default function SettingsScreen() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["me"] }),
   });
 
+  // Listed from the API rather than hard-coded, so a document an admin adds or
+  // renames shows up here without shipping a new build.
+  const { data: legalDocs } = useQuery({
+    queryKey: ["legal"],
+    queryFn: () => api.legalDocuments(),
+  });
+  const { data: legalStatus } = useQuery({
+    queryKey: ["legal-status"],
+    queryFn: api.pendingLegal,
+    enabled: !isLoading && !!profile,
+  });
+
   const settingsMut = useMutation({
     mutationFn: (body: Record<string, unknown>) => api.updateProfile(body),
     onSuccess: () => {
@@ -291,6 +303,38 @@ export default function SettingsScreen() {
         </Pressable>
       </View>
 
+      <Text style={styles.heading}>Legal</Text>
+      <View style={styles.card}>
+        {(legalDocs ?? []).length === 0 && (
+          <Text style={styles.muted}>Our policies will appear here.</Text>
+        )}
+        {(legalDocs ?? []).map((d) => {
+          const pending = legalStatus?.pending.find((p) => p.type === d.type);
+          const accepted = legalStatus?.accepted.find((a) => a.type === d.type);
+          return (
+            <Pressable
+              key={d.type}
+              style={styles.sessionRow}
+              onPress={() => router.push(`/legal/${d.type}`)}
+            >
+              <View style={{ flex: 1 }}>
+                <Text style={styles.sessionDevice}>{d.title}</Text>
+                <Text style={pending ? styles.needsAccept : styles.muted}>
+                  {pending
+                    ? pending.previousVersion
+                      ? `Updated to v${d.version} — needs your acceptance`
+                      : `v${d.version} — needs your acceptance`
+                    : accepted
+                      ? `Accepted v${accepted.version}`
+                      : `v${d.version}`}
+                </Text>
+              </View>
+              <Text style={styles.chevron}>›</Text>
+            </Pressable>
+          );
+        })}
+      </View>
+
       <Text style={styles.heading}>Sessions</Text>
       <View style={styles.card}>
         {(profile.sessions ?? []).length === 0 && <Text style={styles.muted}>No active sessions</Text>}
@@ -451,6 +495,8 @@ const styles = StyleSheet.create({
   primaryLabel: { color: "#000", fontWeight: "800" },
   sessionRow: { flexDirection: "row", alignItems: "center", paddingVertical: 6 },
   sessionDevice: { color: colors.text, fontSize: 13, fontWeight: "600" },
+  needsAccept: { color: colors.accent, fontSize: 12, fontWeight: "700" },
+  chevron: { color: colors.dim, fontSize: 20 },
   terminate: { color: colors.danger, fontSize: 13, fontWeight: "600" },
   saved: { color: colors.success, fontSize: 13, textAlign: "center", marginTop: 14 },
   dangerBtn: {

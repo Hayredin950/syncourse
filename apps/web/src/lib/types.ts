@@ -407,6 +407,59 @@ export interface AdminCategoryRow {
   createdAt: string;
 }
 
+/** A published legal document, as served by the public GET /legal. */
+export interface LegalDoc {
+  type: string;
+  title: string;
+  version: string;
+  bodyMd: string;
+  changeSummary: string | null;
+  requiresAcceptance: boolean;
+  effectiveAt: string;
+  updatedAt: string;
+}
+
+export interface PendingLegalDoc {
+  type: string;
+  title: string;
+  version: string;
+  changeSummary: string | null;
+  effectiveAt: string;
+  updatedAt: string;
+  /** Set when the document changed after this user had already agreed to it. */
+  previousVersion: string | null;
+  previousAcceptedAt: string | null;
+}
+
+export interface AcceptedLegalDoc {
+  type: string;
+  title: string;
+  version: string;
+  acceptedAt: string;
+}
+
+export interface LegalStatus {
+  pending: PendingLegalDoc[];
+  accepted: AcceptedLegalDoc[];
+}
+
+export interface AdminLegalRow {
+  id: string;
+  type: string;
+  title: string;
+  customTitle: string | null;
+  version: string;
+  bodyMd: string;
+  changeSummary: string | null;
+  requiresAcceptance: boolean;
+  effectiveAt: string;
+  updatedAt: string;
+  updatedBy: string | null;
+  acceptedCurrent: number;
+  acceptedAnyVersion: number;
+  eligibleUsers: number;
+}
+
 export interface AdminLesson {
   id?: string;
   title: string;

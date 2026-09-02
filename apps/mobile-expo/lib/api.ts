@@ -16,6 +16,8 @@ import type {
   LearningPathDetail,
   Lecturer,
   LecturerDetail,
+  LegalDoc,
+  LegalStatus,
   Organization,
   OrganizationDetail,
   LessonDetail,
@@ -334,3 +336,11 @@ export const sendReminder = (title: string, body: string) =>
     body,
   });
 export const appVersions = () => get<AppVersion[]>("/app-versions");
+
+// --- legal documents & consent ---
+export const legalDocuments = (type?: string) =>
+  get<LegalDoc[]>(type ? `/legal?type=${encodeURIComponent(type)}` : "/legal");
+/** What this user has yet to agree to, and what they already have. */
+export const pendingLegal = () => get<LegalStatus>("/legal/pending");
+export const acceptLegal = (types: string[]) =>
+  post<LegalStatus>("/legal/accept", { types, source: "mobile" });

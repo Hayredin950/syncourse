@@ -208,6 +208,40 @@ class AdminPaymentActionDto {
   status: 'approved' | 'rejected';
 }
 
+class AdminLegalDto {
+  @IsOptional()
+  @IsString()
+  type?: string;
+
+  @IsOptional()
+  @IsString()
+  title?: string;
+
+  @IsOptional()
+  @IsString()
+  version?: string;
+
+  @IsOptional()
+  @IsString()
+  bodyMd?: string;
+
+  @IsOptional()
+  @IsString()
+  changeSummary?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  requiresAcceptance?: boolean;
+
+  @IsOptional()
+  @IsString()
+  effectiveAt?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  minorEdit?: boolean;
+}
+
 @Controller('admin')
 export class AdminController {
   constructor(private readonly admin: AdminService) {}
@@ -369,5 +403,24 @@ export class AdminController {
   @Delete('categories/:id')
   removeCategory(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.admin.removeCategory(user.id, id);
+  }
+
+  @Get('legal')
+  listLegal(@CurrentUser() user: AuthUser) {
+    return this.admin.listLegal(user.id);
+  }
+
+  @Post('legal')
+  createLegal(@CurrentUser() user: AuthUser, @Body() dto: AdminLegalDto) {
+    return this.admin.createLegal(user.id, dto);
+  }
+
+  @Patch('legal/:type')
+  updateLegal(
+    @CurrentUser() user: AuthUser,
+    @Param('type') type: string,
+    @Body() dto: AdminLegalDto,
+  ) {
+    return this.admin.updateLegal(user.id, type, dto);
   }
 }

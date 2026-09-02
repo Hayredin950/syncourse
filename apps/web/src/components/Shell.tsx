@@ -2,6 +2,7 @@
 
 import { usePathname } from "next/navigation";
 import { TopNav, Footer, BottomNav } from "@/components/Nav";
+import LegalConsent from "@/components/LegalConsent";
 
 export default function Shell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
@@ -13,6 +14,7 @@ export default function Shell({ children }: { children: React.ReactNode }) {
       {children}
       {!isAdmin && <Footer />}
       {!isAdmin && <BottomNav />}
+      <LegalConsent />
     </div>
   );
 }
