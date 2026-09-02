@@ -226,12 +226,27 @@ export class CatalogService {
     const limit = Math.min(filters.limit ?? 30, 100);
     const offset = filters.offset ?? 0;
 
-    const [total, courses] = await Promise.all([
+    // The tab counts deliberately ignore the contentType filter: a count taken
+    // under the current selection reads 0 for every tab you are not standing on,
+    // which is the opposite of what a tab strip is for.
+    const countWhere: Prisma.CourseWhereInput = { ...where };
+    delete countWhere.contentType;
+
+    const [total, courses, byType] = await Promise.all([
       this.prisma.course.count({ where }),
       this.prisma.course.findMany({ where, orderBy, take: limit, skip: offset, include: courseInclude }),
+      this.prisma.course.groupBy({ by: ['contentType'], where: countWhere, _count: { _all: true } }),
     ]);
 
-    return { total, results: courses.map((c) => this.summary(c)) };
+    const counts: Record<string, number> = {};
+    let all = 0;
+    for (const group of byType) {
+      counts[group.contentType] = group._count._all;
+      all += group._count._all;
+    }
+    counts.all = all;
+
+    return { total, counts, results: courses.map((c) => this.summary(c)) };
   }
 
   // ---------------------------------------------------------------

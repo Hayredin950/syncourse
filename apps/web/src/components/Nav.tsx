@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useState, useRef, useCallback, type FormEvent, type ReactNode } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, useState, useRef, useCallback, type FormEvent, type ReactNode } from "react";
 import {
   Bookmark,
   BookOpen,
@@ -10,31 +10,20 @@ import {
   Crown,
   FileText,
   Home,
-  LayoutGrid,
   Layers3,
-  Map,
   MessageCircle,
   Search,
-  StickyNote,
-  Zap,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 
-/* ---------- TopNav — desktop top bar (phonofilm-style, two rows) ---------- */
+/* ---------- TopNav — desktop top bar ---------- */
 /**
- * Row-2 tabs. Each entry owns its destination because they no longer all land on
- * /browse: cheat-sheets, roadmaps and notes became Resources rather than Courses
- * carrying a `contentType`, so `/browse?type=cheat-sheet` now matches nothing.
+ * One row, not two. The second row repeated the same six destinations the pills
+ * and the resources page already cover, and half of them only differed by a
+ * query string — so it read as navigation but behaved like a filter that had
+ * wandered out of the page it belonged to. Course/mini-course now live as tabs
+ * on /browse, and the resource types as tabs on /resources.
  */
-const CONTENT_TYPES = [
-  { label: "All", icon: LayoutGrid, href: "/browse" },
-  { label: "Course", icon: BookOpen, href: "/browse?type=course" },
-  { label: "Mini-course", icon: Zap, href: "/browse?type=mini-course" },
-  { label: "Cheat-sheet", icon: FileText, href: "/resources?type=cheat-sheet" },
-  { label: "Roadmap", icon: Map, href: "/resources?type=roadmap" },
-  { label: "Notes", icon: StickyNote, href: "/resources?type=note" },
-];
-
 export function TopNav() {
   const pathname = usePathname();
   const router = useRouter();
@@ -87,7 +76,7 @@ export function TopNav() {
         </form>
         <nav className="nav-links">
           <Link href="/browse" className={`nav-pill ${active("/browse") ? "active" : ""}`}>
-            <LayoutGrid size={14} /> Browse
+            <BookOpen size={14} /> Courses
           </Link>
           <Link href="/resources" className={`nav-pill ${active("/resources") ? "active" : ""}`}>
             <FileText size={14} /> Resources
@@ -164,42 +153,7 @@ export function TopNav() {
           )}
         </nav>
       </div>
-      {/* The admin console has its own chrome; catalogue filters there just
-          confused the two navigations for each other. */}
-      {!pathname.startsWith("/admin") && (
-        <Suspense fallback={<div className="topbar-row topbar-row--types" />}>
-          <TypeTabs />
-        </Suspense>
-      )}
     </header>
-  );
-}
-
-/**
- * Row 2 — content-type filters.
- *
- * The active pill has to be derived from the live URL with `useSearchParams`,
- * not from a state set in an effect keyed on the pathname: several of these
- * links share a route, so the pathname never changes between them and the
- * highlight stayed on whichever pill was clicked first. A tab matches only when
- * both its path and its `type` do, so /resources with no type highlights
- * nothing — no tab claims to mean "every resource".
- */
-function TypeTabs() {
-  const pathname = usePathname();
-  const type = useSearchParams().get("type") ?? "";
-  return (
-    <div className="topbar-row topbar-row--types">
-      {CONTENT_TYPES.map((t) => {
-        const [base, query = ""] = t.href.split("?");
-        const active = pathname === base && type === (new URLSearchParams(query).get("type") ?? "");
-        return (
-          <Link key={t.href} href={t.href} className={`type-pill ${active ? "active" : ""}`}>
-            <t.icon size={13} /> {t.label}
-          </Link>
-        );
-      })}
-    </div>
   );
 }
 

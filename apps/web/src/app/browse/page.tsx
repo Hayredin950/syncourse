@@ -2,7 +2,7 @@
 
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Filter, Search, SlidersHorizontal, X } from "lucide-react";
+import { BookOpen, Filter, LayoutGrid, Search, SlidersHorizontal, X, Zap } from "lucide-react";
 import { get } from "@/lib/api";
 import type { CourseSummary } from "@/lib/types";
 import { CourseCard, CourseRow } from "@/components/CourseCard";
@@ -12,6 +12,11 @@ const LEVELS = ["All Levels", "Beginner", "Intermediate", "Advanced"];
 // Courses only — cheat-sheets, roadmaps and notes are Resources with their own
 // index at /resources, so filtering the catalogue to either returned nothing.
 const TYPES = ["course", "mini-course"];
+/** The tab strip that replaced the site-wide second nav row. */
+const TYPE_TABS = [
+  { value: "course", label: "Courses", icon: BookOpen },
+  { value: "mini-course", label: "Mini-courses", icon: Zap },
+] as const;
 const SORTS = [
   { value: "newest", label: "Newest" },
   { value: "top-rated", label: "Top rated" },
@@ -24,6 +29,7 @@ function BrowseInner() {
   const params = useSearchParams();
   const [results, setResults] = useState<CourseSummary[]>([]);
   const [total, setTotal] = useState(0);
+  const [counts, setCounts] = useState<Record<string, number>>({});
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<"grid" | "list">("grid");
   const [categories, setCategories] = useState<{ name: string; slug: string }[]>([]);
@@ -52,10 +58,14 @@ function BrowseInner() {
     if (organization) qs.set("organization", organization);
     if (lecturer) qs.set("lecturer", lecturer);
     qs.set("limit", "60");
-    get<{ total: number; results: CourseSummary[] }>(`/courses?${qs.toString()}`)
+    get<{ total: number; counts?: Record<string, number>; results: CourseSummary[] }>(`/courses?${qs.toString()}`)
       .then((d) => {
         setResults(d.results);
         setTotal(d.total);
+        // Counts arrive with the page and ignore the type filter, so the strip is
+        // stable as you move between tabs. An older API build omits them; the
+        // tabs then simply carry no numbers rather than showing zeros.
+        if (d.counts) setCounts(d.counts);
       })
       .catch(() => {})
       .finally(() => setLoading(false));
@@ -79,11 +89,11 @@ function BrowseInner() {
       ? `${type}s`
       : sort === "top-rated"
         ? "Top rated"
-        : "Browse";
+        : "Courses";
 
   return (
     <main className="page">
-      <MobileHeader title="Browse" />
+      <MobileHeader title="Courses" />
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "end" }}>
         <div>
@@ -95,6 +105,34 @@ function BrowseInner() {
           <Filter size={14} style={{ display: "inline", verticalAlign: "middle" }} /> Filters{" "}
           <span className="badge" style={{ padding: "2px 7px", marginLeft: 4 }}>{activeFilterCount}</span>
         </button>
+      </div>
+
+      {/* The content-type tabs the top bar used to carry. Here they can show what
+          each one holds, and they only affect the page you are looking at. */}
+      <div className="res-tabs" role="tablist" aria-label="Content type" style={{ margin: "18px 0 2px" }}>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={!type}
+          className={`res-tab ${type ? "" : "active"}`}
+          onClick={() => setParam("type", "")}
+        >
+          <LayoutGrid size={13} /> All
+          {counts.all ? <b>{counts.all}</b> : null}
+        </button>
+        {TYPE_TABS.map((t) => (
+          <button
+            key={t.value}
+            type="button"
+            role="tab"
+            aria-selected={type === t.value}
+            className={`res-tab ${type === t.value ? "active" : ""}`}
+            onClick={() => setParam("type", type === t.value ? "" : t.value)}
+          >
+            <t.icon size={13} /> {t.label}
+            {counts[t.value] ? <b>{counts[t.value]}</b> : null}
+          </button>
+        ))}
       </div>
 
       <div className="filters">
