@@ -7,6 +7,7 @@ import { get } from "@/lib/api";
 import type { CourseSummary, HomeData, LibraryData } from "@/lib/types";
 import { CourseCard } from "@/components/CourseCard";
 import { LecturerCard, PublisherCard } from "@/components/EntityCard";
+import { HomeResources } from "@/components/HomeResources";
 import { MobileHeader } from "@/components/Nav";
 import { useAuth } from "@/lib/auth";
 import { formatDuration } from "@/lib/format";
@@ -149,6 +150,11 @@ export default function HomePage() {
           ))}
         </div>
       </section>
+
+      {/* Cheat-sheets, roadmaps and notes — the library beside the catalogue.
+          Placed after the newest courses because it is a change of gear: short
+          reads rather than something to sit down with. */}
+      <HomeResources />
 
       {/* Your next course — personalized nudge */}
       {!user ? (
