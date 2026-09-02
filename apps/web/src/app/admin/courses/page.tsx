@@ -197,7 +197,7 @@ export default function AdminCourses() {
                 <td className="admin-table__quiet">{formatDate(c.updatedAt)}</td>
                 <td className="admin-table__actions">
                   <Link
-                    href={`/admin/courses/${c.slug}/edit`}
+                    href={`/admin/courses/edit?slug=${c.slug}`}
                     className="admin-btn admin-btn--ghost admin-btn--sm"
                   >
                     <Pencil size={12} /> Edit

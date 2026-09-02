@@ -148,7 +148,7 @@ function CourseDetail() {
           <Link href={`/courses/${course.slug}`} className="admin-btn admin-btn--ghost">
             <ExternalLink size={13} /> View on site
           </Link>
-          <Link href={`/admin/courses/${course.slug}/edit`} className="admin-btn admin-btn--primary">
+          <Link href={`/admin/courses/edit?slug=${course.slug}`} className="admin-btn admin-btn--primary">
             <Pencil size={13} /> Edit
           </Link>
         </div>

@@ -201,7 +201,7 @@ export default function AdminResourcesPage() {
                   </span>
                 </td>
                 <td style={{ maxWidth: 360 }}>
-                  <Link href={`/admin/resources/${r.slug}/edit`} className="admin-cell-link">
+                  <Link href={`/admin/resources/edit?slug=${r.slug}`} className="admin-cell-link">
                     <span className={`admin-cell-title ${r.deletedAt ? "admin-strike" : ""}`}>{r.title}</span>
                     <span className="admin-cell-sub" style={{ display: "block" }}>
                       {r.categoryIcon ? `${r.categoryIcon} ` : ""}
@@ -230,7 +230,7 @@ export default function AdminResourcesPage() {
                   >
                     View
                   </a>
-                  <Link href={`/admin/resources/${r.slug}/edit`} className="admin-btn admin-btn--ghost admin-btn--sm">
+                  <Link href={`/admin/resources/edit?slug=${r.slug}`} className="admin-btn admin-btn--ghost admin-btn--sm">
                     <Pencil size={12} /> Edit
                   </Link>
                   {r.deletedAt ? (
