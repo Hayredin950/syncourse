@@ -18,6 +18,7 @@ export default function UploadField({
   kind,
   value,
   onChange,
+  onMoreFiles,
   placeholder,
   hint,
   preview,
@@ -28,6 +29,12 @@ export default function UploadField({
   kind: UploadKind;
   value: string;
   onChange: (url: string) => void;
+  /**
+   * Set this and the picker takes a whole selection: the first file fills this
+   * field, the rest are handed back for the caller to place. Selecting five
+   * images in an attachment row should not silently keep one and drop four.
+   */
+  onMoreFiles?: (files: File[]) => void;
   placeholder?: string;
   hint?: ReactNode;
   /** Show a thumbnail of the uploaded image, at this pixel size. */
@@ -129,11 +136,17 @@ export default function UploadField({
         ref={fileRef}
         type="file"
         accept={ACCEPT[kind]}
+        multiple={!!onMoreFiles}
         className="admin-sr"
         tabIndex={-1}
         onChange={(e) => {
-          const f = e.target.files?.[0];
-          if (f) void pick(f);
+          const files = Array.from(e.target.files ?? []);
+          if (!files.length) return;
+          // Chained rather than concurrent: the extras go up one after this one
+          // finishes, so there is a single progress number on screen at a time.
+          void pick(files[0]).then(() => {
+            if (files.length > 1) onMoreFiles?.(files.slice(1));
+          });
         }}
       />
     </div>

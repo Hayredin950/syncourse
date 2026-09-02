@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowDown, ArrowUp, Paperclip, Plus, Trash2 } from "lucide-react";
+import { ArrowDown, ArrowUp, Paperclip, Plus, Trash2, Upload } from "lucide-react";
 import { get, patch, post } from "@/lib/api";
 import type {
   AdminCategoryRow,
@@ -12,7 +12,7 @@ import type {
   AdminResourceMedia,
   ResourceMediaKind,
 } from "@/lib/types";
-import type { UploadKind } from "@/lib/upload";
+import { uploadFile, type UploadKind } from "@/lib/upload";
 import { Markdown } from "@/components/Markdown";
 import { useAdminToast } from "./AdminToast";
 import UploadField from "./UploadField";
@@ -59,6 +59,37 @@ const emptyMedia = (): AdminResourceMedia => ({
   fileSizeMb: null,
   caption: "",
 });
+
+const uploadBucket = (kind: ResourceMediaKind): UploadKind =>
+  MEDIA_KINDS.find((k) => k.value === kind)?.upload ?? "file";
+
+/**
+ * Guess the row kind from what the browser already knows about the file, so a
+ * dropped folder of screenshots and PDFs lands as the right kinds without the
+ * author touching eleven selects. MIME type first — it is what the browser is
+ * sure about — then the extension, which is all we get for `.md`, `.zip` and
+ * the office formats Chrome reports as `application/octet-stream`.
+ */
+const EXT_KINDS: [ResourceMediaKind, string[]][] = [
+  ["pdf", ["pdf"]],
+  ["doc", ["doc", "docx", "odt", "rtf", "txt", "pages"]],
+  ["sheet", ["xls", "xlsx", "csv", "tsv", "ods", "numbers"]],
+  ["slide", ["ppt", "pptx", "odp", "key"]],
+  ["archive", ["zip", "rar", "7z", "tar", "gz", "tgz"]],
+  ["code", ["md", "markdown", "json", "yml", "yaml", "py", "js", "ts", "tsx", "jsx", "ipynb", "sh", "sql", "css", "html"]],
+];
+
+function detectKind(file: File): ResourceMediaKind {
+  const type = file.type.toLowerCase();
+  if (type.startsWith("image/")) return "image";
+  if (type.startsWith("video/")) return "video";
+  if (type.startsWith("audio/")) return "audio";
+  if (type === "application/pdf") return "pdf";
+  const ext = file.name.toLowerCase().split(".").pop() ?? "";
+  return EXT_KINDS.find(([, exts]) => exts.includes(ext))?.[0] ?? "other";
+}
+
+const asMb = (bytes: number) => Math.round((bytes / (1024 * 1024)) * 100) / 100;
 
 const courseCount = (n: number) => (n === 1 ? "1 course" : `${n} courses`);
 
@@ -130,6 +161,45 @@ export function ResourceForm({ initial }: { initial?: AdminResourceDetail }) {
       [next[i], next[to]] = [next[to], next[i]];
       return next;
     });
+
+  const filesRef = useRef<HTMLInputElement>(null);
+  const [queue, setQueue] = useState<{ at: number; total: number; percent: number; name: string } | null>(null);
+  const [queueError, setQueueError] = useState("");
+
+  /**
+   * Attach a whole selection at once — the reason this exists is that a post
+   * usually arrives as several images plus a PDF, and adding a row, choosing a
+   * kind and picking a file eleven times over is not authoring.
+   *
+   * One at a time on purpose: each upload signs its own request and then streams
+   * the bytes, so a parallel burst would queue behind the API anyway and turn
+   * the progress number into noise. A file that fails is reported by name and
+   * the rest of the selection still goes up.
+   */
+  const addFiles = async (files: File[]) => {
+    if (!files.length) return;
+    setQueueError("");
+    const failed: string[] = [];
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const kind = detectKind(file);
+      setQueue({ at: i + 1, total: files.length, percent: 0, name: file.name });
+      try {
+        const up = await uploadFile(file, uploadBucket(kind), (percent) =>
+          setQueue((q) => (q ? { ...q, percent } : q)),
+        );
+        setMedia((prev) => [
+          ...prev,
+          { kind, url: up.url, fileName: file.name, fileSizeMb: asMb(up.bytes), caption: "" },
+        ]);
+      } catch (e) {
+        failed.push(`${file.name} (${e instanceof Error ? e.message : "upload failed"})`);
+      }
+    }
+    setQueue(null);
+    if (failed.length) setQueueError(`Could not upload ${failed.join(", ")}`);
+    if (filesRef.current) filesRef.current.value = "";
+  };
 
   const save = async () => {
     if (!title.trim()) {
@@ -318,21 +388,55 @@ export function ResourceForm({ initial }: { initial?: AdminResourceDetail }) {
           <h3 style={{ margin: 0 }}>
             <Paperclip size={13} style={{ verticalAlign: "-2px", marginRight: 6 }} />
             Attachments
+            {media.length > 0 && <span className="admin-dim"> · {media.length}</span>}
           </h3>
-          <button
-            type="button"
-            className="admin-btn admin-btn--ghost admin-btn--sm"
-            onClick={() => setMedia((p) => [...p, emptyMedia()])}
-          >
-            <Plus size={12} /> Add attachment
-          </button>
+          <span className="admin-inline" style={{ gap: 6 }}>
+            <button
+              type="button"
+              className="admin-btn admin-btn--primary admin-btn--sm"
+              onClick={() => filesRef.current?.click()}
+              disabled={!!queue}
+            >
+              <Upload size={12} />
+              {queue ? `${queue.at} of ${queue.total} · ${queue.percent}%` : "Upload files"}
+            </button>
+            <button
+              type="button"
+              className="admin-btn admin-btn--ghost admin-btn--sm"
+              onClick={() => setMedia((p) => [...p, emptyMedia()])}
+            >
+              <Plus size={12} /> Add row
+            </button>
+          </span>
         </div>
         <p className="page-desc" style={{ marginTop: 2 }}>
           Whatever the original post carried, in the order it should appear. Images and video play inline on the
           site, PDFs open in a reader, and everything else becomes a download row — the kind is what decides.
+          Pick as many files as you like at once; each one becomes its own row with the kind and size filled in.
         </p>
 
-        {media.length === 0 && (
+        <input
+          ref={filesRef}
+          type="file"
+          multiple
+          className="admin-sr"
+          tabIndex={-1}
+          onChange={(e) => void addFiles(Array.from(e.target.files ?? []))}
+        />
+
+        {queue && (
+          <>
+            <span className="admin-uploadbar" role="progressbar" aria-valuenow={queue.percent}>
+              <i style={{ width: `${queue.percent}%` }} />
+            </span>
+            <span className="admin-field__hint">
+              Uploading {queue.name} — file {queue.at} of {queue.total}. Leaving the page cancels the rest.
+            </span>
+          </>
+        )}
+        {queueError && <div className="admin-alert admin-alert--warn">{queueError}</div>}
+
+        {media.length === 0 && !queue && (
           <p className="admin-empty" style={{ margin: 0 }}>
             No attachments. A text-only resource is fine — the body alone renders.
           </p>
@@ -409,6 +513,7 @@ export function ResourceForm({ initial }: { initial?: AdminResourceDetail }) {
                       kind={kindMeta.upload}
                       value={m.url}
                       onChange={(url) => setRow(i, { url })}
+                      onMoreFiles={addFiles}
                       placeholder="https://… or upload"
                       preview={m.kind === "image" ? { width: 132, height: 74 } : undefined}
                     />
