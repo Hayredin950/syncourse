@@ -1440,6 +1440,23 @@ a.admin-tile:hover {
   .admin-toast { max-width: none; }
 }
 
+/* Tables scroll sideways inside their card rather than dragging the page with
+   them. Every column here is a fact an operator came for — a title, a status, a
+   count, the row's actions — so none of them can be dropped at a narrow width;
+   the card's `overflow: hidden` becomes x-auto/y-hidden, which is the axis that
+   needed to move anyway. The min-width is what makes it scroll instead of
+   crushing eight columns into a phone's width. */
+@media (max-width: 760px) {
+  .admin-card--flush { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+  .admin-table { min-width: 640px; }
+}
+
+/* No hover on touch, so a 55%-opacity row action was a control the phone could
+   never reveal. */
+@media (hover: none) {
+  .admin-table__actions > * { opacity: 1; }
+}
+
 /* ---- markdown write/preview toggle ----
    Publishing was the only way to see how a document rendered, which is how the
    raw `#` and `**` reached readers in the first place. */
