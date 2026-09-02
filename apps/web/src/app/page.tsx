@@ -285,20 +285,15 @@ export default function HomePage() {
             <h2>Featured learning paths</h2>
             <Link href="/paths">See all <ChevronRight size={14} style={{ verticalAlign: "middle" }} /></Link>
           </div>
-          <div className="rail-row" style={{ gridAutoColumns: "minmax(260px, 1fr)" }}>
+          <div className="rail-row">
             {home.featuredPaths.map((p) => (
-              <Link
-                key={p.id}
-                href={`/paths/${p.id}`}
-                className="dark-panel"
-                style={{ padding: 18, background: "linear-gradient(135deg, hsl(196 40% 24%), #12100e 70%)", display: "block", maxWidth: 400 }}
-              >
+              <Link key={p.id} href={`/paths/${p.id}`} className="dark-panel path-card">
                 <span className="eyebrow">Learning path</span>
                 <h3 style={{ margin: "14px 0 8px", fontSize: 17 }}>{p.title}</h3>
                 {p.description && <p className="muted" style={{ margin: 0, fontSize: 11 }}>{p.description}</p>}
                 {/* thumbnail strip — like PhonoFilm's franchise cards */}
                 {p.courses.length > 0 && (
-                  <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 6, marginTop: 14 }}>
+                  <div className="path-card__strip">
                     {p.courses.slice(0, 4).map((c) => (
                       <div key={c.id} className="cover" style={{ aspectRatio: "0.8", borderRadius: 8, margin: 0 }}>
                         {c.thumbnailUrl ? (
@@ -314,9 +309,7 @@ export default function HomePage() {
                 <p className="muted" style={{ margin: "12px 0 0", fontSize: 11 }}>
                   {p.courseCount} courses · ★ {p.ratingAvg.toFixed(1)} avg · {p.totalVotes.toLocaleString()} votes
                 </p>
-                <div style={{ marginTop: 14, height: 3, background: "rgba(255,255,255,.16)" }}>
-                  <div style={{ width: "38%", height: "100%", background: "hsl(var(--primary))" }} />
-                </div>
+                <div className="path-card__bar"><i style={{ width: "38%" }} /></div>
               </Link>
             ))}
           </div>

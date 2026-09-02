@@ -172,14 +172,21 @@ export function MobileHeader({ title = "Syncourse" }: { title?: string }) {
 }
 
 /* ---------- BottomNav — fixed mobile tab bar ---------- */
+/**
+ * The whole top bar is desktop-only, so this is the entire site navigation on a
+ * phone: Courses, Resources and Circles had no way in at all. Search keeps its
+ * icon in every page's MobileHeader and Collections is one tap inside Me, which
+ * is what freed the two slots.
+ */
 export function BottomNav() {
   const pathname = usePathname();
   if (pathname.startsWith("/auth")) return null;
   const active = (href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href));
   const tabs = [
     { href: "/", label: "Home", icon: Home },
-    { href: "/search", label: "Search", icon: Search },
-    { href: "/lists", label: "Collections", icon: Layers3 },
+    { href: "/browse", label: "Courses", icon: BookOpen },
+    { href: "/resources", label: "Resources", icon: FileText },
+    { href: "/circles", label: "Circles", icon: MessageCircle },
     { href: "/me", label: "Me", icon: CircleUserRound },
   ];
   return (

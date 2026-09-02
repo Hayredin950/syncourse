@@ -95,10 +95,10 @@ function BrowseInner() {
     <main className="page">
       <MobileHeader title="Courses" />
 
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "end" }}>
-        <div>
+      <div className="page-head">
+        <div className="page-head__main">
           <span className="eyebrow">{category ? "Topic index" : "Library index"}</span>
-          <h1 className="display" style={{ fontSize: 38, marginBottom: 5, textTransform: "capitalize" }}>{heading}</h1>
+          <h1 className="display page-head__title" style={{ textTransform: "capitalize" }}>{heading}</h1>
           <p className="muted mono" style={{ fontSize: 11, margin: 0 }}>{total}+ results</p>
         </div>
         <button className="btn" onClick={() => setShowFilters(true)}>

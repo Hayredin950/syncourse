@@ -115,20 +115,16 @@ export default function ListsPage() {
           <div className="section-head"><h2>My lists</h2></div>
           <div className="dark-panel" style={{ padding: 12 }}>
             {myLists.map((l) => (
-              <div key={l.id} className="lesson">
-                <Link
-                  href={`/lists/detail?id=${l.id}`}
-                  style={{ display: "flex", alignItems: "center", gap: 12, flex: 1, minWidth: 0, color: "inherit" }}
-                >
+              <div key={l.id} className="list-row">
+                <Link href={`/lists/detail?id=${l.id}`} className="list-row__link">
                   <ListPlus size={16} className="rating" />
-                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.name}</span>
-                  <span className="muted" style={{ marginLeft: "auto", whiteSpace: "nowrap" }}>
+                  <span className="list-row__name">{l.name}</span>
+                  <span className="muted list-row__meta">
                     {l.visibility} · {l.itemCount} {l.itemCount === 1 ? "course" : "courses"} · edited {formatDate(l.updatedAt)}
                   </span>
                 </Link>
                 <button
                   className="icon-btn"
-                  style={{ padding: "6px 8px" }}
                   title="Rename or change visibility"
                   aria-label={`Edit ${l.name}`}
                   onClick={() => setEditing(l)}
@@ -137,7 +133,6 @@ export default function ListsPage() {
                 </button>
                 <button
                   className="icon-btn"
-                  style={{ padding: "6px 8px" }}
                   title="Delete list"
                   aria-label={`Delete ${l.name}`}
                   disabled={busy === l.id}
@@ -168,11 +163,11 @@ export default function ListsPage() {
           )}
         </div>
       ) : (
-        <div className="grid" style={{ marginTop: 28, gridTemplateColumns: "repeat(3, minmax(0,1fr))" }}>
+        <div className="lists-grid">
           {lists.map((l) => (
-            <div key={l.id} style={{ position: "relative" }}>
+            <div key={l.id} className="list-card">
               <Link href={`/lists/detail?id=${l.id}`} className="dark-panel" style={{ padding: 16, display: "block" }}>
-                <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 4, height: 100 }}>
+                <div className="list-card__strip">
                   {l.covers.slice(0, 3).map((c, i) => (
                     // eslint-disable-next-line @next/next/no-img-element
                     <img key={i} src={c} alt="" className="h-full w-full rounded-md object-cover" loading="lazy" />
@@ -189,10 +184,9 @@ export default function ListsPage() {
               {/* Sits outside the <Link>: a button nested in an anchor is invalid
                   markup, and every click would navigate before it fired. */}
               {mine(l) && (
-                <div style={{ position: "absolute", top: 24, right: 24, display: "flex", gap: 6 }}>
+                <div className="list-card__owner">
                   <button
                     className="icon-btn"
-                    style={{ padding: "6px 8px", background: "#0f0e0bdd" }}
                     title="Rename or change visibility"
                     aria-label={`Edit ${l.name}`}
                     onClick={() => setEditing(l)}
@@ -201,7 +195,6 @@ export default function ListsPage() {
                   </button>
                   <button
                     className="icon-btn"
-                    style={{ padding: "6px 8px", background: "#0f0e0bdd" }}
                     title="Delete list"
                     aria-label={`Delete ${l.name}`}
                     disabled={busy === l.id}
