@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useToast } from "@/lib/useToast";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
@@ -19,13 +19,48 @@ import {
   X,
 } from "lucide-react";
 import { get, post } from "@/lib/api";
-import type { CourseDetail, CourseSummary, ReviewRow } from "@/lib/types";
+import type { CourseDetail, CourseSummary, ReviewRow, TelegramFile } from "@/lib/types";
 import { useAuth } from "@/lib/auth";
 import { StarPicker } from "@/components/StarRating";
 import { formatDuration, formatSec, compact, formatDate } from "@/lib/format";
 import { cloudinaryUrl } from "@/lib/cloudinary";
 import { hueFromString, CourseCard } from "@/components/CourseCard";
+import { AddToListSheet } from "@/components/AddToListSheet";
 import { MobileHeader } from "@/components/Nav";
+
+const BOT_USERNAME = "syncourse_bot";
+
+/**
+ * Bot deep links.
+ *
+ * `dl_<slug>` opens the bot's own picker for the whole course — the long-standing
+ * behaviour, kept for "Download all". `dlf_<linkId>` sends exactly one
+ * attachment and `dlmod_<linkId>` sends the module that attachment belongs to;
+ * both address a `TelegramCourseLink` by id because a `/start` payload is capped
+ * at 64 characters and positional addressing breaks on re-import.
+ */
+const botLink = (payload: string) => `https://t.me/${BOT_USERNAME}?start=${payload}`;
+
+/** Regroup the flat attachment list into the modules the bot delivers. */
+function groupTelegramFiles(files: TelegramFile[]) {
+  const groups: { key: string; title: string | null; files: TelegramFile[]; sizeMb: number }[] = [];
+  const byKey = new Map<string, (typeof groups)[number]>();
+  const sorted = [...files].sort(
+    (a, b) => (a.moduleOrder ?? 0) - (b.moduleOrder ?? 0) || a.partIndex - b.partIndex,
+  );
+  for (const f of sorted) {
+    const key = f.moduleTitle ?? "__ungrouped__";
+    let g = byKey.get(key);
+    if (!g) {
+      g = { key, title: f.moduleTitle, files: [], sizeMb: 0 };
+      byKey.set(key, g);
+      groups.push(g);
+    }
+    g.files.push(f);
+    g.sizeMb += f.fileSizeMb ?? 0;
+  }
+  return groups;
+}
 
 export default function CoursePage() {
   const { slug } = useParams<{ slug: string }>();
@@ -45,7 +80,6 @@ export function CourseDetailView({ slug }: { slug: string }) {
   const [similar, setSimilar] = useState<CourseSummary[]>([]);
   const [error, setError] = useState(false);
   const [openSection, setOpenSection] = useState<string | null>(null);
-  const [enrolled, setEnrolled] = useState(false);
   const [saved, setSaved] = useState(false);
   const [liked, setLiked] = useState(false);
   const [myRating, setMyRating] = useState(0);
@@ -55,6 +89,18 @@ export function CourseDetailView({ slug }: { slug: string }) {
   const [coverBusy, setCoverBusy] = useState(false);
   const coverInputRef = useRef<HTMLInputElement>(null);
   const [downloadOpen, setDownloadOpen] = useState(false);
+  const [listOpen, setListOpen] = useState(false);
+  // Must be declared above every early return: a hook that only runs once the
+  // course has loaded changes the hook count between renders.
+  const fileModules = useMemo(() => groupTelegramFiles(course?.telegramFiles ?? []), [course]);
+  // A Telegram import creates one lesson-less Section per detected module purely
+  // so the course has *some* structure. Those rows said "0 lessons / — total"
+  // and repeated the file list underneath, so only sections that really contain
+  // lessons count as a curriculum.
+  const curriculum = useMemo(
+    () => (course?.sections ?? []).filter((s) => s.lessons.length > 0),
+    [course],
+  );
 
   useEffect(() => {
     get<CourseDetail>(`/courses/${slug}`)
@@ -100,23 +146,12 @@ export function CourseDetailView({ slug }: { slug: string }) {
     return true;
   };
 
-  const onEnroll = async () => {
-    if (!requireAuth()) return;
-    try {
-      await post(`/courses/${slug}/enroll`);
-      setEnrolled(true);
-      flash("Enrolled — happy learning! 🎓");
-    } catch (e: any) {
-      flash(e.message || "Failed to enroll");
-    }
-  };
-
   const onSave = async () => {
     if (!requireAuth()) return;
     try {
       const r = await post<{ saved: boolean }>(`/courses/${slug}/save`);
       setSaved(r.saved);
-      flash(r.saved ? "Saved to watchlist" : "Removed from watchlist");
+      flash(r.saved ? "Saved for later" : "Removed from your library");
     } catch (e: any) {
       flash(e.message);
     }
@@ -291,36 +326,30 @@ export function CourseDetailView({ slug }: { slug: string }) {
       {/* action row — sits on the plain page background, off the hero image (phonofilm) */}
       <div className="detail-actions">
         <div className="actions">
-          {firstLesson ? (
+          {firstLesson && (
             <Link href={`/courses/${course.slug}/lessons/${firstLesson.id}`} className="btn primary">
               <Play size={14} fill="currentColor" style={{ display: "inline", verticalAlign: "middle" }} /> Start course
             </Link>
-          ) : (
-            <button onClick={onEnroll} className="btn primary">
-              <Play size={14} fill="currentColor" style={{ display: "inline", verticalAlign: "middle" }} /> {enrolled ? "Enrolled" : "Enroll free"}
-            </button>
           )}
-          <button onClick={() => setDownloadOpen(true)} className="btn primary">
+          {/* The archive *is* the course, so downloading is the primary action
+              whenever there are no lessons to open on the site. */}
+          <button onClick={() => setDownloadOpen(true)} className={firstLesson ? "btn" : "btn primary"}>
             <Download size={14} style={{ display: "inline", verticalAlign: "middle" }} /> Download materials
           </button>
-          {course.previewVideoUrl ? (
+          {course.previewVideoUrl && (
             <a href={course.previewVideoUrl} target="_blank" rel="noreferrer" className="btn">
               <SparklesInline /> Preview
             </a>
-          ) : (
-            <button onClick={onEnroll} className="btn">
-              <SparklesInline /> Trailer
-            </button>
           )}
         </div>
         <div className="icon-actions">
           <button className="icon-btn" onClick={onSave}>
             {saved ? <Check size={14} /> : <Bookmark size={14} />} {saved ? "Saved" : "Save"}
           </button>
-          <button className="icon-btn" onClick={onEnroll}>
-            <Check size={14} /> {enrolled ? "Enrolled" : "Mark complete"}
-          </button>
-          <button className="icon-btn" onClick={() => flash("Lists coming soon — save it for now")}>
+          <button
+            className="icon-btn"
+            onClick={() => (token ? setListOpen(true) : router.push(`/auth?next=/courses/${slug}`))}
+          >
             <ListPlus size={14} /> List
           </button>
           <button className="icon-btn" onClick={onLike}>
@@ -411,25 +440,28 @@ export function CourseDetailView({ slug }: { slug: string }) {
             </section>
           )}
 
-          {/* curriculum — hidden for single-ZIP courses, which have no sections
-              at all; an empty "Curriculum · 0 modules" accordion read as broken */}
-          {course.sections.length > 0 && (
+          {/* curriculum — only for courses that are actually watched in the app.
+              A Telegram archive has no lessons, and the placeholder sections its
+              import creates duplicated the file list below. */}
+          {curriculum.length > 0 && (
           <section className="rail">
             <div className="section-head">
               <h2>
-                Curriculum · {course.sections.length} modules
+                Curriculum · {curriculum.length} module{curriculum.length === 1 ? "" : "s"}
               </h2>
-              <span className="muted mono" style={{ fontSize: 10 }}>
-                {formatDuration(course.durationMin)} total
-              </span>
+              {course.durationMin > 0 && (
+                <span className="muted mono" style={{ fontSize: 10 }}>
+                  {formatDuration(course.durationMin)} total
+                </span>
+              )}
             </div>
             <div className="accordion">
-              {course.sections.map((s, i) => (
+              {curriculum.map((s, i) => (
                 <div className="accordion-item" key={s.id}>
                   <button className="accordion-trigger" onClick={() => setOpenSection(openSection === s.id ? null : s.id)}>
                     <span>
                       <span className="eyebrow" style={{ marginRight: 10 }}>{String(i + 1).padStart(2, "0")}</span>
-                      {s.title} <span className="muted" style={{ fontSize: 11 }}>· {s.lessons.length} lessons</span>
+                      {s.title} <span className="muted" style={{ fontSize: 11 }}>· {s.lessons.length} lesson{s.lessons.length === 1 ? "" : "s"}</span>
                     </span>
                     {openSection === s.id ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                   </button>
@@ -479,52 +511,69 @@ export function CourseDetailView({ slug }: { slug: string }) {
 
           {/* telegram files — the actual course content delivered via Telegram */}
           {course.telegramFiles && course.telegramFiles.length > 0 && (
-            <section className="rail">
+            <section className="rail" id="files">
               <div className="section-head">
-                <h2>📦 Course Files</h2>
-                <span className="muted mono">{course.telegramFiles.length} file{course.telegramFiles.length !== 1 ? "s" : ""}</span>
+                <h2>Course files</h2>
+                <a
+                  className="btn primary files-cta"
+                  href={botLink(`dl_${course.slug}`)}
+                  target="_blank"
+                  rel="noreferrer"
+                  onClick={() => setToast("Opening Telegram — the bot will send everything")}
+                >
+                  <Download size={13} /> Download all
+                </a>
               </div>
-              <div className="dark-panel" style={{ padding: 14 }}>
-                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                  {course.telegramFiles
-                    .sort((a, b) => (a.moduleOrder ?? 0) - (b.moduleOrder ?? 0) || a.partIndex - b.partIndex)
-                    .map((file) => (
-                      <div
-                        key={file.id}
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: 10,
-                          padding: "8px 10px",
-                          border: "1px solid hsl(var(--border))",
-                          borderRadius: 6,
-                        }}
-                      >
-                        <Download size={16} className="muted" />
-                        <div style={{ flex: 1, minWidth: 0 }}>
-                          <div style={{ fontWeight: 600, fontSize: 12, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                            {file.moduleTitle ? `${file.moduleTitle} — Part ${file.partIndex}` : `Part ${file.partIndex}`}
-                          </div>
-                          {file.fileName && (
-                            <div className="muted mono" style={{ fontSize: 10, marginTop: 1 }}>
-                              {file.fileName}{file.fileSizeMb ? ` · ${file.fileSizeMb} MB` : ""}
-                            </div>
-                          )}
-                        </div>
-                        <button
-                          className="btn primary"
-                          style={{ whiteSpace: "nowrap", padding: "6px 12px", fontSize: 11 }}
-                          onClick={() => {
-                            const botUrl = `https://t.me/syncourse_bot?start=dl_${course.slug}`;
-                            window.open(botUrl, "_blank");
-                            setToast("Opening Telegram to download");
-                          }}
+              <div className="files-panel">
+                <p className="files-note">
+                  Delivered by <strong>@{BOT_USERNAME}</strong> straight to your Telegram chat. Tap a part
+                  and only that file is sent — nothing else.
+                </p>
+                {fileModules.map((m, mi) => (
+                  <div className="file-module" key={m.key}>
+                    <div className="file-module__head">
+                      <span className="file-module__index">{String(mi + 1).padStart(2, "0")}</span>
+                      <span className="file-module__title">{m.title ?? "Course archive"}</span>
+                      <span className="file-module__meta mono">
+                        {m.files.length} part{m.files.length === 1 ? "" : "s"}
+                        {m.sizeMb > 0 ? ` · ${Math.round(m.sizeMb)} MB` : ""}
+                      </span>
+                      {m.files.length > 1 && (
+                        <a
+                          className="btn ghost file-btn"
+                          href={botLink(`dlmod_${m.files[0].id}`)}
+                          target="_blank"
+                          rel="noreferrer"
+                          onClick={() => setToast(`Opening Telegram — all ${m.files.length} parts`)}
                         >
-                          Download
-                        </button>
-                      </div>
-                    ))}
-                </div>
+                          All parts
+                        </a>
+                      )}
+                    </div>
+                    <div className="file-rows">
+                      {m.files.map((f) => (
+                        <div className="file-row" key={f.id}>
+                          <span className="file-row__num mono">{String(f.partIndex).padStart(2, "0")}</span>
+                          <span className="file-row__body">
+                            <span className="file-row__name">{f.fileName ?? `Part ${f.partIndex}`}</span>
+                            <span className="file-row__meta mono">
+                              {f.fileSizeMb ? `${f.fileSizeMb} MB` : "Telegram attachment"}
+                            </span>
+                          </span>
+                          <a
+                            className="btn primary file-btn"
+                            href={botLink(`dlf_${f.id}`)}
+                            target="_blank"
+                            rel="noreferrer"
+                            onClick={() => setToast(`Opening Telegram — part ${f.partIndex}`)}
+                          >
+                            <Download size={13} /> Download
+                          </a>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))}
               </div>
             </section>
           )}
@@ -644,7 +693,7 @@ export function CourseDetailView({ slug }: { slug: string }) {
             <p className="muted">Lesson files are served through short-lived signed links. <span className="rating">Premium members get full-speed delivery.</span></p>
             {/* download via Telegram bot — the bot streams the course file from its group topic */}
             <a
-              href={`https://t.me/syncourse_bot?start=dl_${course.slug}`}
+              href={botLink(`dl_${course.slug}`)}
               target="_blank"
               rel="noreferrer"
               className="dark-panel"
@@ -675,7 +724,7 @@ export function CourseDetailView({ slug }: { slug: string }) {
                 {course.telegramFiles.map((f) => (
                   <a
                     key={f.id}
-                    href={`https://t.me/syncourse_bot?start=dl_${course.slug}`}
+                    href={botLink(`dlf_${f.id}`)}
                     target="_blank"
                     rel="noreferrer"
                     className="dark-panel"
@@ -693,7 +742,7 @@ export function CourseDetailView({ slug }: { slug: string }) {
               </div>
             )}
 
-            {course.sections.map((s, si) => (
+            {curriculum.map((s, si) => (
               <div key={s.id} style={{ marginTop: 12 }}>
                 {/* bulk download — whole module in one click (phonofilm "Season [Download]") */}
                 <div
@@ -746,6 +795,15 @@ export function CourseDetailView({ slug }: { slug: string }) {
             ))}
           </div>
         </div>
+      )}
+
+      {listOpen && (
+        <AddToListSheet
+          courseId={course.id}
+          courseTitle={course.title}
+          onClose={() => setListOpen(false)}
+          onFlash={flash}
+        />
       )}
 
       {toast && (

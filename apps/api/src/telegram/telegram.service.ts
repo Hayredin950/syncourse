@@ -4,6 +4,7 @@ import type { TelegramCourseLink } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CloudinaryService } from '../cloudinary/cloudinary.service';
 import { partFromFile, organizeParts } from '../telegram-ingest/telegram-feed.parser';
+import { withPartNumbers } from './part-numbering';
 
 /** One attached Telegram file row — a course has many (one per module part). */
 type TelegramFileRow = TelegramCourseLink;
@@ -145,6 +146,24 @@ interface NavState {
 
 const BOT_USERNAME = process.env.TELEGRAM_BOT_USERNAME || 'syncourse_bot';
 const APP_URL = process.env.PUBLIC_APP_URL || 'https://syncourse.pages.dev';
+
+/**
+ * What a Course may be. Cheat-sheets, roadmaps and notes are Resources now — one
+ * post with its files and body, no lecturer, no curriculum, no price — so the bot
+ * offering them here only ever produced a course nobody could fill in. Mirrors
+ * `CONTENT_TYPES` in `apps/web/src/components/admin/CourseForm.tsx`.
+ */
+const COURSE_TYPES = ['course', 'mini-course'] as const;
+/** Includes the retired values so an existing row still prints its own label. */
+const TYPE_LABELS: Record<string, string> = {
+  course: '📘 Course',
+  'mini-course': '📗 Mini-course',
+  'cheat-sheet': '📋 Cheat-sheet',
+  roadmap: '🗺️ Roadmap',
+};
+/** Falls back to `course` rather than throwing: a bot typo shouldn't lose the row. */
+const courseType = (value?: string | null): string =>
+  (COURSE_TYPES as readonly string[]).includes(value ?? '') ? value! : 'course';
 
 // ---------------------------------------------------------------------------
 // Premium design system — every bot message follows the same visual language:
@@ -531,7 +550,11 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     switch (command) {
       case '/start': {
         const payload = arg.replace(/^@\w+\s*/, '');
-        if (payload.startsWith('dl_')) {
+        if (payload.startsWith('dlf_')) {
+          await this.sendLinkedFile(chatId, payload.slice(4), 'file', threadId);
+        } else if (payload.startsWith('dlmod_')) {
+          await this.sendLinkedFile(chatId, payload.slice(6), 'module', threadId);
+        } else if (payload.startsWith('dl_')) {
           await this.sendCourseFile(chatId, payload.slice(3), threadId);
         } else if (payload.startsWith('download_')) {
           await this.sendLessonLink(chatId, payload.slice(9));
@@ -1074,8 +1097,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       course.price != null
         ? `💵 <b>$${course.price}</b>${course.originalPrice && course.originalPrice > course.price ? ` <s>$${course.originalPrice}</s>` : ''}`
         : '💵 <b>Free</b>';
-    const typeMap: Record<string, string> = { course: '📘 Course', 'mini-course': '📗 Mini-course', 'cheat-sheet': '📋 Cheat-sheet', roadmap: '🗺️ Roadmap' };
-    const type = typeMap[course.contentType] ?? '📘 Course';
+    const type = TYPE_LABELS[course.contentType] ?? '📘 Course';
     // Courses added through /newcourse are delivered as one ZIP — they have no
     // sections or lessons, so "0.0 / 5 · 0 lessons" read as broken on a course
     // that was actually complete. Show each figure only when it means something.
@@ -1444,17 +1466,14 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
         { text: '📘 Course', callback_data: 'wz:type:course' },
         { text: '📗 Mini-course', callback_data: 'wz:type:mini-course' },
       ],
-      [
-        { text: '📋 Cheat-sheet', callback_data: 'wz:type:cheat-sheet' },
-        { text: '🗺️ Roadmap', callback_data: 'wz:type:roadmap' },
-      ],
     ];
     await this.sendWizardStep(
       chatId,
       userId,
       `${this.brandHeader('New Course Wizard')}\n\n` +
         `<b>Step 5/7 · Content type</b>\n\n` +
-        `📦 What kind of content is this?`,
+        `📦 What kind of content is this?\n\n` +
+        `<i>Cheat-sheets, roadmaps and notes are Resources, not courses — add those under Admin → Resources.</i>`,
       kb,
       threadId,
     );
@@ -1468,7 +1487,6 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     const cat = d.categoryId
       ? await this.prisma.category.findUnique({ where: { id: d.categoryId }, select: { name: true } })
       : null;
-    const typeMap: Record<string, string> = { course: '📘 Course', 'mini-course': '📗 Mini-course', 'cheat-sheet': '📋 Cheat-sheet', roadmap: '🗺️ Roadmap' };
     await this.sendWizardStep(
       chatId,
       userId,
@@ -1479,7 +1497,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
         `👨‍🏫 ${esc(d.instructor ?? '—')}\n` +
         `🏷️ ${cat ? esc(cat.name) : '—'}\n` +
         `🔰 ${esc(d.levelName ?? '—')}\n` +
-        `📦 ${typeMap[d.contentType ?? ''] ?? '—'}\n` +
+        `📦 ${TYPE_LABELS[d.contentType ?? ''] ?? '—'}\n` +
         `💵 ${d.price == null ? 'Free' : `$${d.price}`}\n` +
         (d.imageUrl ? `🖼️ <a href="${esc(d.imageUrl)}">cover</a>\n` : '') +
         `${DIV}\n\n` +
@@ -1520,7 +1538,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
           description: `Learn ${d.title} — brought to you by Syncourse. Start learning today.`,
           lecturerId: lecturer.id,
           levelId: level?.id ?? null,
-          contentType: ['mini-course', 'cheat-sheet', 'roadmap'].includes(d.contentType ?? '') ? d.contentType! : 'course',
+          contentType: courseType(d.contentType),
           price: d.price ?? null,
           originalPrice: d.price ?? null,
           thumbnailUrl: coverUrl,
@@ -1946,10 +1964,6 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
           { text: '📘 Course', callback_data: 'wz:ev:type:course' },
           { text: '📗 Mini-course', callback_data: 'wz:ev:type:mini-course' },
         ],
-        [
-          { text: '📋 Cheat-sheet', callback_data: 'wz:ev:type:cheat-sheet' },
-          { text: '🗺️ Roadmap', callback_data: 'wz:ev:type:roadmap' },
-        ],
       ];
       await this.sendWizardStep(chatId, userId, header + `Tap the new <b>content type</b> 👇`, kb, threadId);
     } else if (field === 'image') {
@@ -2105,9 +2119,9 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
         await this.prisma.course.update({ where: { id: course.id }, data: { levelId: level?.id ?? null } });
         valueLabel = `🔰 ${esc(value)}`;
       } else if (field === 'type') {
-        const ok = ['course', 'mini-course', 'cheat-sheet', 'roadmap'].includes(value);
-        await this.prisma.course.update({ where: { id: course.id }, data: { contentType: ok ? value : 'course' } });
-        valueLabel = `📦 ${esc(value)}`;
+        const next = courseType(value);
+        await this.prisma.course.update({ where: { id: course.id }, data: { contentType: next } });
+        valueLabel = `📦 ${esc(next)}`;
       }
     } catch (err) {
       this.logger.error(`applyEditChoice failed: ${(err as Error).message}`);
@@ -2383,7 +2397,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
         `${this.brandHeader('New Course')}\n\n` +
           `<b>Usage:</b>\n<code>/newcourse Title | Instructor | Category | type | price | image-url</code>\n\n` +
           `<b>Example:</b>\n<code>/newcourse Complete ML | Andrei Neagoie | Data Science | course | 64.99 | https://…/cover.jpg</code>\n\n` +
-          `<i>Only Title and Instructor are required. Type: course | mini-course | cheat-sheet | roadmap</i>`,
+          `<i>Only Title and Instructor are required. Type: course | mini-course — cheat-sheets and roadmaps are Resources, added under Admin → Resources.</i>`,
         threadId,
       );
     }
@@ -2409,7 +2423,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
           description: `Learn ${title} — brought to you by Syncourse. Start learning today.`,
           lecturerId: lecturer.id,
           levelId: level?.id ?? null,
-          contentType: ['mini-course', 'cheat-sheet', 'roadmap'].includes(contentType) ? contentType : 'course',
+          contentType: courseType(contentType),
           price: price ? Number(price) : null,
           originalPrice: price ? Number(price) : null,
           thumbnailUrl: imageUrl || null,
@@ -2639,6 +2653,46 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * Deliver one specific attachment — or its whole module — addressed by the
+   * `TelegramCourseLink` id.
+   *
+   * The website's per-part Download buttons can't reuse the `dlp:` callback
+   * data, because callback buttons only exist on a message already in the chat;
+   * a website link has to arrive as a `/start` payload. That payload is capped
+   * at 64 characters of `A-Za-z0-9_-`, which a slug plus module plus part does
+   * not reliably fit, and positional addressing breaks the moment a module is
+   * re-imported in a different order. A link cuid is 25 characters and stable.
+   */
+  private async sendLinkedFile(
+    chatId: number,
+    linkId: string,
+    scope: 'file' | 'module',
+    threadId?: number | null,
+  ) {
+    const link = await this.prisma.telegramCourseLink.findUnique({
+      where: { id: linkId },
+      select: { id: true, courseId: true },
+    });
+    if (!link) {
+      return this.sendText(chatId, 'That file is no longer attached — open the course again.', threadId);
+    }
+    const course = await this.prisma.course.findUnique({
+      where: { id: link.courseId },
+      select: { id: true, title: true, slug: true, ratingAvg: true, lecturer: { select: { name: true } } },
+    });
+    if (!course) return this.sendText(chatId, 'That course is no longer available.', threadId);
+    // Grouping goes through courseModules so a part sent from the website gets
+    // the same module caption and part number as one sent from a bot button.
+    const modules = await this.courseModules(course.id);
+    const mod = modules.find((m) => m.files.some((f) => f.id === link.id));
+    if (!mod) {
+      return this.sendText(chatId, 'That file is no longer attached — open the course again.', threadId);
+    }
+    const files = scope === 'module' ? mod.files : mod.files.filter((f) => f.id === link.id);
+    return this.deliverFiles(chatId, course, files, threadId, mod.title);
+  }
+
+  /**
    * Send a set of files in order.
    *
    * Telegram rate-limits messages to a chat, so a 6-part module sent in a tight
@@ -2681,14 +2735,15 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     await this.prisma.course
       .update({ where: { id: course.id }, data: { downloadCount: { increment: 1 } } })
       .catch(() => undefined);
-    const firstLesson = await this.prisma.lesson.findFirst({ where: { courseId: course.id }, select: { id: true } });
-    // DownloadEvent.lessonId is a required FK, so single-ZIP courses (no
-    // lessons) can't be recorded — skip rather than write a bogus empty id.
-    if (firstLesson) {
-      await this.prisma.downloadEvent
-        .create({ data: { courseId: course.id, lessonId: firstLesson.id, method: 'bot' } })
-        .catch(() => undefined);
-    }
+    // Attribute the delivery when the chat belongs to a paired reader. In a DM
+    // the chat id *is* the Telegram user id; group ids are negative and match
+    // nobody, which is the anonymous case and fine.
+    const reader = await this.prisma.user
+      .findFirst({ where: { telegramId: BigInt(chatId) }, select: { id: true } })
+      .catch(() => null);
+    await this.prisma.downloadEvent
+      .create({ data: { courseId: course.id, userId: reader?.id ?? null, method: 'bot' } })
+      .catch(() => undefined);
     const missing = files.length - sent;
     await this.sendRich(
       chatId,
@@ -3391,10 +3446,12 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
   private async courseModules(courseId: string): Promise<
     { title: string | null; order: number; sizeMb: number; files: TelegramFileRow[] }[]
   > {
-    const files = await this.prisma.telegramCourseLink.findMany({
-      where: { courseId },
-      orderBy: [{ moduleOrder: 'asc' }, { partIndex: 'asc' }, { createdAt: 'asc' }],
-    });
+    const files = withPartNumbers(
+      await this.prisma.telegramCourseLink.findMany({
+        where: { courseId },
+        orderBy: [{ moduleOrder: 'asc' }, { partIndex: 'asc' }, { createdAt: 'asc' }],
+      }),
+    );
     const groups = new Map<string, { title: string | null; order: number; sizeMb: number; files: TelegramFileRow[] }>();
     for (const f of files) {
       const key = f.moduleTitle ?? '__ungrouped__';

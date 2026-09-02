@@ -21,8 +21,8 @@ export class ContentController {
 
   @Public()
   @Get('lessons/:id')
-  lessonDetail(@Param('id') id: string, @CurrentUser() user?: AuthUser) {
-    return this.content.lessonDetail(id, user?.id);
+  lessonDetail(@Param('id') id: string) {
+    return this.content.lessonDetail(id);
   }
 
   @Get('lessons/:id/video-url')

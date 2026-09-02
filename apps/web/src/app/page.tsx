@@ -4,15 +4,16 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowRight, ChevronRight, Play, Star } from "lucide-react";
 import { get } from "@/lib/api";
-import type { CourseSummary, HomeData, LearningData } from "@/lib/types";
+import type { CourseSummary, HomeData, LibraryData } from "@/lib/types";
 import { CourseCard } from "@/components/CourseCard";
+import { LecturerCard, PublisherCard } from "@/components/EntityCard";
 import { MobileHeader } from "@/components/Nav";
 import { useAuth } from "@/lib/auth";
 import { formatDuration } from "@/lib/format";
 
 export default function HomePage() {
   const [home, setHome] = useState<HomeData | null>(null);
-  const [learning, setLearning] = useState<LearningData | null>(null);
+  const [library, setLibrary] = useState<LibraryData | null>(null);
   const [error, setError] = useState(false);
   const { user } = useAuth();
 
@@ -51,7 +52,7 @@ export default function HomePage() {
 
   // Signed-in users get real progress numbers in "Your Next Course"
   useEffect(() => {
-    if (user) get<LearningData>("/me/learning").then(setLearning).catch(() => undefined);
+    if (user) get<LibraryData>("/me/learning").then(setLibrary).catch(() => undefined);
   }, [user]);
 
   if (error) {
@@ -81,9 +82,9 @@ export default function HomePage() {
   const trendSource =
     trendTab === "day" ? home.trending : trendTab === "week" ? home.topRated : home.latest;
 
-  const inProgress = learning?.counts?.inProgress ?? 0;
-  const completed = learning?.counts?.completed ?? 0;
-  const totalEnrolled = inProgress + completed;
+  const downloaded = library?.counts?.downloaded ?? 0;
+  const saved = library?.counts?.saved ?? 0;
+  const marked = downloaded + saved;
 
   return (
     <main className="page">
@@ -165,16 +166,16 @@ export default function HomePage() {
         <section className="rail dark-panel recommend">
           <div>
             <span className="eyebrow">Your next course</span>
-            <h3 style={{ margin: "7px 0 0" }}>You&apos;re almost there — continue where you left off.</h3>
+            <h3 style={{ margin: "7px 0 0" }}>Pick up where you left off.</h3>
             <p>Rate what you learn and Syncourse keeps your next picks fresh.</p>
             <div style={{ marginTop: 16, maxWidth: 360 }}>
-              <ProgressRow label="In progress" value={inProgress} total={totalEnrolled} />
+              <ProgressRow label="Downloaded" value={downloaded} total={marked} />
               <div style={{ height: 10 }} />
-              <ProgressRow label="Completed" value={completed} total={totalEnrolled} />
+              <ProgressRow label="Saved for later" value={saved} total={marked} />
             </div>
           </div>
           <Link href="/my-learning" className="btn primary">
-            Continue learning <ArrowRight size={13} style={{ display: "inline", verticalAlign: "middle" }} />
+            Open your library <ArrowRight size={13} style={{ display: "inline", verticalAlign: "middle" }} />
           </Link>
         </section>
       )}
@@ -341,22 +342,7 @@ export default function HomePage() {
         </div>
         <div className="rail-row">
           {home.lecturers.map((l) => (
-            <Link key={l.id} href={`/lecturers/${l.slug}`} className="dark-panel" style={{ padding: 14, display: "block", minWidth: 150 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <span className="avatar" style={{ width: 40, height: 40, fontSize: 16, borderRadius: 12 }}>
-                  {l.photoUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={l.photoUrl} alt="" className="h-full w-full rounded-xl object-cover" />
-                  ) : (
-                    l.name.charAt(0)
-                  )}
-                </span>
-                <div>
-                  <strong style={{ fontSize: 12 }}>{l.name}</strong>
-                  <div className="muted" style={{ fontSize: 10 }}>{l.courseCount} courses</div>
-                </div>
-              </div>
-            </Link>
+            <LecturerCard key={l.id} lecturer={l} />
           ))}
         </div>
       </section>
@@ -368,24 +354,7 @@ export default function HomePage() {
         </div>
         <div className="rail-row">
           {home.organizations.map((o) => (
-            <Link key={o.id} href={`/organizations/${o.slug}`} className="dark-panel" style={{ padding: 14, display: "block", minWidth: 170 }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                <span className="avatar" style={{ width: 40, height: 40, fontSize: 16, borderRadius: 12 }}>
-                  {o.logoUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={o.logoUrl} alt="" className="h-full w-full rounded-xl object-cover" />
-                  ) : (
-                    o.name.charAt(0)
-                  )}
-                </span>
-                <div>
-                  <strong style={{ fontSize: 12 }}>{o.name}</strong>
-                  <div className="muted" style={{ fontSize: 10 }}>
-                    {o.subscribers.toLocaleString()} subscribers · {o.courseCount} courses
-                  </div>
-                </div>
-              </div>
-            </Link>
+            <PublisherCard key={o.id} org={o} />
           ))}
         </div>
       </section>

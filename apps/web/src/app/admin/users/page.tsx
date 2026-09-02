@@ -195,7 +195,7 @@ export default function AdminUsers() {
               </th>
               <th>User</th>
               <th>Access</th>
-              <th className="admin-table__num">Enrolled</th>
+              <th className="admin-table__num">Downloads</th>
               <th className="admin-table__num">Reviews</th>
               <th>Joined</th>
               <th />
@@ -261,7 +261,7 @@ export default function AdminUsers() {
                     <span className="admin-badge admin-badge--gray">Free</span>
                   )}
                 </td>
-                <td className="admin-table__num">{u.enrollments}</td>
+                <td className="admin-table__num">{u.downloads}</td>
                 <td className="admin-table__num">{u.reviews}</td>
                 <td className="admin-table__quiet">{formatDate(u.createdAt)}</td>
                 <td className="admin-table__actions">

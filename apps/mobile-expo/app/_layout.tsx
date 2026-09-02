@@ -34,6 +34,9 @@ export default function RootLayout() {
             <Stack.Screen name="auth" options={{ title: "Account" }} />
             <Stack.Screen name="premium" options={{ title: "Premium" }} />
             <Stack.Screen name="lists/[id]" options={{ title: "List" }} />
+            <Stack.Screen name="resources/index" options={{ title: "Resources" }} />
+            {/* The hero carries the title, so a duplicate in the bar is noise. */}
+            <Stack.Screen name="resources/[slug]" options={{ title: "", headerBackTitle: "Back" }} />
             <Stack.Screen name="circles" options={{ title: "Circles" }} />
             <Stack.Screen name="lecturers/index" options={{ title: "Lecturers" }} />
             <Stack.Screen name="organizations/index" options={{ title: "Channels & Schools" }} />

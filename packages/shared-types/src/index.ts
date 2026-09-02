@@ -95,7 +95,7 @@ export interface CourseSummary {
   lessonCount: number;
   ratingAvg: number;
   ratingCount: number;
-  enrollmentCount: number;
+  downloadCount: number;
   isPremium: boolean;
   isFeatured: boolean;
   isNew: boolean;
@@ -181,9 +181,8 @@ export interface UserProfile {
   telegramUsername: string | null;
   memberSince: string;
   stats: {
-    enrolled: number;
-    completed: number;
-    watchlist: number;
+    downloaded: number;
+    saved: number;
     liked: number;
     lists: number;
     reviews: number;

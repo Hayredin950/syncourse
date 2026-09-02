@@ -22,16 +22,12 @@ export default function LessonPage() {
   const [lesson, setLesson] = useState<LessonDetail | null>(null);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [tab, setTab] = useState<"watch" | "notes">("watch");
-  const [watched, setWatched] = useState(false);
   const { toast, setToast } = useToast();
   const [videoError, setVideoError] = useState(false);
 
   useEffect(() => {
     get<LessonDetail>(`/lessons/${lessonId}`)
-      .then((d) => {
-        setLesson(d);
-        setWatched(d.watched);
-      })
+      .then(setLesson)
       .catch(() => setToast("Lesson not found"));
   }, [lessonId]);
 
@@ -46,19 +42,7 @@ export default function LessonPage() {
       setVideoError(false);
     } catch (e: any) {
       setVideoError(true);
-      setToast(e.message || "Enroll to watch this lesson");
-    }
-  };
-
-  const markComplete = async () => {
-    if (!token) return;
-    try {
-      const r = await post<{ progressPct: number }>(`/lessons/${lessonId}/progress`, { completed: !watched });
-      setWatched(!watched);
-      setLesson((l) => (l ? { ...l, courseProgress: r.progressPct } : l));
-      setToast(!watched ? `Lesson completed — course ${r.progressPct}%` : "Marked incomplete");
-    } catch (e: any) {
-      setToast(e.message);
+      setToast(e.message || "Sign in to watch this lesson");
     }
   };
 
@@ -88,7 +72,7 @@ export default function LessonPage() {
       setToast(`Downloading ${r.fileName || fileName}…`);
       void recordDownload(r.fileName || fileName);
     } catch (e: any) {
-      setToast(e.message || "Download failed — enroll in the course first");
+      setToast(e.message || "Download failed — sign in and try again");
     }
   };
 
@@ -123,7 +107,7 @@ export default function LessonPage() {
           {lesson.title}
         </div>
         <div className="mt-0.5 text-[11px] text-dim">
-          {formatSec(lesson.durationSec)} · {lesson.isPreview ? "Preview" : "Full lesson"} · course {lesson.courseProgress}%
+          {formatSec(lesson.durationSec)} · {lesson.isPreview ? "Preview" : "Full lesson"}
         </div>
       </div>
 
@@ -149,7 +133,7 @@ export default function LessonPage() {
                 <>
                   <div className="text-2xl">🔒</div>
                   <div className="text-sm font-medium text-text">This lesson is locked</div>
-                  <div className="text-xs text-muted">Enroll in the course or upgrade to Premium to watch.</div>
+                  <div className="text-xs text-muted">Sign in, or upgrade to Premium, to watch this lesson.</div>
                 </>
               ) : (
                 <>
@@ -170,17 +154,6 @@ export default function LessonPage() {
               )}
             </div>
           )}
-
-          <div className="mt-3 flex items-center gap-2">
-            <button
-              onClick={markComplete}
-              className={`flex-1 rounded-full border py-2 text-sm font-medium ${
-                watched ? "border-success text-success" : "border-border text-muted hover:text-text"
-              }`}
-            >
-              {watched ? "✓ Completed" : "Mark as watched"}
-            </button>
-          </div>
 
           {/* lesson attachments — ZIPs, PDFs (the actual downloadable files) */}
           {lesson.attachments.length > 0 && (

@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Link, useLocalSearchParams, useRouter } from "expo-router";
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import { cloudinaryUrl } from "../../../lib/cloudinary";
 import {
   ActivityIndicator,
@@ -18,10 +18,47 @@ import {
 import * as ImagePicker from "expo-image-picker";
 import * as Linking from "expo-linking";
 import * as api from "../../../lib/api";
+import { AddToListSheet } from "../../../components/AddToListSheet";
 import { colors, radius } from "../../../lib/tokens";
-import { formatDurationSec, type Category, type CourseDetail, type CourseSummary } from "../../../lib/types";
+import { formatDurationSec, type Category, type CourseDetail, type CourseSummary, type TelegramFile } from "../../../lib/types";
 import { Stars, StarPicker, StarRow } from "../../../components/StarRating";
 
+const BOT_USERNAME = "syncourse_bot";
+
+/**
+ * Bot deep links.
+ *
+ * `dl_<slug>` opens the bot's picker for the whole course — what "Download all"
+ * still does. `dlf_<linkId>` sends exactly one attachment and `dlmod_<linkId>`
+ * sends the module that attachment belongs to; both address a
+ * `TelegramCourseLink` id because a `/start` payload is capped at 64 characters.
+ */
+const botLink = (payload: string) => `https://t.me/${BOT_USERNAME}?start=${payload}`;
+
+/**
+ * Regroup the flat attachment list into the modules the bot delivers, the same
+ * way the website does — a 3-part course listed flat gave no clue which parts
+ * belonged together, and no way to ask for one module rather than all of it.
+ */
+function groupTelegramFiles(files: TelegramFile[]) {
+  const groups: { key: string; title: string | null; files: TelegramFile[]; sizeMb: number }[] = [];
+  const byKey = new Map<string, (typeof groups)[number]>();
+  const sorted = [...files].sort(
+    (a, b) => (a.moduleOrder ?? 0) - (b.moduleOrder ?? 0) || a.partIndex - b.partIndex,
+  );
+  for (const f of sorted) {
+    const key = f.moduleTitle ?? "__ungrouped__";
+    let g = byKey.get(key);
+    if (!g) {
+      g = { key, title: f.moduleTitle, files: [], sizeMb: 0 };
+      byKey.set(key, g);
+      groups.push(g);
+    }
+    g.files.push(f);
+    g.sizeMb += f.fileSizeMb ?? 0;
+  }
+  return groups;
+}
 
 export default function CourseDetailScreen() {
   const { slug } = useLocalSearchParams<{ slug: string }>();
@@ -34,10 +71,6 @@ export default function CourseDetailScreen() {
     queryFn: () => api.courseDetail(slug!),
   });
 
-  const enrollMut = useMutation({
-    mutationFn: () => api.enroll(slug!),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["course", slug] }),
-  });
   const saveMut = useMutation({ mutationFn: () => api.toggleSave(slug!) });
   const likeMut = useMutation({ mutationFn: () => api.toggleLike(slug!) });
   const rateMut = useMutation({
@@ -58,6 +91,7 @@ export default function CourseDetailScreen() {
   const [coverOpen, setCoverOpen] = useState(false);
   const [coverUrl, setCoverUrl] = useState("");
   const [downloadsOpen, setDownloadsOpen] = useState(false);
+  const [listOpen, setListOpen] = useState(false);
 
   const similarQ = useQuery({
     queryKey: ["similar", slug],
@@ -85,6 +119,10 @@ export default function CourseDetailScreen() {
     queryFn: api.me,
     retry: false,
   });
+
+  // Above the early returns on purpose: a hook that only runs once the course
+  // has loaded changes the hook count between renders.
+  const fileModules = useMemo(() => groupTelegramFiles(data?.telegramFiles ?? []), [data]);
 
   const coverMut = useMutation({
     mutationFn: async (input: { dataUrl?: string; imageUrl?: string }) => {
@@ -142,6 +180,13 @@ export default function CourseDetailScreen() {
     c.description.length > 200 && !expanded
       ? `${c.description.slice(0, 200)}…`
       : c.description;
+  // Most Syncourse courses are a Telegram archive with no lessons at all, so
+  // the first openable lesson may live in any section — or nowhere.
+  const firstLesson = c.sections.find((s) => s.lessons[0])?.lessons[0] ?? null;
+  // A Telegram import creates one lesson-less Section per module just so the
+  // course has some structure; rendering those gave "0 lessons · 0:00" rows that
+  // only repeated the Course Materials list.
+  const curriculum = c.sections.filter((s) => s.lessons.length > 0);
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
@@ -221,7 +266,7 @@ export default function CourseDetailScreen() {
           {c.lessonCount > 0 && <Text style={styles.metaText}>{c.lessonCount} lessons</Text>}
         </View>
         <Text style={styles.metaText}>
-          {c.level} · {c.language} · {c.enrollmentCount.toLocaleString()} enrolled
+          {c.level} · {c.language} · {c.downloadCount.toLocaleString()} downloads
         </Text>
         {c.isPremium && (
           <View style={styles.premiumBadge}>
@@ -245,22 +290,32 @@ export default function CourseDetailScreen() {
         )}
 
         <View style={styles.actions}>
-          <Text
-            style={styles.enrollBtn}
-            onPress={() => {
-              enrollMut.mutate();
-              if (c.sections[0]?.lessons[0]) {
-                // navigate happens via curriculum tap; enroll silently first
-              }
-            }}
-          >
-            {enrollMut.isPending ? "…" : "Enroll & start"}
-          </Text>
+          {/* The archive *is* the course, so downloading is the primary action
+              whenever there are no lessons to open in the app. */}
+          {firstLesson ? (
+            <>
+              <Link href={`/courses/${c.slug}/lessons/${firstLesson.id}`} style={styles.primaryBtn}>
+                Start course
+              </Link>
+              <Text style={styles.secondaryBtn} onPress={() => setDownloadsOpen(true)}>
+                Download
+              </Text>
+            </>
+          ) : (
+            <Text style={styles.primaryBtn} onPress={() => setDownloadsOpen(true)}>
+              Download
+            </Text>
+          )}
           <Text style={styles.iconBtn} onPress={() => saveMut.mutate()}>
             🔖
           </Text>
           <Text style={styles.iconBtn} onPress={() => likeMut.mutate()}>
             ❤️
+          </Text>
+          {/* Saving keeps a course to yourself; a list is how you group them and
+              hand the group to someone else. */}
+          <Text style={styles.iconBtn} onPress={() => setListOpen(true)}>
+            🗂️
           </Text>
         </View>
 
@@ -310,17 +365,17 @@ export default function CourseDetailScreen() {
           </>
         )}
 
-        {/* hidden for single-ZIP courses, which have no sections at all — a bare
-            "Curriculum" heading over blank space read as broken */}
-        {c.sections.length > 0 && (
+        {/* hidden for archive courses, which have no lessons to open in the app —
+            a bare "Curriculum" heading over blank space read as broken */}
+        {curriculum.length > 0 && (
           <>
             <Text style={styles.heading}>Curriculum</Text>
-            {c.sections.map((section) => (
+            {curriculum.map((section) => (
               <View key={section.id} style={styles.section}>
                 <Text style={styles.sectionTitle}>
                   {section.title}{" "}
                   <Text style={styles.muted}>
-                    · {section.lessons.length} lessons · {formatDurationSec(section.lessons.reduce((s, l) => s + l.durationSec, 0))}
+                    · {section.lessons.length} lesson{section.lessons.length === 1 ? "" : "s"} · {formatDurationSec(section.lessons.reduce((s, l) => s + l.durationSec, 0))}
                   </Text>
                 </Text>
                 {section.lessons.map((lesson) => (
@@ -440,7 +495,10 @@ export default function CourseDetailScreen() {
           </View>
         ))}
 
-        {/* downloads — bulk module + per-lesson (phonofilm: season download) */}
+        {/* downloads — bulk module + per-lesson (phonofilm: season download).
+            Lessons only: an archive course has none, and Course Materials above
+            is already the real download surface. */}
+        {curriculum.length > 0 && (
         <View style={styles.downloadsBox}>
           <View style={styles.downloadsHead}>
             <Text style={styles.heading}>Downloads</Text>
@@ -451,7 +509,7 @@ export default function CourseDetailScreen() {
           <Text style={styles.muted}>
             Grab a whole module at once or pick individual lessons. Premium gets full-speed delivery.
           </Text>
-          {c.sections.slice(0, 3).map((s, si) => (
+          {curriculum.slice(0, 3).map((s, si) => (
             <View key={s.id} style={styles.bulkRow}>
               <Text style={styles.bulkText} numberOfLines={1}>
                 Module {si + 1} — {s.title}
@@ -467,40 +525,67 @@ export default function CourseDetailScreen() {
             </View>
           ))}
         </View>
+        )}
 
         {/* Telegram files — the actual course materials linked via the bot */}
         {c.telegramFiles && c.telegramFiles.length > 0 && (
           <View style={{ marginTop: 22 }}>
             <View style={styles.downloadsHead}>
               <Text style={styles.heading}>Course Materials</Text>
-              <Text style={styles.muted}>{c.telegramFiles.length} file{c.telegramFiles.length !== 1 ? 's' : ''}</Text>
+              <Pressable style={styles.bulkBtn} onPress={() => Linking.openURL(botLink(`dl_${c.slug}`))}>
+                <Text style={styles.bulkBtnLabel}>⬇ Download all</Text>
+              </Pressable>
             </View>
-            {c.telegramFiles.map((file) => (
-              <View key={file.id} style={styles.lessonDownload}>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ fontSize: 11, color: colors.dim, marginBottom: 2 }}>
-                    {file.moduleTitle ? `Module ${file.moduleOrder + 1}: ${file.moduleTitle}` : `Part ${file.partIndex}`}
-                  </Text>
-                  <Text style={{ color: colors.text, fontWeight: "600", fontSize: 13 }} numberOfLines={2}>
-                    {file.fileName || "Course material"}
-                  </Text>
-                  {file.fileSizeMb && (
-                    <Text style={{ fontSize: 11, color: colors.dim, marginTop: 2 }}>
-                      {file.fileSizeMb} MB
+            <Text style={styles.materialsNote}>
+              Tap a part and the bot sends only that file. “Download all” asks it for everything.
+            </Text>
+            {fileModules.map((m, mi) => (
+              <View key={m.key} style={styles.fileModule}>
+                <View style={styles.fileModuleHead}>
+                  <Text style={styles.fileModuleIndex}>{String(mi + 1).padStart(2, "0")}</Text>
+                  <View style={{ flex: 1 }}>
+                    <Text style={styles.fileModuleTitle} numberOfLines={2}>
+                      {m.title ?? "Course archive"}
                     </Text>
+                    <Text style={styles.fileModuleMeta}>
+                      {m.files.length} part{m.files.length === 1 ? "" : "s"}
+                      {m.sizeMb > 0 ? ` · ${Math.round(m.sizeMb)} MB` : ""}
+                    </Text>
+                  </View>
+                  {/* One tap for the whole module — addressed through any part it
+                      holds, since the bot resolves the module from the link id. */}
+                  {m.files.length > 1 && (
+                    <Pressable
+                      style={styles.ghostBtn}
+                      onPress={() => Linking.openURL(botLink(`dlmod_${m.files[0].id}`))}
+                    >
+                      <Text style={styles.ghostBtnLabel}>All parts</Text>
+                    </Pressable>
                   )}
                 </View>
-                <Pressable
-                  style={styles.bulkBtn}
-                  onPress={() => {
-                    // always go through the bot: it delivers the actual file and
-                    // shows a module picker. Opening t.me/<channel> just dropped
-                    // the user at the channel root with nothing downloaded.
-                    Linking.openURL(`https://t.me/syncourse_bot?start=dl_${c.slug}`);
-                  }}
-                >
-                  <Text style={styles.bulkBtnLabel}>⬇</Text>
-                </Pressable>
+                {m.files.map((file) => (
+                  <View key={file.id} style={styles.lessonDownload}>
+                    <Text style={styles.filePartNum}>{String(file.partIndex).padStart(2, "0")}</Text>
+                    <View style={{ flex: 1 }}>
+                      <Text style={{ color: colors.text, fontWeight: "600", fontSize: 13 }} numberOfLines={2}>
+                        {file.fileName || `Part ${file.partIndex}`}
+                      </Text>
+                      <Text style={{ fontSize: 11, color: colors.dim, marginTop: 2 }}>
+                        {file.fileSizeMb ? `${file.fileSizeMb} MB` : "Telegram attachment"}
+                      </Text>
+                    </View>
+                    <Pressable
+                      style={styles.bulkBtn}
+                      onPress={() => {
+                        // One part per button: the bot delivers this attachment alone,
+                        // so nobody pulls 300 MB to re-fetch the one part that failed.
+                        Linking.openURL(botLink(`dlf_${file.id}`));
+                      }}
+                    >
+                      <Text style={styles.bulkBtnLabel}>⬇ Part {file.partIndex}</Text>
+                    </Pressable>
+                  </View>
+                ))}
               </View>
             ))}
           </View>
@@ -546,7 +631,7 @@ export default function CourseDetailScreen() {
               </Text>
               <Pressable
                 style={styles.telegramRow}
-                onPress={() => Linking.openURL(`https://t.me/syncourse_bot?start=dl_${c.slug}`)}
+                onPress={() => Linking.openURL(botLink(`dl_${c.slug}`))}
               >
                 <Text style={{ color: colors.accent, fontWeight: "800", fontSize: 15 }}>✈</Text>
                 <Text style={{ color: colors.text, fontWeight: "700", fontSize: 13, flex: 1 }} numberOfLines={1}>
@@ -563,7 +648,7 @@ export default function CourseDetailScreen() {
                     <Pressable
                       key={f.id}
                       style={styles.lessonDownload}
-                      onPress={() => Linking.openURL(`https://t.me/syncourse_bot?start=dl_${c.slug}`)}
+                      onPress={() => Linking.openURL(botLink(`dlf_${f.id}`))}
                     >
                       <Text style={{ color: colors.dim }}>⬇</Text>
                       <Text style={{ color: colors.text, fontSize: 13, flex: 1 }} numberOfLines={2}>
@@ -576,7 +661,7 @@ export default function CourseDetailScreen() {
                 </View>
               )}
 
-              {c.sections.map((s, si) => (
+              {curriculum.map((s, si) => (
                 <View key={s.id} style={{ marginTop: 14 }}>
                   <Pressable
                     style={styles.bulkDownload}
@@ -614,6 +699,13 @@ export default function CourseDetailScreen() {
           </Pressable>
         </Pressable>
       </Modal>
+
+      <AddToListSheet
+        visible={listOpen}
+        courseId={c.id}
+        courseTitle={c.title}
+        onClose={() => setListOpen(false)}
+      />
     </ScrollView>
   );
 }
@@ -689,7 +781,7 @@ const styles = StyleSheet.create({
   desc: { color: "rgba(244,244,245,0.7)", fontSize: 14, lineHeight: 20, marginTop: 14 },
   readMore: { color: colors.accent, fontSize: 13, fontWeight: "600", marginTop: 4 },
   actions: { flexDirection: "row", alignItems: "center", gap: 10, marginTop: 16 },
-  enrollBtn: {
+  primaryBtn: {
     flex: 1,
     backgroundColor: colors.accent,
     color: "#000",
@@ -698,6 +790,16 @@ const styles = StyleSheet.create({
     textAlign: "center",
     borderRadius: 999,
     paddingVertical: 13,
+  },
+  secondaryBtn: {
+    backgroundColor: colors.surface,
+    color: colors.text,
+    fontWeight: "700",
+    fontSize: 14,
+    textAlign: "center",
+    borderRadius: 999,
+    paddingVertical: 13,
+    paddingHorizontal: 18,
   },
   iconBtn: {
     backgroundColor: colors.surface,
@@ -819,7 +921,8 @@ const styles = StyleSheet.create({
     padding: 14,
     marginTop: 22,
   },
-  downloadsHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between" },
+  downloadsHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 10 },
+  materialsNote: { color: colors.muted, fontSize: 11, lineHeight: 16, marginTop: 6, marginBottom: 4 },
   seeAll: { color: colors.accent, fontSize: 13, fontWeight: "600" },
   bulkRow: {
     flexDirection: "row",
@@ -888,5 +991,27 @@ const styles = StyleSheet.create({
     padding: 11,
     marginTop: 8,
   },
+  // Files, grouped the way the bot delivers them: a module card holding its parts.
+  fileModule: {
+    backgroundColor: colors.surface,
+    borderRadius: radius.md,
+    borderWidth: 1,
+    borderColor: colors.border,
+    padding: 12,
+    marginTop: 10,
+  },
+  fileModuleHead: { flexDirection: "row", alignItems: "center", gap: 10 },
+  fileModuleIndex: { color: colors.dim, fontSize: 11, fontWeight: "800", letterSpacing: 1 },
+  fileModuleTitle: { color: colors.text, fontSize: 13, fontWeight: "700" },
+  fileModuleMeta: { color: colors.dim, fontSize: 11, marginTop: 2 },
+  filePartNum: { color: colors.dim, fontSize: 11, fontWeight: "800", letterSpacing: 1 },
+  ghostBtn: {
+    borderWidth: 1,
+    borderColor: colors.border,
+    borderRadius: radius.pill,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+  },
+  ghostBtnLabel: { color: colors.text, fontSize: 11, fontWeight: "700" },
   bestText: { color: colors.accent, fontSize: 9, fontWeight: "800" },
 });

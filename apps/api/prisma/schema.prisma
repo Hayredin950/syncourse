@@ -24,8 +24,9 @@ model Category {
   sortOrder  Int      @default(0)
   createdAt  DateTime @default(now())
 
-  courses CourseCategory[]
-  taste   TasteProfile[]
+  courses   CourseCategory[]
+  taste     TasteProfile[]
+  resources Resource[]
 }
 
 model Lecturer {
@@ -38,7 +39,8 @@ model Lecturer {
   socialLinks String   @default("{}") // JSON: { "twitter": ..., "github": ... }
   createdAt   DateTime @default(now())
 
-  courses Course[]
+  courses   Course[]
+  resources Resource[]
 }
 
 model Organization {
@@ -51,7 +53,8 @@ model Organization {
   subscribers Int      @default(0)
   createdAt   DateTime @default(now())
 
-  courses Course[]
+  courses   Course[]
+  resources Resource[]
 }
 
 model Level {
@@ -83,7 +86,6 @@ model Course {
   prerequisites   String?
   ratingAvg       Float         @default(0)
   ratingCount     Int           @default(0)
-  enrollmentCount Int           @default(0)
   downloadCount   Int           @default(0)
   sourceUrl       String? // where the course content lives (e.g. t.me/…/id) — set by feed ingestion
   publishedAt     DateTime      @default(now())
@@ -96,7 +98,6 @@ model Course {
   audience        CourseAudience[]
   sections        Section[]
   lessons         Lesson[]
-  enrollments     Enrollment[]
   reviews         Review[]
   ratings         Rating[]
   pathCourses     LearningPathCourse[]
@@ -105,6 +106,7 @@ model Course {
   likedBy         LikedCourse[]
   downloadEvents  DownloadEvent[]
   telegramFiles   TelegramCourseLink[]
+  circlePosts     CirclePost[]
 
   @@index([publishedAt])
 }
@@ -189,7 +191,6 @@ model Lesson {
   notes       Note[]
   files       LessonFile[]
   attachments Attachment[]
-  progress    LessonProgress[]
   downloads   DownloadEvent[]
 }
 
@@ -230,6 +231,76 @@ model Attachment {
 }
 
 // ---------------------------------------------------------------
+// Resources — cheat-sheets, roadmaps, notes
+// ---------------------------------------------------------------
+
+// A resource is one published artefact rather than something you work through:
+// a cheat-sheet image, a roadmap, a page of notes. They arrived as Courses with
+// contentType "cheat-sheet"/"roadmap", which left two thirds of the course form
+// blank and gave each one a curriculum, a duration and a lesson count it can
+// never have. Small enough to show in full on the web, so `bodyMd` holds the
+// post itself instead of pointing at Telegram.
+model Resource {
+  id             String        @id @default(cuid())
+  type           String        @default("cheat-sheet") // cheat-sheet | roadmap | note
+  title          String
+  slug           String        @unique
+  summary        String? // one line for cards, previews and meta descriptions
+  bodyMd         String        @default("") // rendered by the shared markdown component
+  coverUrl       String?
+  categoryId     String?
+  category       Category?     @relation(fields: [categoryId], references: [id])
+  organizationId String?
+  organization   Organization? @relation(fields: [organizationId], references: [id])
+  lecturerId     String?
+  lecturer       Lecturer?     @relation(fields: [lecturerId], references: [id])
+  isPremium      Boolean       @default(false)
+  isFeatured     Boolean       @default(false)
+  sourceUrl      String? // the Telegram post this was published from
+  readMinutes    Int           @default(0) // 0 = estimate from bodyMd when rendering
+  viewCount      Int           @default(0)
+  downloadCount  Int           @default(0)
+  publishedAt    DateTime      @default(now())
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  deletedAt      DateTime? // soft delete, to match Course
+
+  tags  ResourceTag[]
+  media ResourceMedia[]
+
+  @@index([type, publishedAt])
+  @@index([publishedAt])
+}
+
+model ResourceTag {
+  id         String   @id @default(cuid())
+  resourceId String
+  tag        String
+  resource   Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+
+  @@index([resourceId])
+}
+
+// One attachment on a resource. `kind` decides which viewer a client reaches
+// for — an image renders inline, a PDF gets an embedded reader, a spreadsheet
+// or archive gets a download row — so it is stored once at authoring time
+// rather than re-guessed from the file extension on every render.
+model ResourceMedia {
+  id             String   @id @default(cuid())
+  resourceId     String
+  kind           String   @default("other") // image | video | audio | pdf | doc | sheet | slide | archive | code | link | other
+  url            String?
+  telegramFileId String? // reusable file_id when the bot holds the original
+  fileName       String?
+  fileSizeMb     Float?
+  caption        String?
+  orderIndex     Int      @default(0)
+  resource       Resource @relation(fields: [resourceId], references: [id], onDelete: Cascade)
+
+  @@index([resourceId, orderIndex])
+}
+
+// ---------------------------------------------------------------
 // Users, auth, social
 // ---------------------------------------------------------------
 
@@ -265,7 +336,6 @@ model User {
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @updatedAt
 
-  enrollments      Enrollment[]
   ratings          Rating[]
   reviews          Review[]
   lists            CollectionList[]
@@ -276,6 +346,7 @@ model User {
   followers        Follow[]          @relation("followers")
   ownedCircles     Circle[]          @relation("circleOwner")
   circleMembers    CircleMember[]
+  circlePosts      CirclePost[]
   sessions         Session[]
   taste            TasteProfile[]
   downloads        DownloadEvent[]
@@ -313,8 +384,26 @@ model Circle {
   owner       User           @relation("circleOwner", fields: [ownerId], references: [id], onDelete: Cascade)
   createdAt   DateTime       @default(now())
   members     CircleMember[]
+  posts       CirclePost[]
 
   @@index([ownerId])
+}
+
+/// A circle's wall. Without it a circle is only a mirror of what members did
+/// elsewhere — you can join one but never say anything in it. `courseId` lets a
+/// post carry a recommendation, which is the thing members actually want to share.
+model CirclePost {
+  id        String   @id @default(cuid())
+  circleId  String
+  userId    String
+  body      String
+  courseId  String?
+  createdAt DateTime @default(now())
+  circle    Circle   @relation(fields: [circleId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course    Course?  @relation(fields: [courseId], references: [id], onDelete: SetNull)
+
+  @@index([circleId, createdAt])
 }
 
 model CircleMember {
@@ -339,37 +428,12 @@ model Session {
 }
 
 // ---------------------------------------------------------------
-// Learning: enrollments, progress, saved, liked, ratings, reviews
+// Library: saved, liked, ratings, reviews
+//
+// There is no enrolment and no progress tracking: courses are delivered as
+// Telegram archives, so "engagement" is what a reader saved, liked, rated or
+// downloaded — see DownloadEvent.
 // ---------------------------------------------------------------
-
-model Enrollment {
-  id           String   @id @default(cuid())
-  userId       String
-  courseId     String
-  progressPct  Int      @default(0)
-  status       String   @default("in_progress") // in_progress | completed
-  lastLessonId String?
-  enrolledAt   DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  user         User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  course       Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
-
-  lessonProgress LessonProgress[]
-
-  @@index([userId, status])
-}
-
-model LessonProgress {
-  id           String     @id @default(cuid())
-  enrollmentId String
-  lessonId     String
-  completed    Boolean    @default(false)
-  completedAt  DateTime?
-  enrollment   Enrollment @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
-  lesson       Lesson     @relation(fields: [lessonId], references: [id], onDelete: Cascade)
-
-  @@unique([enrollmentId, lessonId])
-}
 
 model SavedCourse {
   userId    String
@@ -491,16 +555,19 @@ model SavedList {
 model DownloadEvent {
   id        String   @id @default(cuid())
   userId    String?
-  lessonId  String
+  lessonId  String? // null for a Telegram delivery — the archive is the course, not a lesson
   courseId  String
   quality   String?
   method    String   @default("app") // app | bot
   createdAt DateTime @default(now())
   user      User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
-  lesson    Lesson   @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+  lesson    Lesson?  @relation(fields: [lessonId], references: [id], onDelete: Cascade)
   course    Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
 
   @@index([courseId])
+  // A reader's library is "the courses you downloaded", so this is now a read
+  // path and not just an analytics write.
+  @@index([userId, createdAt])
 }
 
 model Subscription {

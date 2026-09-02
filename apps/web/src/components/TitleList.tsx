@@ -19,7 +19,7 @@ export type EntityCourse = {
   durationMin: number;
   ratingAvg: number;
   ratingCount: number;
-  enrollmentCount: number;
+  downloadCount: number;
   publishedAt?: string;
   contentType?: string;
 };

@@ -6,6 +6,7 @@ import { get, patch, post } from "@/lib/api";
 import type { AdminLegalRow } from "@/lib/types";
 import { useAdminToast } from "@/components/admin/AdminToast";
 import ConfirmButton from "@/components/admin/ConfirmButton";
+import { Markdown } from "@/components/Markdown";
 
 const DATE = { day: "numeric", month: "short", year: "numeric" } as const;
 const fmt = (iso: string) => new Date(iso).toLocaleDateString("en-US", DATE);
@@ -42,6 +43,9 @@ export default function AdminLegalPage() {
   const [editing, setEditing] = useState<AdminLegalRow | null | undefined>(undefined);
   const [form, setForm] = useState(EMPTY);
   const [saving, setSaving] = useState(false);
+  // Markdown is only obvious once it is rendered, so the body is editable and
+  // previewable in the same place rather than published and then checked live.
+  const [bodyView, setBodyView] = useState<"write" | "preview">("write");
 
   useEffect(() => {
     get<AdminLegalRow[]>("/admin/legal")
@@ -212,21 +216,45 @@ export default function AdminLegalPage() {
             </span>
           </label>
 
-          <label className="admin-field admin-field--wide">
-            <span className="admin-label">Document body</span>
-            <textarea
-              className="admin-textarea"
-              value={form.bodyMd}
-              onChange={(e) => set("bodyMd", e.target.value)}
-              rows={18}
-              style={{ minHeight: 320, fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}
-              placeholder="# Terms of Service&#10;&#10;Plain text or Markdown."
-            />
+          <div className="admin-field admin-field--wide">
+            <div className="admin-inline" style={{ justifyContent: "space-between", gap: 10 }}>
+              <span className="admin-label">Document body</span>
+              <div className="md-tabs">
+                {(["write", "preview"] as const).map((v) => (
+                  <button
+                    key={v}
+                    type="button"
+                    className={`md-tab ${bodyView === v ? "is-active" : ""}`}
+                    onClick={() => setBodyView(v)}
+                  >
+                    {v === "write" ? "Write" : "Preview"}
+                  </button>
+                ))}
+              </div>
+            </div>
+            {bodyView === "write" ? (
+              <textarea
+                className="admin-textarea"
+                value={form.bodyMd}
+                onChange={(e) => set("bodyMd", e.target.value)}
+                rows={18}
+                style={{ minHeight: 320, fontFamily: "ui-monospace, SFMono-Regular, Menlo, monospace" }}
+                placeholder="# Terms of Service&#10;&#10;Markdown: **bold**, # headings, - lists, | tables |."
+              />
+            ) : (
+              <div className="md-preview">
+                {form.bodyMd.trim() ? (
+                  <Markdown text={form.bodyMd} />
+                ) : (
+                  <span className="admin-dim">Nothing to preview yet.</span>
+                )}
+              </div>
+            )}
             <span className="admin-field__hint">
-              {form.bodyMd.length.toLocaleString("en-US")} characters. Line breaks are preserved as
-              written.
+              {form.bodyMd.length.toLocaleString("en-US")} characters. Markdown is rendered for
+              readers — headings, bold, lists, links and tables all work.
             </span>
-          </label>
+          </div>
 
           <div className="admin-stack" style={{ gap: 9, marginTop: 4 }}>
             <label className="admin-inline" style={{ gap: 7, fontSize: 12.5, cursor: "pointer" }}>

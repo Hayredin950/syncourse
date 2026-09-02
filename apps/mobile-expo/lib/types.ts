@@ -11,7 +11,6 @@ export interface CourseSummary {
   lessonCount: number;
   ratingAvg: number;
   ratingCount: number;
-  enrollmentCount: number;
   downloadCount: number;
   isPremium: boolean;
   isNew?: boolean;
@@ -138,8 +137,6 @@ export interface LessonDetail {
   notes: Note[];
   files: LessonFile[];
   attachments: { id: string; fileUrl: string; fileType: string; sizeMb: number; fileName: string }[];
-  watched: boolean;
-  courseProgress: number;
 }
 
 export interface UserProfile {
@@ -160,8 +157,7 @@ export interface UserProfile {
   settings?: { autoplayNext?: boolean; previewAutoplay?: boolean } | null;
   privacy?: Record<string, string> | null;
   stats: {
-    enrolled: number;
-    completed: number;
+    downloaded: number;
     saved: number;
     liked: number;
     lists: number;
@@ -218,20 +214,40 @@ export interface HomeFeed {
   organizations: HomeOrganization[];
 }
 
-export interface MyLearningItem {
+/** GET /me/learning — what a reader saved, liked and downloaded. */
+export interface LibraryCourse {
+  id: string;
+  title: string;
+  slug: string;
+  description: string;
+  thumbnailUrl: string | null;
+  level: string;
+  ratingAvg: number;
+  ratingCount: number;
+  downloadCount: number;
+  isPremium: boolean;
+  savedAt?: string;
+  likedAt?: string;
+  downloadedAt?: string;
+}
+
+export interface LibraryData {
+  saved: LibraryCourse[];
+  liked: LibraryCourse[];
+  downloaded: LibraryCourse[];
+  counts: { saved: number; liked: number; downloaded: number };
+}
+
+/** One course inside a collection — GET /collections/:id. */
+export interface CollectionItem {
   id: string;
   title: string;
   slug: string;
   thumbnailUrl: string | null;
-  progressPct: number;
-  status: string;
-}
-
-export interface MyLearning {
-  inProgress: MyLearningItem[];
-  completed: MyLearningItem[];
-  watchlist: MyLearningItem[];
-  liked: MyLearningItem[];
+  ratingAvg: number;
+  ratingCount: number;
+  level: string;
+  addedAt: string;
 }
 
 export interface CourseCollection {
@@ -246,7 +262,38 @@ export interface CourseCollection {
   createdAt: string;
   updatedAt: string;
   covers: string[];
-  items?: MyLearningItem[];
+  items?: CollectionItem[];
+}
+
+/**
+ * GET /lists/:id — the summary plus the courses and the two per-viewer flags the
+ * screen needs: `isOwner` decides whether the add/remove/edit controls exist at
+ * all, and `saved` has to come from the API or a list you already saved reopens
+ * reading "Save list".
+ */
+export interface CourseCollectionDetail {
+  id: string;
+  name: string;
+  description: string | null;
+  visibility: "public" | "private";
+  savesCount: number;
+  itemCount: number;
+  ownerName: string;
+  ownerUsername: string;
+  isOwner: boolean;
+  saved: boolean;
+  createdAt: string;
+  updatedAt: string;
+  items: CollectionItem[];
+}
+
+/** One row of the "Add to list" sheet: a list plus whether it already holds the course. */
+export interface CollectionMembership {
+  id: string;
+  name: string;
+  visibility: "public" | "private";
+  itemCount: number;
+  contains: boolean;
 }
 
 export interface Plan {
@@ -257,14 +304,6 @@ export interface Plan {
   priceEtb: number;
   priceUsd: number;
   isBestValue: boolean;
-}
-
-export interface ActivityItem {
-  id: string;
-  userName: string;
-  verb: string;
-  targetTitle: string;
-  createdAt: string;
 }
 
 export interface DiscussionThread {
@@ -374,20 +413,26 @@ export interface CircleMember {
   id: string;
   name: string;
   avatarUrl: string | null;
-  isOwner: boolean;
+  username: string;
+  /** "owner" or "member" — the API decides, so the crown never disagrees with it. */
+  role: string;
+  joinedAt: string;
 }
 
 export interface CircleLite {
   id: string;
   name: string;
   description: string | null;
-  slug: string;
+  owner: { name: string; avatarUrl: string | null; username: string };
   memberCount: number;
+  postCount: number;
   joined: boolean;
+  isOwner: boolean;
+  createdAt: string;
 }
 
 export interface ActivityItem {
-  type: "review" | "enrollment";
+  type: "review" | "download";
   id: string;
   userName: string;
   userAvatar: string | null;
@@ -402,9 +447,24 @@ export interface ActivityFeed {
   items: ActivityItem[];
 }
 
+/**
+ * A post on the circle wall. `canDelete` is decided by the API (author or owner)
+ * so neither client has to re-implement the rule and get it subtly wrong.
+ */
+export interface CirclePost {
+  id: string;
+  body: string;
+  createdAt: string;
+  author: { id: string; name: string; avatarUrl: string | null; username: string };
+  course: { id: string; title: string; slug: string; thumbnailUrl: string | null } | null;
+  canDelete: boolean;
+}
+
 export interface CircleDetail extends CircleLite {
-  ownerName: string;
+  /** Membership, resolved server-side — the composer shows off this alone. */
+  canPost: boolean;
   members: CircleMember[];
+  posts: CirclePost[];
   activity: ActivityItem[];
 }
 
@@ -438,7 +498,7 @@ export interface Session {
 export interface UserStats {
   engagedTotal: number;
   ratingDistribution: { stars: number; count: number }[];
-  monthlyCompleted: { month: string; count: number }[];
+  monthlyDownloads: { month: string; count: number }[];
   categoryCounts: { label: string; count: number }[];
   instructorCounts: { label: string; count: number }[];
   languageCounts: { label: string; count: number }[];
@@ -448,7 +508,7 @@ export interface UserStats {
   yourWeek: { day: string; count: number }[];
   watchlistGrowth: { month: string; count: number }[];
   topTags: { label: string; count: number }[];
-  pathProgress: { id: string; title: string; coverUrl: string | null; enrolled: number; completed: number; total: number; pct: number }[];
+  pathProgress: { id: string; title: string; coverUrl: string | null; inLibrary: number; downloaded: number; total: number; pct: number }[];
   hasGoogle: boolean;
   hasPassword: boolean;
   emailVerified: boolean;
@@ -456,6 +516,76 @@ export interface UserStats {
 
 export interface UserProfileFull extends UserProfile {
   sessions: Session[];
+}
+
+/**
+ * Resources — cheat-sheets, roadmaps and notes.
+ *
+ * Short published artefacts rather than something you work through, so they
+ * carry a body and an attachment list where a course carries a curriculum.
+ * Mirrors `apps/web/src/lib/types.ts`.
+ */
+export type ResourceType = "cheat-sheet" | "roadmap" | "note";
+
+export type ResourceMediaKind =
+  | "image"
+  | "video"
+  | "audio"
+  | "pdf"
+  | "doc"
+  | "sheet"
+  | "slide"
+  | "archive"
+  | "code"
+  | "link"
+  | "other";
+
+export interface ResourceMedia {
+  id: string;
+  kind: ResourceMediaKind;
+  url: string | null;
+  fileName: string | null;
+  fileSizeMb: number | null;
+  caption: string | null;
+  orderIndex: number;
+}
+
+export interface ResourceSummary {
+  id: string;
+  type: string;
+  title: string;
+  slug: string;
+  summary: string | null;
+  coverUrl: string | null;
+  isPremium: boolean;
+  isFeatured: boolean;
+  readMinutes: number;
+  viewCount: number;
+  downloadCount: number;
+  publishedAt: string;
+  category: { name: string; slug: string; icon: string } | null;
+  organization: { name: string; slug: string } | null;
+  lecturer: { name: string; slug: string } | null;
+  tags: string[];
+  mediaCount: number;
+  mediaKinds: string[];
+}
+
+export interface ResourceDetail extends ResourceSummary {
+  bodyMd: string;
+  sourceUrl: string | null;
+  updatedAt: string;
+  media: ResourceMedia[];
+  related: ResourceSummary[];
+}
+
+export interface ResourceList {
+  total: number;
+  results: ResourceSummary[];
+  /** Whole-library totals per type, so the tab chips don't move when you filter. */
+  counts: Record<string, number>;
+  /** Categories that actually hold a resource — /categories is course-driven. */
+  categories: { name: string; slug: string; icon: string; count: number }[];
 }
 
 export function formatDuration(minutes: number): string {

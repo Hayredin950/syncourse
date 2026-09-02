@@ -6,12 +6,12 @@ import { get } from "@/lib/api";
 import type { CourseSummary } from "@/lib/types";
 import { CourseCard } from "./CourseCard";
 
+// Courses only. Cheat-sheets and roadmaps are Resources now, not Courses with a
+// `contentType`, so filtering this rail to either returned an empty row.
 const TYPE_TABS = [
   { label: "All", type: "" },
   { label: "Courses", type: "course" },
   { label: "Mini-courses", type: "mini-course" },
-  { label: "Cheat-sheets", type: "cheat-sheet" },
-  { label: "Roadmaps", type: "roadmap" },
 ];
 
 /**

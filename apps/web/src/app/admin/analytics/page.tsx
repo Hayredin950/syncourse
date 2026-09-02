@@ -115,11 +115,11 @@ export default function AdminAnalytics() {
     () =>
       (courses ?? [])
         .filter((c) => !c.deleted)
-        .sort((a, b) => b.enrollmentCount - a.enrollmentCount)
+        .sort((a, b) => b.downloadCount - a.downloadCount)
         .slice(0, 8)
         .map((c) => ({
           label: c.title,
-          value: c.enrollmentCount,
+          value: c.downloadCount,
           href: `/admin/courses/detail?slug=${c.slug}`,
           hint: c.ratingAvg > 0 ? `${c.ratingAvg.toFixed(1)}★` : undefined,
         })),
@@ -151,7 +151,7 @@ export default function AdminAnalytics() {
     const rows = [
       { label: "Accounts", value: all.length },
       { label: "Verified email", value: all.filter((u) => u.isVerified).length },
-      { label: "Enrolled in a course", value: all.filter((u) => u.enrollments > 0).length },
+      { label: "Downloaded a course", value: all.filter((u) => u.downloads > 0).length },
       { label: "Wrote a review", value: all.filter((u) => u.reviews > 0).length },
       { label: "On a paid plan", value: all.filter((u) => u.planType !== "free").length },
     ];
@@ -162,16 +162,16 @@ export default function AdminAnalytics() {
   }, [users]);
 
   const cohorts = useMemo(() => {
-    const map = new Map<string, { label: string; total: number; enrolled: number; paid: number }>();
+    const map = new Map<string, { label: string; total: number; downloaded: number; paid: number }>();
     for (const u of users ?? []) {
       const d = new Date(u.createdAt);
       if (!Number.isFinite(d.getTime())) continue;
       const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
       const row =
         map.get(key) ??
-        { label: d.toLocaleDateString("en-US", { month: "short", year: "numeric" }), total: 0, enrolled: 0, paid: 0 };
+        { label: d.toLocaleDateString("en-US", { month: "short", year: "numeric" }), total: 0, downloaded: 0, paid: 0 };
       row.total += 1;
-      if (u.enrollments > 0) row.enrolled += 1;
+      if (u.downloads > 0) row.downloaded += 1;
       if (u.planType !== "free") row.paid += 1;
       map.set(key, row);
     }
@@ -354,12 +354,12 @@ export default function AdminAnalytics() {
 
       <div className="admin-grid-2">
         <ChartCard
-          title="Top courses by students"
+          title="Top courses by downloads"
           hint="Live courses"
           columns={["Course", "Students", "Rating"]}
           rows={topCourses.map((c) => [c.label, c.value, c.hint ?? "—"])}
         >
-          <BarList items={topCourses} empty="No enrolments yet." />
+          <BarList items={topCourses} empty="No downloads yet." />
         </ChartCard>
 
         <ChartCard
@@ -407,7 +407,7 @@ export default function AdminAnalytics() {
               <tr>
                 <th>Signed up</th>
                 <th className="admin-table__num">Accounts</th>
-                <th className="admin-table__num">Enrolled</th>
+                <th className="admin-table__num">Downloaded</th>
                 <th className="admin-table__num">Paid</th>
                 <th className="admin-table__num">Activation</th>
               </tr>
@@ -417,9 +417,9 @@ export default function AdminAnalytics() {
                 <tr key={c.label}>
                   <td className="admin-cell-title">{c.label}</td>
                   <td className="admin-table__num">{c.total.toLocaleString("en-US")}</td>
-                  <td className="admin-table__num">{c.enrolled.toLocaleString("en-US")}</td>
+                  <td className="admin-table__num">{c.downloaded.toLocaleString("en-US")}</td>
                   <td className="admin-table__num">{c.paid.toLocaleString("en-US")}</td>
-                  <td className="admin-table__num">{((c.enrolled / c.total) * 100).toFixed(0)}%</td>
+                  <td className="admin-table__num">{((c.downloaded / c.total) * 100).toFixed(0)}%</td>
                 </tr>
               ))}
             </tbody>
@@ -428,7 +428,7 @@ export default function AdminAnalytics() {
       </div>
       <p className="admin-section-head__hint" style={{ marginTop: 12, maxWidth: 760, lineHeight: 1.6 }}>
         Activation is measured to date, not within a window: it is the share of that month&rsquo;s accounts that have
-        enrolled in at least one course at any point since. Real retention — whether they came back in month two —
+        downloaded at least one course at any point since. Real retention — whether they came back in month two —
         needs per-session history the API does not expose yet.
         {stats && (
           <>

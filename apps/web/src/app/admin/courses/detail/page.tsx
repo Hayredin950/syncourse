@@ -6,11 +6,11 @@ import { useRouter, useSearchParams } from "next/navigation";
 import {
   ArrowLeft,
   BadgeCheck,
+  Download,
   ExternalLink,
   Layers,
   Pencil,
   Star,
-  Users,
 } from "lucide-react";
 import { del, get } from "@/lib/api";
 import type { AdminCourseDetail, AdminCourseRow, AdminReviewRow } from "@/lib/types";
@@ -156,10 +156,10 @@ function CourseDetail() {
 
       <div className="admin-minitiles" style={{ marginBottom: 14 }}>
         <div className="admin-minitile">
-          <strong>{(row?.enrollmentCount ?? 0).toLocaleString("en-US")}</strong>
+          <strong>{(row?.downloadCount ?? 0).toLocaleString("en-US")}</strong>
           <span>
-            <Users size={10} style={{ verticalAlign: -1, marginRight: 4 }} />
-            Students
+            <Download size={10} style={{ verticalAlign: -1, marginRight: 4 }} />
+            Downloads
           </span>
         </div>
         <div className="admin-minitile">

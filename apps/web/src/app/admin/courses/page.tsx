@@ -10,7 +10,7 @@ import { useAdminToast } from "@/components/admin/AdminToast";
 import ConfirmButton from "@/components/admin/ConfirmButton";
 import Pagination, { clampPage } from "@/components/admin/Pagination";
 
-type Sort = "updated" | "students" | "rating" | "title";
+type Sort = "updated" | "downloads" | "rating" | "title";
 
 export default function AdminCourses() {
   const toast = useAdminToast();
@@ -41,7 +41,7 @@ export default function AdminCourses() {
       return true;
     });
     const sorted = [...rows];
-    if (sort === "students") sorted.sort((a, b) => b.enrollmentCount - a.enrollmentCount);
+    if (sort === "downloads") sorted.sort((a, b) => b.downloadCount - a.downloadCount);
     else if (sort === "rating") sorted.sort((a, b) => b.ratingAvg - a.ratingAvg);
     else if (sort === "title") sorted.sort((a, b) => a.title.localeCompare(b.title));
     else sorted.sort((a, b) => +new Date(b.updatedAt) - +new Date(a.updatedAt));
@@ -123,7 +123,7 @@ export default function AdminCourses() {
           aria-label="Sort courses"
         >
           <option value="updated">Recently updated</option>
-          <option value="students">Most students</option>
+          <option value="downloads">Most downloads</option>
           <option value="rating">Highest rated</option>
           <option value="title">Title A–Z</option>
         </select>
@@ -140,8 +140,9 @@ export default function AdminCourses() {
               <th>Course</th>
               <th>Type</th>
               <th className="admin-table__num">Sections</th>
+              <th className="admin-table__num">Files</th>
               <th className="admin-table__num">Rating</th>
-              <th className="admin-table__num">Students</th>
+              <th className="admin-table__num">Downloads</th>
               <th>Updated</th>
               <th />
             </tr>
@@ -150,14 +151,14 @@ export default function AdminCourses() {
             {loading &&
               Array.from({ length: 6 }).map((_, i) => (
                 <tr key={`s${i}`}>
-                  <td colSpan={8}>
+                  <td colSpan={9}>
                     <span className="admin-skeleton" style={{ display: "block", height: 26 }} />
                   </td>
                 </tr>
               ))}
             {!loading && visible.length === 0 && (
               <tr>
-                <td colSpan={8}>
+                <td colSpan={9}>
                   <p className="admin-empty">
                     {courses.length === 0 ? "No courses yet — create your first one." : "Nothing matches those filters."}
                   </p>
@@ -190,8 +191,9 @@ export default function AdminCourses() {
                   </span>
                 </td>
                 <td className="admin-table__num">{c.sectionCount}</td>
+                <td className="admin-table__num">{c.fileCount}</td>
                 <td className="admin-table__num">{c.ratingAvg > 0 ? c.ratingAvg.toFixed(1) : "—"}</td>
-                <td className="admin-table__num">{c.enrollmentCount.toLocaleString("en-US")}</td>
+                <td className="admin-table__num">{c.downloadCount.toLocaleString("en-US")}</td>
                 <td className="admin-table__quiet">{formatDate(c.updatedAt)}</td>
                 <td className="admin-table__actions">
                   <Link

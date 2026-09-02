@@ -12,6 +12,7 @@ import {
 import * as api from "../../lib/api";
 import { useAuth } from "../../lib/auth";
 import { colors, radius } from "../../lib/tokens";
+import { Markdown } from "../../components/Markdown";
 
 /** Fallback headings for the built-in types, used until an admin sets a title. */
 const TITLES: Record<string, string> = {
@@ -111,7 +112,9 @@ export default function LegalScreen() {
       {isLoading ? (
         <ActivityIndicator color={colors.accent} style={{ marginTop: 24 }} />
       ) : (
-        <Text style={styles.body}>{doc?.bodyMd || "Document coming soon."}</Text>
+        <View style={styles.body}>
+          <Markdown text={doc?.bodyMd || "Document coming soon."} />
+        </View>
       )}
     </ScrollView>
   );
@@ -143,5 +146,5 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
   primaryLabel: { color: "#000", fontSize: 13, fontWeight: "800" },
-  body: { color: colors.text, fontSize: 13.5, lineHeight: 21, marginTop: 18 },
+  body: { marginTop: 18 },
 });

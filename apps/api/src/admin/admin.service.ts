@@ -68,6 +68,32 @@ export interface AdminCategoryInput {
   sortOrder?: number;
 }
 
+export interface AdminResourceMediaInput {
+  kind?: string;
+  url?: string;
+  fileName?: string;
+  fileSizeMb?: number;
+  caption?: string;
+}
+
+export interface AdminResourceInput {
+  type?: string;
+  title?: string;
+  summary?: string;
+  bodyMd?: string;
+  coverUrl?: string;
+  categoryName?: string;
+  lecturerName?: string;
+  organizationName?: string;
+  tags?: string[];
+  isPremium?: boolean;
+  isFeatured?: boolean;
+  sourceUrl?: string;
+  readMinutes?: number;
+  /** Whole list, replacing whatever is stored — same contract as course sections. */
+  media?: AdminResourceMediaInput[];
+}
+
 export interface AdminLegalInput {
   type?: string;
   title?: string;
@@ -105,7 +131,7 @@ export class AdminService {
         level: true,
         lecturer: true,
         organization: true,
-        _count: { select: { sections: true, enrollments: true } },
+        _count: { select: { sections: true, telegramFiles: true } },
       },
     });
     return courses.map((c) => ({
@@ -117,9 +143,10 @@ export class AdminService {
       isPremium: c.isPremium,
       isFeatured: c.isFeatured,
       ratingAvg: c.ratingAvg,
-      enrollmentCount: c.enrollmentCount,
+      downloadCount: c.downloadCount,
       deleted: c.deletedAt !== null,
       sectionCount: c._count.sections,
+      fileCount: c._count.telegramFiles,
       createdAt: c.createdAt,
       updatedAt: c.updatedAt,
       level: c.level?.name ?? null,
@@ -317,7 +344,7 @@ export class AdminService {
     }
   }
 
-  /** Soft-delete a course (keeps enrolled users' progress history intact). */
+  /** Soft-delete a course (rows stay, so reviews and download history survive). */
   async deleteCourse(userId: string, slug: string) {
     await this.assertStaff(userId);
     const existing = await this.prisma.course.findUnique({ where: { slug } });
@@ -342,7 +369,7 @@ export class AdminService {
         planType: true,
         createdAt: true,
         _count: {
-          select: { enrollments: true, reviews: true, lists: true },
+          select: { downloads: true, reviews: true, lists: true },
         },
       },
     });
@@ -356,7 +383,7 @@ export class AdminService {
       isVerified: u.isVerified,
       planType: u.planType,
       createdAt: u.createdAt,
-      enrollments: u._count.enrollments,
+      downloads: u._count.downloads,
       reviews: u._count.reviews,
       lists: u._count.lists,
     }));
@@ -800,6 +827,235 @@ export class AdminService {
     return { deleted: true, id };
   }
 
+  // --- Resources: cheat-sheets, roadmaps, notes ---
+
+  /**
+   * The catalogue's short-form half. Kept apart from courses because the two
+   * have almost nothing in common on the form: a resource has no level, no
+   * price, no curriculum and no duration, and a course has no attachment list.
+   */
+  async listResources(userId: string) {
+    await this.assertStaff(userId);
+    const rows = await this.prisma.resource.findMany({
+      orderBy: [{ publishedAt: 'desc' }],
+      include: {
+        category: { select: { name: true, icon: true } },
+        lecturer: { select: { name: true } },
+        organization: { select: { name: true } },
+        tags: true,
+        _count: { select: { media: true } },
+      },
+    });
+    return rows.map((r) => ({
+      id: r.id,
+      type: r.type,
+      title: r.title,
+      slug: r.slug,
+      summary: r.summary,
+      coverUrl: r.coverUrl,
+      isPremium: r.isPremium,
+      isFeatured: r.isFeatured,
+      viewCount: r.viewCount,
+      downloadCount: r.downloadCount,
+      mediaCount: r._count.media,
+      // A resource whose body and attachments are both empty is a stub the
+      // operator started and never finished — worth flagging in the list.
+      isEmpty: !r.bodyMd.trim() && r._count.media === 0,
+      categoryName: r.category?.name ?? null,
+      categoryIcon: r.category?.icon ?? null,
+      lecturerName: r.lecturer?.name ?? null,
+      organizationName: r.organization?.name ?? null,
+      tags: r.tags.map((t) => t.tag),
+      publishedAt: r.publishedAt,
+      updatedAt: r.updatedAt,
+      deletedAt: r.deletedAt,
+    }));
+  }
+
+  /** One resource in the shape the form edits — names, not ids. */
+  async getResource(userId: string, slug: string) {
+    await this.assertStaff(userId);
+    const r = await this.prisma.resource.findUnique({
+      where: { slug },
+      include: {
+        category: true,
+        lecturer: true,
+        organization: true,
+        tags: true,
+        media: { orderBy: { orderIndex: 'asc' } },
+      },
+    });
+    if (!r) throw new NotFoundException('Resource not found');
+    return {
+      id: r.id,
+      type: r.type,
+      title: r.title,
+      slug: r.slug,
+      summary: r.summary ?? '',
+      bodyMd: r.bodyMd,
+      coverUrl: r.coverUrl,
+      categoryName: r.category?.name ?? '',
+      lecturerName: r.lecturer?.name ?? '',
+      organizationName: r.organization?.name ?? '',
+      tags: r.tags.map((t) => t.tag),
+      isPremium: r.isPremium,
+      isFeatured: r.isFeatured,
+      sourceUrl: r.sourceUrl ?? '',
+      readMinutes: r.readMinutes,
+      viewCount: r.viewCount,
+      downloadCount: r.downloadCount,
+      publishedAt: r.publishedAt,
+      updatedAt: r.updatedAt,
+      deletedAt: r.deletedAt,
+      media: r.media.map((m) => ({
+        id: m.id,
+        kind: m.kind,
+        url: m.url ?? '',
+        fileName: m.fileName ?? '',
+        fileSizeMb: m.fileSizeMb,
+        caption: m.caption ?? '',
+        orderIndex: m.orderIndex,
+      })),
+    };
+  }
+
+  async createResource(userId: string, dto: AdminResourceInput) {
+    await this.assertStaff(userId);
+    const title = dto.title?.trim();
+    if (!title) throw new BadRequestException('Title is required');
+    const type = resourceType(dto.type);
+    const refs = await this.resolveResourceRefs(dto);
+    const slug = await this.uniqueSlugFor('resource', slugify(title));
+
+    const resource = await this.prisma.resource.create({
+      data: {
+        type,
+        title,
+        slug,
+        summary: dto.summary?.trim() || null,
+        bodyMd: dto.bodyMd ?? '',
+        coverUrl: dto.coverUrl || null,
+        categoryId: refs.categoryId,
+        lecturerId: refs.lecturerId,
+        organizationId: refs.organizationId,
+        isPremium: dto.isPremium ?? false,
+        isFeatured: dto.isFeatured ?? false,
+        sourceUrl: dto.sourceUrl?.trim() || null,
+        readMinutes: Math.max(0, Math.round(dto.readMinutes ?? 0)),
+        tags: { create: cleanTags(dto.tags).map((tag) => ({ tag })) },
+        media: { create: mediaRows(dto.media) },
+      },
+    });
+    return { id: resource.id, slug: resource.slug, title: resource.title };
+  }
+
+  async updateResource(userId: string, slug: string, dto: AdminResourceInput) {
+    await this.assertStaff(userId);
+    const existing = await this.prisma.resource.findUnique({ where: { slug }, select: { id: true } });
+    if (!existing) throw new NotFoundException('Resource not found');
+    const refs = await this.resolveResourceRefs(dto, existing);
+
+    const updated = await this.prisma.$transaction(async (tx) => {
+      const row = await tx.resource.update({
+        where: { id: existing.id },
+        data: {
+          ...(dto.type !== undefined ? { type: resourceType(dto.type) } : {}),
+          ...(dto.title !== undefined ? { title: dto.title.trim() } : {}),
+          ...(dto.summary !== undefined ? { summary: dto.summary.trim() || null } : {}),
+          ...(dto.bodyMd !== undefined ? { bodyMd: dto.bodyMd } : {}),
+          ...(dto.coverUrl !== undefined ? { coverUrl: dto.coverUrl || null } : {}),
+          ...(dto.categoryName !== undefined ? { categoryId: refs.categoryId } : {}),
+          ...(dto.lecturerName !== undefined ? { lecturerId: refs.lecturerId } : {}),
+          ...(dto.organizationName !== undefined ? { organizationId: refs.organizationId } : {}),
+          ...(dto.isPremium !== undefined ? { isPremium: dto.isPremium } : {}),
+          ...(dto.isFeatured !== undefined ? { isFeatured: dto.isFeatured } : {}),
+          ...(dto.sourceUrl !== undefined ? { sourceUrl: dto.sourceUrl.trim() || null } : {}),
+          ...(dto.readMinutes !== undefined ? { readMinutes: Math.max(0, Math.round(dto.readMinutes)) } : {}),
+        },
+      });
+      // Tags and media are replaced wholesale: the form always posts the full
+      // list, and diffing rows the operator can reorder freely buys nothing.
+      if (dto.tags !== undefined) {
+        await tx.resourceTag.deleteMany({ where: { resourceId: row.id } });
+        const tags = cleanTags(dto.tags);
+        if (tags.length) {
+          await tx.resourceTag.createMany({ data: tags.map((tag) => ({ resourceId: row.id, tag })) });
+        }
+      }
+      if (dto.media !== undefined) {
+        await tx.resourceMedia.deleteMany({ where: { resourceId: row.id } });
+        const rows = mediaRows(dto.media);
+        if (rows.length) {
+          await tx.resourceMedia.createMany({ data: rows.map((m) => ({ ...m, resourceId: row.id })) });
+        }
+      }
+      return row;
+    });
+    return { id: updated.id, slug: updated.slug, title: updated.title };
+  }
+
+  /** Soft delete, so a link shared in a channel dies with a 404 and not a gap. */
+  async deleteResource(userId: string, slug: string) {
+    await this.assertStaff(userId);
+    const existing = await this.prisma.resource.findUnique({ where: { slug }, select: { id: true, deletedAt: true } });
+    if (!existing) throw new NotFoundException('Resource not found');
+    await this.prisma.resource.update({
+      where: { id: existing.id },
+      data: { deletedAt: existing.deletedAt ? null : new Date() },
+    });
+    return { id: existing.id, slug, deleted: !existing.deletedAt };
+  }
+
+  /**
+   * Category, lecturer and publisher resolve by name exactly as they do for a
+   * course, so typing "Machine Learning" on a cheat-sheet reuses the category
+   * the courses already sit in instead of forking a second one.
+   */
+  private async resolveResourceRefs(
+    dto: AdminResourceInput,
+    existing?: { id: string },
+  ): Promise<{ categoryId: string | null; lecturerId: string | null; organizationId: string | null }> {
+    void existing; // an explicit empty name clears the field; absence leaves it
+
+    let categoryId: string | null = null;
+    if (dto.categoryName?.trim()) {
+      const name = dto.categoryName.trim();
+      const found = await this.prisma.category.findFirst({ where: { name } });
+      const cat =
+        found ??
+        (await this.prisma.category.create({
+          data: { name, slug: await this.uniqueSlugFor('category', slugify(name)) },
+        }));
+      categoryId = cat.id;
+    }
+
+    let lecturerId: string | null = null;
+    if (dto.lecturerName?.trim()) {
+      const name = dto.lecturerName.trim();
+      const found = await this.prisma.lecturer.findFirst({ where: { name } });
+      const lecturer =
+        found ??
+        (await this.prisma.lecturer.create({
+          data: { name, slug: await this.uniqueSlugFor('lecturer', slugify(name)) },
+        }));
+      lecturerId = lecturer.id;
+    }
+
+    let organizationId: string | null = null;
+    if (dto.organizationName?.trim()) {
+      const name = dto.organizationName.trim();
+      const found = await this.prisma.organization.findFirst({ where: { name } });
+      const org =
+        found ??
+        (await this.prisma.organization.create({
+          data: { name, slug: await this.uniqueSlugFor('organization', slugify(name)) },
+        }));
+      organizationId = org.id;
+    }
+
+    return { categoryId, lecturerId, organizationId };
+  }
+
   // --- Legal documents ---
 
   /**
@@ -1029,7 +1285,7 @@ export class AdminService {
 
   /** Slug is the only unique field on Category/Lecturer/Organization — generate one. */
   private async uniqueSlugFor(
-    model: 'category' | 'lecturer' | 'organization',
+    model: 'category' | 'lecturer' | 'organization' | 'resource',
     base: string,
   ): Promise<string> {
     let slug = base;
@@ -1252,6 +1508,73 @@ function slugify(title: string): string {
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 80) || 'course';
+}
+
+const RESOURCE_TYPES = ['cheat-sheet', 'roadmap', 'note'];
+
+/** Anything unrecognised becomes a cheat-sheet rather than a row nothing lists. */
+function resourceType(type?: string): string {
+  const t = type?.trim();
+  return t && RESOURCE_TYPES.includes(t) ? t : 'cheat-sheet';
+}
+
+const MEDIA_KINDS = [
+  'image',
+  'video',
+  'audio',
+  'pdf',
+  'doc',
+  'sheet',
+  'slide',
+  'archive',
+  'code',
+  'link',
+  'other',
+];
+
+/**
+ * Which viewer a client should reach for. The operator picks this in the form,
+ * but a URL pasted without one still lands somewhere sensible.
+ */
+function mediaKind(kind: string | undefined, url: string): string {
+  const k = kind?.trim().toLowerCase();
+  if (k && MEDIA_KINDS.includes(k)) return k;
+  const ext = url.split('?')[0].split('#')[0].split('.').pop()?.toLowerCase() ?? '';
+  if (['png', 'jpg', 'jpeg', 'gif', 'webp', 'avif', 'svg'].includes(ext)) return 'image';
+  if (['mp4', 'webm', 'mov', 'mkv'].includes(ext)) return 'video';
+  if (['mp3', 'm4a', 'ogg', 'wav'].includes(ext)) return 'audio';
+  if (ext === 'pdf') return 'pdf';
+  if (['doc', 'docx', 'rtf', 'txt', 'md'].includes(ext)) return 'doc';
+  if (['xls', 'xlsx', 'csv'].includes(ext)) return 'sheet';
+  if (['ppt', 'pptx'].includes(ext)) return 'slide';
+  if (['zip', 'rar', '7z', 'tar', 'gz'].includes(ext)) return 'archive';
+  return url ? 'link' : 'other';
+}
+
+function cleanTags(tags?: string[]): string[] {
+  const seen = new Set<string>();
+  for (const t of tags ?? []) {
+    const trimmed = t.trim();
+    if (trimmed) seen.add(trimmed);
+  }
+  return [...seen];
+}
+
+/** Drop blank rows, normalise the kind, and let list order set orderIndex. */
+function mediaRows(media?: AdminResourceMediaInput[]) {
+  return (media ?? [])
+    .filter((m) => (m.url ?? '').trim() || (m.caption ?? '').trim())
+    .map((m, i) => {
+      const url = (m.url ?? '').trim();
+      return {
+        kind: mediaKind(m.kind, url),
+        url: url || null,
+        fileName: m.fileName?.trim() || (url ? labelFromUrl(url) : null),
+        fileSizeMb: typeof m.fileSizeMb === 'number' && m.fileSizeMb > 0 ? m.fileSizeMb : null,
+        caption: m.caption?.trim() || null,
+        orderIndex: i,
+      };
+    });
 }
 
 function fileTypeOf(url: string): string {

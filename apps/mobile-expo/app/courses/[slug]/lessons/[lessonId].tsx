@@ -1,4 +1,4 @@
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { useLocalSearchParams } from "expo-router";
 import { useVideoPlayer, VideoView } from "expo-video";
 import * as Linking from "expo-linking";
@@ -18,7 +18,6 @@ import { formatDurationSec } from "../../../../lib/types";
 
 export default function LessonScreen() {
   const { lessonId } = useLocalSearchParams<{ lessonId: string }>();
-  const queryClient = useQueryClient();
   const [videoUri, setVideoUri] = useState<string | null>(null);
 
   const { data, isLoading, error } = useQuery({
@@ -33,11 +32,6 @@ export default function LessonScreen() {
   const videoMut = useMutation({
     mutationFn: () => api.videoUrl(lessonId!),
     onSuccess: (d) => setVideoUri(d.url),
-  });
-
-  const completeMut = useMutation({
-    mutationFn: () => api.markComplete(lessonId!),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["lesson", lessonId] }),
   });
 
   const telegramMut = useMutation({
@@ -90,12 +84,6 @@ export default function LessonScreen() {
       <View style={styles.actionRow}>
         <Text
           style={styles.outlineBtn}
-          onPress={() => completeMut.mutate()}
-        >
-          {completeMut.isPending ? "…" : l.watched ? "✓ Completed" : "Mark complete"}
-        </Text>
-        <Text
-          style={styles.outlineBtn}
           onPress={() => videoMut.mutate()}
         >
           ⬇ Download
@@ -121,7 +109,7 @@ export default function LessonScreen() {
                   void api.recordDownload(l.id, r.fileName);
                   await Linking.openURL(r.url);
                 } catch (e) {
-                  Alert.alert("Download", e instanceof Error ? e.message : "Enroll in the course to download files");
+                  Alert.alert("Download", e instanceof Error ? e.message : "Sign in to download course files");
                 }
               }}
             >

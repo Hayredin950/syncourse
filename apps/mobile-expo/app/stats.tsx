@@ -49,7 +49,8 @@ export default function StatsScreen() {
       </Section>
 
       <Section title="Your learning rhythm">
-        <MonthBars data={s.monthlyCompleted} />
+        <MonthBars data={s.monthlyDownloads} />
+        <Text style={styles.muted}>Courses downloaded per month</Text>
       </Section>
 
       <Section title="Categories · Instructors · Languages">
@@ -93,7 +94,7 @@ export default function StatsScreen() {
         <MonthBars data={s.yourWeek.map((d) => ({ month: d.day, count: d.count }))} />
       </Section>
 
-      <Section title="Watchlist growth">
+      <Section title="Saved over time">
         <MonthBars data={s.watchlistGrowth} />
       </Section>
 
@@ -111,7 +112,7 @@ export default function StatsScreen() {
                   <View style={[styles.fill, { width: `${p.pct}%` }]} />
                 </View>
               </View>
-              <Text style={styles.muted}>{p.pct}% · {p.completed}/{p.total}</Text>
+              <Text style={styles.muted}>{p.pct}% · {p.downloaded}/{p.total}</Text>
             </View>
           ))}
         </Section>

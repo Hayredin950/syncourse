@@ -20,3 +20,19 @@ export function cloudinaryUrl(
 
   return `https://res.cloudinary.com/${CLOUD}/image/fetch/${parts.join(",")}/${encodeURIComponent(url)}`;
 }
+
+/**
+ * The same asset, but delivered as a download.
+ *
+ * A cross-origin `<a download>` attribute is ignored by browsers, so a PDF or a
+ * spreadsheet opens in a tab — or renders as gibberish — instead of landing in
+ * the downloads folder. Cloudinary answers with `Content-Disposition:
+ * attachment` when `fl_attachment` is in the transformation chain. Anything not
+ * served by Cloudinary comes back untouched and behaves however its host decides.
+ */
+export function attachmentUrl(url: string | null | undefined): string | null {
+  if (!url) return null;
+  const m = /^(https:\/\/res\.cloudinary\.com\/[^/]+\/[^/]+\/upload\/)(.*)$/.exec(url);
+  if (!m) return url;
+  return m[2].startsWith("fl_attachment") ? url : `${m[1]}fl_attachment/${m[2]}`;
+}

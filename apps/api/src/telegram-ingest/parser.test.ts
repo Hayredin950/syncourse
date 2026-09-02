@@ -16,6 +16,7 @@ import {
   partFromFile,
   slugify,
 } from './telegram-feed.parser';
+import { withPartNumbers } from '../telegram/part-numbering';
 
 let passed = 0;
 function ok(cond: boolean, name: string) {
@@ -150,6 +151,31 @@ const parts = [
 ];
 const sections = organizeParts(parts);
 ok(sections[0].title === '1. Introduction' && sections[1].title === '2. Machine Learning 101', 'sections keep first-seen order');
+
+// --- part-number repair ----------------------------------------------------
+const file = (moduleTitle: string | null, partIndex: number) => ({ moduleTitle, partIndex });
+
+// Rows attached one at a time before per-module numbering existed: all part 1.
+const collided = withPartNumbers([file('Intro', 1), file('Intro', 1), file('Intro', 1)]);
+ok(
+  collided.map((f) => f.partIndex).join(',') === '1,2,3',
+  `collided module renumbered: ${collided.map((f) => f.partIndex).join(',')}`,
+);
+
+// Gaps come from the filenames ("Part 03", "Part 05") and must survive.
+const gapped = withPartNumbers([file('Intro', 3), file('Intro', 5)]);
+ok(gapped.map((f) => f.partIndex).join(',') === '3,5', 'distinct numbers are left alone');
+
+// One module's collision must not renumber another's.
+const mixed = withPartNumbers([file('A', 1), file('A', 1), file('B', 7)]);
+ok(
+  mixed.map((f) => `${f.moduleTitle}${f.partIndex}`).join(',') === 'A1,A2,B7',
+  `repair is per module: ${mixed.map((f) => `${f.moduleTitle}${f.partIndex}`).join(',')}`,
+);
+
+// Ungrouped rows (no module title) still group together.
+const ungrouped = withPartNumbers([file(null, 1), file(null, 1)]);
+ok(ungrouped.map((f) => f.partIndex).join(',') === '1,2', 'null module title groups as one module');
 
 console.log(`\n✅ ${passed} assertions passed`);
 process.exit(0);

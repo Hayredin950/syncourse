@@ -29,7 +29,7 @@ export class SearchService {
     const [courses, lecturers, organizations, trending] = await Promise.all([
       this.prisma.course.findMany({
         where: courseWhere,
-        orderBy: [{ ratingAvg: 'desc' }, { enrollmentCount: 'desc' }],
+        orderBy: [{ ratingAvg: 'desc' }, { downloadCount: 'desc' }],
         take: limit,
         include: {
           level: true,
@@ -62,7 +62,7 @@ export class SearchService {
         level: c.level?.name ?? 'All Levels',
         ratingAvg: c.ratingAvg,
         ratingCount: c.ratingCount,
-        enrollmentCount: c.enrollmentCount,
+        downloadCount: c.downloadCount,
         durationMin: c.sections.reduce((s, sec) => s + sec.lessons.reduce((x, l) => x + l.durationSec, 0) / 60, 0),
         lessonCount: c.sections.reduce((s, sec) => s + sec.lessons.length, 0),
         lecturerName: c.lecturer?.name ?? null,

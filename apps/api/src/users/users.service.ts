@@ -3,7 +3,7 @@ import * as bcrypt from 'bcryptjs';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
-/** shape of a course the user has engaged with (enrolled/saved/liked) */
+/** shape of a course the user has engaged with (downloaded/saved/liked) */
 type EngagedCourse = {
   id: string;
   title: string;
@@ -19,14 +19,19 @@ type EngagedCourse = {
 export class UsersService {
   constructor(private readonly prisma: PrismaService) {}
 
-  /** Profile page — mirrors the reference stat grid (Enrolled/Completed/Saved/Liked/Lists/Reviews). */
+  /** Profile page stat grid: Downloaded / Saved / Liked / Lists / Reviews. */
   async profile(userId: string) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found');
 
-    const [enrolled, completed, saved, liked, lists, reviews, sessions, pendingSub] = await Promise.all([
-      this.prisma.enrollment.count({ where: { userId } }),
-      this.prisma.enrollment.count({ where: { userId, status: 'completed' } }),
+    const [downloadedCourses, saved, liked, lists, reviews, sessions, pendingSub] = await Promise.all([
+      // Distinct courses, not raw deliveries: six parts of one course is one
+      // course taken.
+      this.prisma.downloadEvent.findMany({
+        where: { userId },
+        distinct: ['courseId'],
+        select: { courseId: true },
+      }),
       this.prisma.savedCourse.count({ where: { userId } }),
       this.prisma.likedCourse.count({ where: { userId } }),
       this.prisma.collectionList.count({ where: { userId } }),
@@ -62,7 +67,7 @@ export class UsersService {
         ? { id: pendingSub.id, planName: pendingSub.planName, paymentMethod: pendingSub.paymentMethod, amount: pendingSub.amount }
         : null,
       memberSince: user.createdAt,
-      stats: { enrolled, completed, saved, liked, lists, reviews },
+      stats: { downloaded: downloadedCourses.length, saved, liked, lists, reviews },
       sessions: sessions.map((s) => ({
         id: s.id,
         device: s.device,
@@ -120,7 +125,7 @@ export class UsersService {
   async stats(userId: string) {
     const now = new Date();
 
-    // courses the user has engaged with (enrolled + saved + liked), deduped by course
+    // courses the user has engaged with (downloaded + saved + liked), deduped by course
     const courseInclude = {
       include: {
         categories: { include: { category: true } },
@@ -129,23 +134,27 @@ export class UsersService {
         lecturer: true,
       },
     } as const;
-    const [enrollments, saved, liked, ratings, reviews, downloads, user] = await Promise.all([
-      this.prisma.enrollment.findMany({
-        where: { userId },
-        include: { course: courseInclude },
-      }),
+    const [saved, liked, ratings, reviews, downloads, user] = await Promise.all([
       this.prisma.savedCourse.findMany({ where: { userId }, include: { course: courseInclude } }),
       this.prisma.likedCourse.findMany({ where: { userId }, include: { course: courseInclude } }),
       this.prisma.rating.findMany({ where: { userId }, orderBy: { createdAt: 'asc' } }),
       this.prisma.review.findMany({ where: { userId, parentId: null }, include: { course: true } }),
-      this.prisma.downloadEvent.findMany({ where: { userId }, orderBy: { createdAt: 'asc' } }),
+      this.prisma.downloadEvent.findMany({
+        where: { userId },
+        orderBy: { createdAt: 'asc' },
+        include: { course: courseInclude },
+      }),
       this.prisma.user.findUnique({ where: { id: userId } }),
     ]);
     if (!user) throw new NotFoundException('User not found');
 
-    // --- dedupe engaged courses (enroll first, then saved, then liked) ---
+    // --- dedupe engaged courses (downloaded first, then saved, then liked) ---
     const byId = new Map<string, EngagedCourse>();
-    for (const e of enrollments) byId.set(e.course.id, e.course);
+    const downloadedIds = new Set<string>();
+    for (const d of downloads) {
+      byId.set(d.course.id, d.course);
+      downloadedIds.add(d.course.id);
+    }
     for (const s of saved) if (!byId.has(s.course.id)) byId.set(s.course.id, s.course);
     for (const l of liked) if (!byId.has(l.course.id)) byId.set(l.course.id, l.course);
     const engaged = [...byId.values()];
@@ -157,14 +166,20 @@ export class UsersService {
       last12.push(monthKey(d));
     }
 
-    // --- monthly completions (learning rhythm) ---
-    const monthlyCompleted = last12.map((k) => ({ month: k, count: 0 }));
+    // --- monthly downloads (learning rhythm) ---
+    // Counted per course per month, so pulling eight parts of one archive in
+    // one month reads as one course rather than eight.
+    const monthlyDownloads = last12.map((k) => ({ month: k, count: 0 }));
     const compIdx = new Map(last12.map((k, i) => [k, i]));
-    for (const e of enrollments) {
-      if (e.status !== 'completed') continue;
-      const k = monthKey(e.updatedAt);
+    const seenPerMonth = new Set<string>();
+    for (const d of downloads) {
+      const k = monthKey(d.createdAt);
       const i = compIdx.get(k);
-      if (i !== undefined) monthlyCompleted[i].count++;
+      if (i === undefined) continue;
+      const key = `${k}::${d.courseId}`;
+      if (seenPerMonth.has(key)) continue;
+      seenPerMonth.add(key);
+      monthlyDownloads[i].count++;
     }
 
     // --- rating distribution (0.5..5) ---
@@ -221,7 +236,6 @@ export class UsersService {
     const bumpDay = (d: Date) => {
       weekdayCounts[d.getUTCDay()]++;
     };
-    for (const e of enrollments) bumpDay(e.enrolledAt);
     for (const r of reviews) bumpDay(r.createdAt);
     for (const d of downloads) bumpDay(d.createdAt);
     const yourWeek = weekdays.map((day, i) => ({ day, count: weekdayCounts[i] }));
@@ -251,18 +265,18 @@ export class UsersService {
         });
         if (!path) return null;
         const total = path.courses.length || 1;
-        const enrolled = path.courses.filter((pc) => byId.has(pc.courseId)).length;
-        const completed = path.courses.filter((pc) =>
-          enrollments.some((e) => e.courseId === pc.courseId && e.status === 'completed'),
-        ).length;
+        // "Progress" through a path is how much of it you have actually taken:
+        // in your library at all, versus downloaded.
+        const inLibrary = path.courses.filter((pc) => byId.has(pc.courseId)).length;
+        const downloaded = path.courses.filter((pc) => downloadedIds.has(pc.courseId)).length;
         return {
           id: path.id,
           title: path.title,
           coverUrl: path.coverUrl,
-          enrolled,
-          completed,
+          inLibrary,
+          downloaded,
           total,
-          pct: Math.round((completed / total) * 100),
+          pct: Math.round((downloaded / total) * 100),
         };
       }),
     );
@@ -270,7 +284,7 @@ export class UsersService {
     return {
       engagedTotal: engaged.length,
       ratingDistribution,
-      monthlyCompleted,
+      monthlyDownloads,
       categoryCounts,
       instructorCounts,
       languageCounts,

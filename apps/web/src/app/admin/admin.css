@@ -1439,3 +1439,12 @@ a.admin-tile:hover {
   .admin-toast-stack { left: 16px; right: 16px; }
   .admin-toast { max-width: none; }
 }
+
+/* ---- markdown write/preview toggle ----
+   Publishing was the only way to see how a document rendered, which is how the
+   raw `#` and `**` reached readers in the first place. */
+.md-tabs { display: inline-flex; gap: 2px; padding: 2px; background: var(--adm-raised); border: 1px solid var(--adm-line-strong); border-radius: 999px; }
+.md-tab { padding: 4px 12px; border-radius: 999px; border: none; background: none; color: var(--adm-ink-3); font: inherit; font-size: 11px; font-weight: 700; cursor: pointer; transition: color var(--adm-fast), background var(--adm-fast); }
+.md-tab:hover { color: var(--adm-ink); }
+.md-tab.is-active { background: var(--adm-accent-soft); color: var(--adm-accent); }
+.md-preview { min-height: 320px; max-height: 60vh; overflow-y: auto; background: var(--adm-raised); border: 1px solid var(--adm-line-strong); border-radius: var(--adm-r); padding: 16px 18px; }

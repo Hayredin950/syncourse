@@ -1,10 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
 import { get } from "@/lib/api";
 import type { OrganizationRow } from "@/lib/types";
 import { MobileHeader } from "@/components/Nav";
+import { PublisherCard } from "@/components/EntityCard";
 
 export default function OrganizationsPage() {
   const [orgs, setOrgs] = useState<OrganizationRow[]>([]);
@@ -37,30 +37,7 @@ export default function OrganizationsPage() {
       ) : (
         <div className="grid">
           {orgs.map((o) => (
-            <Link
-              key={o.id}
-              href={`/organizations/${o.slug}`}
-              className="dark-panel"
-              style={{ padding: 16, display: "block" }}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <span className="avatar" style={{ width: 52, height: 52, fontSize: 20, borderRadius: 14 }}>
-                  {o.logoUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={o.logoUrl} alt="" className="h-full w-full rounded-xl object-cover" />
-                  ) : (
-                    o.name.charAt(0)
-                  )}
-                </span>
-                <div className="min-w-0">
-                  <strong style={{ fontSize: 14 }}>{o.name}</strong>
-                  {o.description && <div className="muted line-clamp-1" style={{ fontSize: 11 }}>{o.description}</div>}
-                  <div className="muted" style={{ fontSize: 11 }}>
-                    {o.subscribers.toLocaleString()} subscribers · {o.courseCount} courses
-                  </div>
-                </div>
-              </div>
-            </Link>
+            <PublisherCard key={o.id} org={o} />
           ))}
         </div>
       )}

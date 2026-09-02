@@ -9,11 +9,13 @@ import { CourseCard, CourseRow } from "@/components/CourseCard";
 import { MobileHeader } from "@/components/Nav";
 
 const LEVELS = ["All Levels", "Beginner", "Intermediate", "Advanced"];
-const TYPES = ["course", "mini-course", "cheat-sheet", "roadmap"];
+// Courses only — cheat-sheets, roadmaps and notes are Resources with their own
+// index at /resources, so filtering the catalogue to either returned nothing.
+const TYPES = ["course", "mini-course"];
 const SORTS = [
   { value: "newest", label: "Newest" },
   { value: "top-rated", label: "Top rated" },
-  { value: "most-enrolled", label: "Most enrolled" },
+  { value: "most-downloaded", label: "Most downloaded" },
   { value: "a-z", label: "A–Z" },
 ];
 

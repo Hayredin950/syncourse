@@ -1,9 +1,9 @@
-import { Body, Controller, Delete, Get, Param, Post, Query } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { CollectionsService } from './collections.service';
 import { CurrentUser } from '../common/current-user.decorator';
 import { AuthUser } from '../common/jwt-auth.guard';
 import { Public } from '../common/public.decorator';
-import { IsIn, IsOptional, IsString, MinLength } from 'class-validator';
+import { ArrayNotEmpty, IsArray, IsIn, IsOptional, IsString, MinLength } from 'class-validator';
 
 class CreateListDto {
   @IsString()
@@ -19,9 +19,32 @@ class CreateListDto {
   visibility?: 'public' | 'private';
 }
 
-class ItemDto {
+class UpdateListDto {
+  @IsOptional()
   @IsString()
-  courseId: string;
+  @MinLength(1)
+  name?: string;
+
+  @IsOptional()
+  @IsString()
+  description?: string;
+
+  @IsOptional()
+  @IsIn(['public', 'private'])
+  visibility?: 'public' | 'private';
+}
+
+class ItemDto {
+  @IsOptional()
+  @IsString()
+  courseId?: string;
+
+  /** The picker can tick several courses before it closes. */
+  @IsOptional()
+  @IsArray()
+  @ArrayNotEmpty()
+  @IsString({ each: true })
+  courseIds?: string[];
 }
 
 @Controller()
@@ -31,6 +54,12 @@ export class CollectionsController {
   @Get('me/lists')
   myLists(@CurrentUser() user: AuthUser) {
     return this.collections.myLists(user.id);
+  }
+
+  /** Powers "Add to list" on a course page: my lists plus whether each holds it. */
+  @Get('me/lists/for-course')
+  listsForCourse(@CurrentUser() user: AuthUser, @Query('courseId') courseId: string) {
+    return this.collections.listsForCourse(user.id, courseId);
   }
 
   @Post('lists')
@@ -60,9 +89,18 @@ export class CollectionsController {
     return this.collections.getList(id, user?.id);
   }
 
+  @Patch('lists/:id')
+  updateList(@Param('id') id: string, @CurrentUser() user: AuthUser, @Body() dto: UpdateListDto) {
+    return this.collections.updateList(user.id, id, dto);
+  }
+
   @Post('lists/:id/items')
   addItem(@Param('id') id: string, @CurrentUser() user: AuthUser, @Body() dto: ItemDto) {
-    return this.collections.addItem(user.id, id, dto.courseId);
+    const ids = dto.courseIds ?? (dto.courseId ? [dto.courseId] : []);
+    if (!ids.length) throw new BadRequestException('Pick at least one course');
+    return ids.length === 1
+      ? this.collections.addItem(user.id, id, ids[0])
+      : this.collections.addItems(user.id, id, ids);
   }
 
   @Delete('lists/:id/items/:courseId')

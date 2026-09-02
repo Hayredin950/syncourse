@@ -7,19 +7,23 @@ import { useAuth } from "@/lib/auth";
 const links = [
   { href: "/", label: "Home", icon: "🏠" },
   { href: "/browse", label: "Browse", icon: "🗂️" },
+  { href: "/resources", label: "Resources", icon: "📄" },
   { href: "/search", label: "Search", icon: "🔍" },
   { href: "/circles", label: "circles", icon: "⭕" },
   { href: "/lists", label: "Collections", icon: "📋" },
-  { href: "/my-learning", label: "My Learning", icon: "📚" },
+  { href: "/my-learning", label: "My Library", icon: "📚" },
   { href: "/me", label: "Me", icon: "👤" },
 ];
 
+// Each tab owns its destination: cheat-sheets, roadmaps and notes are Resources
+// rather than Courses with a `contentType`, so they no longer live on /browse.
 const typeTabs = [
-  { label: "All", type: "" },
-  { label: "Courses", type: "course" },
-  { label: "Mini-courses", type: "mini-course" },
-  { label: "Cheat-sheets", type: "cheat-sheet" },
-  { label: "Roadmaps", type: "roadmap" },
+  { label: "All", href: "/browse" },
+  { label: "Courses", href: "/browse?type=course" },
+  { label: "Mini-courses", href: "/browse?type=mini-course" },
+  { label: "Cheat-sheets", href: "/resources?type=cheat-sheet" },
+  { label: "Roadmaps", href: "/resources?type=roadmap" },
+  { label: "Useful notes", href: "/resources?type=note" },
 ];
 
 export function Sidebar() {
@@ -54,13 +58,14 @@ export function Sidebar() {
         <div className="mb-2 px-2 text-[11px] font-semibold uppercase tracking-wide text-dim">Content</div>
         <div className="flex flex-col gap-0.5">
           {typeTabs.map((t) => {
-            const href = t.type ? `/browse?type=${t.type}` : "/browse";
+            const [base, query = ""] = t.href.split("?");
+            const type = new URLSearchParams(query).get("type") ?? "";
             return (
               <Link
                 key={t.label}
-                href={href}
+                href={t.href}
                 className={`rounded-lg px-2 py-1.5 text-xs transition-colors ${
-                  t.type && pathname === "/browse" && params.get("type") === t.type
+                  type && pathname === base && params.get("type") === type
                     ? "font-medium text-accent"
                     : "text-muted hover:text-text"
                 }`}

@@ -1,13 +1,14 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import type {
   ActivityFeed,
-  ActivityItem,
   AppVersion,
   Category,
   CheckoutResult,
   CircleDetail,
   CircleLite,
+  CollectionMembership,
   CourseCollection,
+  CourseCollectionDetail,
   CourseDetail,
   CourseSummary,
   DiscussionThread,
@@ -21,16 +22,21 @@ import type {
   Organization,
   OrganizationDetail,
   LessonDetail,
-  MyLearning,
+  LibraryData,
   NotificationItem,
   Plan,
   Review,
+  ResourceDetail,
+  ResourceList,
   UserProfile,
   UserStats,
 } from "./types";
 
 export const API_URL =
   process.env.EXPO_PUBLIC_API_URL ?? "https://syncourse-api.onrender.com";
+
+/** The public site. Used for share links — a resource page reads fine without the app. */
+export const WEB_URL = process.env.EXPO_PUBLIC_WEB_URL ?? "https://syncourse.pages.dev";
 
 const TOKEN_KEY = "syncourse_token";
 
@@ -132,6 +138,12 @@ export const post = <T>(path: string, body?: unknown) =>
     method: "POST",
     body: body ? JSON.stringify(body) : undefined,
   });
+export const patch = <T>(path: string, body?: unknown) =>
+  request<T>(path, {
+    method: "PATCH",
+    body: body ? JSON.stringify(body) : undefined,
+  });
+export const del = <T>(path: string) => request<T>(path, { method: "DELETE" });
 
 // --- auth ---
 export async function login(email: string, password: string) {
@@ -203,13 +215,12 @@ export const fileUrl = (lessonId: string, attachmentId: string) =>
     `/lessons/${lessonId}/file-url?attachmentId=${attachmentId}`
   );
 
-// --- learning ---
-export const enroll = (slug: string) => post(`/courses/${slug}/enroll`);
+// --- library ---
+// No enrol and no lesson progress: a course is delivered whole through the
+// Telegram bot, so the only real signals are saved, liked and downloaded.
 export const toggleSave = (slug: string) => post(`/courses/${slug}/save`);
 export const toggleLike = (slug: string) => post(`/courses/${slug}/like`);
-export const markComplete = (lessonId: string) =>
-  post(`/lessons/${lessonId}/progress`, { completed: true });
-export const myLearning = () => get<MyLearning>("/me/learning");
+export const myLibrary = () => get<LibraryData>("/me/learning");
 
 // --- search ---
 export const search = (q: string) =>
@@ -232,7 +243,21 @@ export const createList = (input: { name: string; description?: string; visibili
     ...(input.description ? { description: input.description } : {}),
     visibility: input.visibility ?? "private",
   });
-export const listDetail = (id: string) => get<CourseCollection>(`/lists/${id}`);
+export const listDetail = (id: string) => get<CourseCollectionDetail>(`/lists/${id}`);
+export const updateList = (
+  id: string,
+  data: { name?: string; description?: string; visibility?: "public" | "private" },
+) => patch<CourseCollectionDetail>(`/lists/${id}`, data);
+export const deleteList = (id: string) => del<{ deleted: boolean }>(`/lists/${id}`);
+/** Every mutation answers with the whole list, so the screen never patches counts by hand. */
+export const addListItems = (id: string, courseIds: string[]) =>
+  post<CourseCollectionDetail>(`/lists/${id}/items`, { courseIds });
+export const removeListItem = (id: string, courseId: string) =>
+  del<CourseCollectionDetail>(`/lists/${id}/items/${courseId}`);
+export const toggleListSave = (id: string) => post<{ saved: boolean }>(`/lists/${id}/save`);
+/** My lists plus whether each already holds this course — one request, both halves. */
+export const listsForCourse = (courseId: string) =>
+  get<CollectionMembership[]>(`/me/lists/for-course?courseId=${encodeURIComponent(courseId)}`);
 
 // --- payments ---
 export const plans = () => get<Plan[]>("/payments/plans");
@@ -248,14 +273,23 @@ export const submitReference = (subscriptionId: string, reference: string) =>
   });
 
 // --- circles ---
-export const circlesActivity = () =>
-  get<ActivityFeed>("/circles/activity");
 export const circles = () => get<CircleLite[]>("/circles");
 export const createCircle = (input: { name: string; description?: string }) =>
   post<CircleDetail>("/circles", input);
 export const circleDetail = (id: string) => get<CircleDetail>(`/circles/${id}`);
 export const joinCircle = (id: string) => post<{ joined: boolean }>(`/circles/${id}/join`);
+/** Refuses for the owner — leaving would strand a circle nobody could edit again. */
 export const leaveCircle = (id: string) => post<{ left: boolean }>(`/circles/${id}/leave`);
+export const updateCircle = (id: string, data: { name?: string; description?: string }) =>
+  patch<CircleDetail>(`/circles/${id}`, data);
+export const deleteCircle = (id: string) => del<{ deleted: boolean }>(`/circles/${id}`);
+/** Wall posts. Each mutation returns the refreshed circle, counts included. */
+export const createCirclePost = (id: string, body: string, courseId?: string) =>
+  post<CircleDetail>(`/circles/${id}/posts`, { body, ...(courseId ? { courseId } : {}) });
+export const deleteCirclePost = (id: string, postId: string) =>
+  del<CircleDetail>(`/circles/${id}/posts/${postId}`);
+export const removeCircleMember = (id: string, memberId: string) =>
+  del<CircleDetail>(`/circles/${id}/members/${memberId}`);
 export const activityFeed = () => get<ActivityFeed>("/activity");
 
 // --- users ---
@@ -295,6 +329,33 @@ export const lecturerDetail = (slug: string) => get<LecturerDetail>(`/lecturers/
 export const organizationDetail = (slug: string) => get<OrganizationDetail>(`/organizations/${slug}`);
 export const learningPaths = () => get<LearningPath[]>("/learning-paths");
 export const learningPath = (id: string) => get<LearningPathDetail>(`/learning-paths/${id}`);
+
+// --- resources (cheat-sheets, roadmaps, notes) ---
+// Not Telegram-gated like a course: the body travels with the row and the media
+// are served straight from Cloudinary, so the app can show the whole artefact.
+export const resources = (params: {
+  type?: string;
+  category?: string;
+  tag?: string;
+  q?: string;
+  sort?: string;
+  limit?: number;
+  offset?: number;
+} = {}) => {
+  const qs = new URLSearchParams();
+  if (params.type) qs.set("type", params.type);
+  if (params.category) qs.set("category", params.category);
+  if (params.tag) qs.set("tag", params.tag);
+  if (params.q) qs.set("q", params.q);
+  if (params.sort) qs.set("sort", params.sort);
+  qs.set("limit", String(params.limit ?? 24));
+  if (params.offset) qs.set("offset", String(params.offset));
+  return get<ResourceList>(`/resources?${qs.toString()}`);
+};
+export const resourceDetail = (slug: string) => get<ResourceDetail>(`/resources/${slug}`);
+/** Counted apart from views, so "downloaded 400 times" means the files, not the page. */
+export const countResourceDownload = (slug: string) =>
+  post<{ ok: boolean; downloadCount: number }>(`/resources/${slug}/download`);
 
 // --- ratings & reviews ---
 export const rateCourse = (slug: string, stars: number) =>

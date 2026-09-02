@@ -3,6 +3,7 @@ import {
   BookOpen,
   Building2,
   CreditCard,
+  FileText,
   GraduationCap,
   LayoutDashboard,
   Scale,
@@ -50,6 +51,12 @@ export const ADMIN_NAV: AdminNavGroup[] = [
     label: "Catalogue",
     items: [
       { href: "/admin/courses", label: "Courses", icon: BookOpen, keywords: "catalog lessons sections content" },
+      {
+        href: "/admin/resources",
+        label: "Resources",
+        icon: FileText,
+        keywords: "cheat-sheet cheatsheet roadmap notes useful markdown pdf image attachment",
+      },
       { href: "/admin/categories", label: "Categories", icon: Tag, keywords: "groups topics browse" },
       { href: "/admin/lecturers", label: "Lecturers", icon: GraduationCap, keywords: "instructors teachers authors" },
       { href: "/admin/publishers", label: "Publishers", icon: Building2, keywords: "organizations schools companies" },

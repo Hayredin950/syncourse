@@ -45,26 +45,11 @@ async function main() {
   const firstLessons = async (courseId: string) =>
     (await prisma.lesson.findMany({ where: { courseId }, orderBy: { orderIndex: 'asc' }, take: 5 })).map((l) => l.id);
 
-  // --- enrollments + progress ------------------------------------------
-  if ((await prisma.enrollment.count()) === 0) {
-    const enroll = await prisma.enrollment.create({
-      data: { userId: demo.id, courseId: courseIds[0], progressPct: 60, status: 'in_progress' },
-    });
-    const completedEnroll = await prisma.enrollment.create({
-      data: { userId: demo.id, courseId: courseIds[5], progressPct: 100, status: 'completed' },
-    });
-    const l0 = await firstLessons(courseIds[0]);
-    const l5 = await firstLessons(courseIds[5]);
-    await prisma.lessonProgress.createMany({
-      data: [
-        { enrollmentId: enroll.id, lessonId: l0[0], completed: true, completedAt: new Date() },
-        { enrollmentId: enroll.id, lessonId: l0[1], completed: true, completedAt: new Date() },
-        { enrollmentId: completedEnroll.id, lessonId: l5[0], completed: true, completedAt: new Date() },
-      ],
-    });
+  // --- library (saved + liked) -------------------------------------------
+  if ((await prisma.savedCourse.count()) === 0) {
     await prisma.savedCourse.create({ data: { userId: demo.id, courseId: courseIds[2] } });
     await prisma.likedCourse.create({ data: { userId: demo.id, courseId: courseIds[1] } });
-    console.log('  + enrollments + progress + saved/liked');
+    console.log('  + saved/liked');
   }
 
   // --- collections -------------------------------------------------------

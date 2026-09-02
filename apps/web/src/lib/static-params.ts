@@ -33,6 +33,16 @@ export async function courseSlugs(): Promise<{ slug: string }[]> {
   }
 }
 
+export async function resourceSlugs(): Promise<{ slug: string }[]> {
+  try {
+    const d = (await fetchJson("/resources?limit=100")) as { results?: { slug: string }[] };
+    const slugs = (d.results ?? []).map((r) => ({ slug: r.slug }));
+    return slugs.length ? slugs : [{ slug: "resource" }];
+  } catch {
+    return [{ slug: "resource" }];
+  }
+}
+
 export async function lecturerSlugs(): Promise<{ slug: string }[]> {
   try {
     const d = (await fetchJson("/lecturers")) as { results?: { slug: string }[] } | { slug: string }[];

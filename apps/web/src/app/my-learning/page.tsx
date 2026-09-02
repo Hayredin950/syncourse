@@ -3,19 +3,38 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Star } from "lucide-react";
+import { Download, Heart, Star } from "lucide-react";
 import { get } from "@/lib/api";
-import type { LearningData } from "@/lib/types";
+import type { LibraryData, LibraryCourse } from "@/lib/types";
 import { useAuth } from "@/lib/auth";
 import { MobileHeader } from "@/components/Nav";
 
-type Tab = "inProgress" | "completed" | "watchlist" | "liked";
+/**
+ * A reader's library: downloaded, saved, liked.
+ *
+ * There is no "in progress" or "completed" here. Courses are delivered whole as
+ * Telegram archives, so there is no lesson-by-lesson position to report — the
+ * honest facts are which courses you took and which you marked.
+ *
+ * The route keeps its /my-learning path so existing links and bookmarks still
+ * resolve; only the label changed.
+ */
+type Tab = "downloaded" | "saved" | "liked";
 
-export default function MyLearningPage() {
+const EMPTY: Record<Tab, { title: string; body: string }> = {
+  downloaded: {
+    title: "No downloads yet",
+    body: "Courses you download through the Telegram bot show up here.",
+  },
+  saved: { title: "Nothing saved", body: "Tap the bookmark on a course to keep it here." },
+  liked: { title: "Nothing liked", body: "Courses you like show up here." },
+};
+
+export default function MyLibraryPage() {
   const { token, loading } = useAuth();
   const router = useRouter();
-  const [data, setData] = useState<LearningData | null>(null);
-  const [tab, setTab] = useState<Tab>("inProgress");
+  const [data, setData] = useState<LibraryData | null>(null);
+  const [tab, setTab] = useState<Tab>("downloaded");
 
   useEffect(() => {
     if (loading) return;
@@ -23,33 +42,34 @@ export default function MyLearningPage() {
       router.push("/auth?next=/my-learning");
       return;
     }
-    get<LearningData>("/me/learning").then(setData).catch(() => {});
+    get<LibraryData>("/me/learning").then(setData).catch(() => {});
   }, [loading, token, router]);
 
   if (!token) return null;
-  if (!data) return (
-    <main className="page">
-      <MobileHeader title="My Learning" />
-      <div className="dark-panel" style={{ padding: 40, textAlign: "center" }}>
-        <p className="muted">Loading your learning…</p>
-      </div>
-    </main>
-  );
+  if (!data)
+    return (
+      <main className="page">
+        <MobileHeader title="My Library" />
+        <div className="dark-panel" style={{ padding: 40, textAlign: "center" }}>
+          <p className="muted">Loading your library…</p>
+        </div>
+      </main>
+    );
 
-  const rows = data[tab];
+  const rows: LibraryCourse[] = data[tab];
+  const when = (c: LibraryCourse) => c.downloadedAt ?? c.savedAt ?? c.likedAt ?? null;
 
   return (
     <main className="page">
-      <MobileHeader title="My Learning" />
+      <MobileHeader title="My Library" />
       <span className="eyebrow">Your library</span>
-      <h1 className="display" style={{ fontSize: 42 }}>My Learning</h1>
+      <h1 className="display" style={{ fontSize: 42 }}>My Library</h1>
 
       <div className="pills" style={{ marginTop: 18 }}>
         {(
           [
-            ["inProgress", `In progress ${data.counts.inProgress}`],
-            ["completed", `Completed ${data.counts.completed}`],
-            ["watchlist", `Watchlist ${data.counts.watchlist}`],
+            ["downloaded", `Downloaded ${data.counts.downloaded}`],
+            ["saved", `Saved ${data.counts.saved}`],
             ["liked", `Liked ${data.counts.liked}`],
           ] as [Tab, string][]
         ).map(([t, label]) => (
@@ -61,26 +81,23 @@ export default function MyLearningPage() {
 
       {rows.length === 0 ? (
         <div className="dark-panel" style={{ padding: 40, textAlign: "center", marginTop: 30 }}>
-          <Star size={28} className="rating" />
-          <h3>{tab === "inProgress" ? "Nothing in progress" : "Nothing here yet"}</h3>
-          <p className="muted">{tab === "inProgress" ? "Enroll in a course to start learning." : "Find a course you love and it will show up here."}</p>
+          {tab === "liked" ? <Heart size={28} className="rating" /> : tab === "saved" ? <Star size={28} className="rating" /> : <Download size={28} className="rating" />}
+          <h3>{EMPTY[tab].title}</h3>
+          <p className="muted">{EMPTY[tab].body}</p>
           <Link href="/browse" className="btn primary" style={{ display: "inline-block" }}>Browse courses</Link>
         </div>
       ) : (
         <div className="dark-panel" style={{ marginTop: 28, padding: 10 }}>
-          {rows.map((c: any) => (
+          {rows.map((c) => (
             <Link key={c.id} href={`/courses/${c.slug}`} className="lesson">
               <span>{c.title.charAt(0).toUpperCase()}</span>
               <span style={{ flex: 1 }}>{c.title}</span>
               <span className="muted" style={{ marginRight: 12 }}>
                 <Star size={11} fill="currentColor" className="rating" style={{ display: "inline", verticalAlign: "middle" }} /> {c.ratingAvg.toFixed(1)} · {c.level}
               </span>
-              {"progressPct" in c && (
-                <span style={{ width: 90 }}>
-                  <div style={{ height: 3, background: "#2c2924", borderRadius: 5 }}>
-                    <div style={{ width: `${c.progressPct}%`, height: "100%", background: "hsl(var(--primary))", borderRadius: 5 }} />
-                  </div>
-                  <div className="muted mono" style={{ fontSize: 9, marginTop: 3, textAlign: "right" }}>{c.progressPct}%</div>
+              {when(c) && (
+                <span className="muted mono" style={{ fontSize: 9 }}>
+                  {new Date(when(c) as string).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
                 </span>
               )}
             </Link>

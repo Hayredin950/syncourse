@@ -9,7 +9,6 @@ export interface CourseSummary {
   lessonCount: number;
   ratingAvg: number;
   ratingCount: number;
-  enrollmentCount: number;
   downloadCount: number;
   isPremium: boolean;
   isFeatured: boolean;
@@ -20,8 +19,6 @@ export interface CourseSummary {
   publishedAt: string;
   rank?: number;
   isNew?: boolean;
-  /** progress percentage — present on learning rows (my-learning) */
-  progress?: number;
 }
 
 export interface LessonLite {
@@ -141,7 +138,7 @@ export interface LecturerDetail {
     durationMin: number;
     ratingAvg: number;
     ratingCount: number;
-    enrollmentCount: number;
+    downloadCount: number;
     publishedAt: string;
     contentType?: string;
   }[];
@@ -166,7 +163,7 @@ export interface OrganizationDetail {
     durationMin: number;
     ratingAvg: number;
     ratingCount: number;
-    enrollmentCount: number;
+    downloadCount: number;
     publishedAt: string;
   }[];
 }
@@ -235,16 +232,30 @@ export interface LessonDetail {
     isBest: boolean;
   }[];
   attachments: { id: string; fileUrl: string; fileType: string; sizeMb: number; fileName: string }[];
-  watched: boolean;
-  courseProgress: number;
 }
 
-export interface LearningData {
-  inProgress: { id: string; title: string; slug: string; thumbnailUrl: string | null; level: string; ratingAvg: number; progressPct: number; status: string }[];
-  completed: { id: string; title: string; slug: string; thumbnailUrl: string | null; ratingAvg: number }[];
-  watchlist: { id: string; title: string; slug: string; thumbnailUrl: string | null; ratingAvg: number; savedAt: string }[];
-  liked: { id: string; title: string; slug: string; thumbnailUrl: string | null; ratingAvg: number }[];
-  counts: { inProgress: number; completed: number; watchlist: number; liked: number };
+/** GET /me/learning — what a reader saved, liked and downloaded. */
+export interface LibraryCourse {
+  id: string;
+  title: string;
+  slug: string;
+  description: string;
+  thumbnailUrl: string | null;
+  level: string;
+  ratingAvg: number;
+  ratingCount: number;
+  downloadCount: number;
+  isPremium: boolean;
+  savedAt?: string;
+  likedAt?: string;
+  downloadedAt?: string;
+}
+
+export interface LibraryData {
+  saved: LibraryCourse[];
+  liked: LibraryCourse[];
+  downloaded: LibraryCourse[];
+  counts: { saved: number; liked: number; downloaded: number };
 }
 
 export interface CircleLite {
@@ -253,14 +264,40 @@ export interface CircleLite {
   description: string | null;
   owner: { name: string; avatarUrl: string | null; username: string };
   memberCount: number;
+  postCount: number;
   joined: boolean;
+  isOwner: boolean;
   createdAt: string;
 }
 
+export interface CircleMemberRow {
+  id: string;
+  name: string;
+  avatarUrl: string | null;
+  username: string;
+  role: string;
+  joinedAt: string;
+}
+
+/**
+ * A post on the circle wall. `canDelete` is decided by the API (author or owner)
+ * so neither client has to re-implement the rule and get it subtly wrong.
+ */
+export interface CirclePost {
+  id: string;
+  body: string;
+  createdAt: string;
+  author: { id: string; name: string; avatarUrl: string | null; username: string };
+  course: { id: string; title: string; slug: string; thumbnailUrl: string | null } | null;
+  canDelete: boolean;
+}
+
 export interface CircleDetail extends CircleLite {
-  members: { id: string; name: string; avatarUrl: string | null; username: string; role: string; joinedAt: string }[];
+  canPost: boolean;
+  members: CircleMemberRow[];
+  posts: CirclePost[];
   activity: {
-    type: "review" | "enrollment";
+    type: "review" | "download";
     id: string;
     userName: string;
     userAvatar: string | null;
@@ -271,10 +308,61 @@ export interface CircleDetail extends CircleLite {
   }[];
 }
 
+/** A list as it appears in a grid or a rail — covers, counts, no items. */
+export interface CollectionSummary {
+  id: string;
+  name: string;
+  description: string | null;
+  visibility: "public" | "private";
+  savesCount: number;
+  itemCount: number;
+  ownerName: string | null;
+  ownerUsername: string | null;
+  createdAt: string;
+  updatedAt: string;
+  covers: string[];
+}
+
+export interface CollectionItemRow {
+  id: string;
+  title: string;
+  slug: string;
+  thumbnailUrl: string | null;
+  ratingAvg: number;
+  ratingCount: number;
+  level: string;
+  addedAt: string;
+}
+
+export interface CollectionDetail {
+  id: string;
+  name: string;
+  description: string | null;
+  visibility: "public" | "private";
+  savesCount: number;
+  itemCount: number;
+  ownerName: string;
+  ownerUsername: string;
+  isOwner: boolean;
+  saved: boolean;
+  createdAt: string;
+  updatedAt: string;
+  items: CollectionItemRow[];
+}
+
+/** One row of the "Add to list" sheet: a list plus whether it already holds the course. */
+export interface CollectionMembership {
+  id: string;
+  name: string;
+  visibility: "public" | "private";
+  itemCount: number;
+  contains: boolean;
+}
+
 export interface ActivityFeed {
   followingCount: number;
   items: {
-    type: "review" | "enrollment";
+    type: "review" | "download";
     id: string;
     userName: string;
     userAvatar: string | null;
@@ -305,9 +393,10 @@ export interface AdminCourseRow {
   isPremium: boolean;
   isFeatured: boolean;
   ratingAvg: number;
-  enrollmentCount: number;
+  downloadCount: number;
   deleted: boolean;
   sectionCount: number;
+  fileCount: number;
   createdAt: string;
   updatedAt: string;
   level: string | null;
@@ -325,7 +414,7 @@ export interface AdminUserRow {
   isVerified: boolean;
   planType: string;
   createdAt: string;
-  enrollments: number;
+  downloads: number;
   reviews: number;
   lists: number;
 }
@@ -405,6 +494,132 @@ export interface AdminCategoryRow {
   sortOrder: number;
   courseCount: number;
   createdAt: string;
+}
+
+/**
+ * Resources — cheat-sheets, roadmaps and notes.
+ *
+ * Short published artefacts rather than something you work through, so they
+ * carry a body and an attachment list where a course carries a curriculum.
+ */
+export type ResourceType = "cheat-sheet" | "roadmap" | "note";
+
+export type ResourceMediaKind =
+  | "image"
+  | "video"
+  | "audio"
+  | "pdf"
+  | "doc"
+  | "sheet"
+  | "slide"
+  | "archive"
+  | "code"
+  | "link"
+  | "other";
+
+export interface ResourceMedia {
+  id: string;
+  kind: ResourceMediaKind;
+  url: string | null;
+  fileName: string | null;
+  fileSizeMb: number | null;
+  caption: string | null;
+  orderIndex: number;
+}
+
+export interface ResourceSummary {
+  id: string;
+  type: string;
+  title: string;
+  slug: string;
+  summary: string | null;
+  coverUrl: string | null;
+  isPremium: boolean;
+  isFeatured: boolean;
+  readMinutes: number;
+  viewCount: number;
+  downloadCount: number;
+  publishedAt: string;
+  category: { name: string; slug: string; icon: string } | null;
+  organization: { name: string; slug: string } | null;
+  lecturer: { name: string; slug: string } | null;
+  tags: string[];
+  mediaCount: number;
+  mediaKinds: string[];
+}
+
+export interface ResourceDetail extends ResourceSummary {
+  bodyMd: string;
+  sourceUrl: string | null;
+  updatedAt: string;
+  media: ResourceMedia[];
+  related: ResourceSummary[];
+}
+
+export interface ResourceList {
+  total: number;
+  results: ResourceSummary[];
+  /** Whole-library totals per type, so the tab chips don't move when you filter. */
+  counts: Record<string, number>;
+  /** Categories that actually hold a resource — /categories is course-driven. */
+  categories: { name: string; slug: string; icon: string; count: number }[];
+}
+
+export interface AdminResourceRow {
+  id: string;
+  type: string;
+  title: string;
+  slug: string;
+  summary: string | null;
+  coverUrl: string | null;
+  isPremium: boolean;
+  isFeatured: boolean;
+  viewCount: number;
+  downloadCount: number;
+  mediaCount: number;
+  isEmpty: boolean;
+  categoryName: string | null;
+  categoryIcon: string | null;
+  lecturerName: string | null;
+  organizationName: string | null;
+  tags: string[];
+  publishedAt: string;
+  updatedAt: string;
+  deletedAt: string | null;
+}
+
+export interface AdminResourceMedia {
+  id?: string;
+  kind: ResourceMediaKind;
+  url: string;
+  fileName: string;
+  fileSizeMb: number | null;
+  caption: string;
+  orderIndex?: number;
+}
+
+export interface AdminResourceDetail {
+  id: string;
+  type: string;
+  title: string;
+  slug: string;
+  summary: string;
+  bodyMd: string;
+  coverUrl: string | null;
+  categoryName: string;
+  lecturerName: string;
+  organizationName: string;
+  tags: string[];
+  isPremium: boolean;
+  isFeatured: boolean;
+  sourceUrl: string;
+  readMinutes: number;
+  viewCount: number;
+  downloadCount: number;
+  publishedAt: string;
+  updatedAt: string;
+  deletedAt: string | null;
+  media: AdminResourceMedia[];
 }
 
 /** A published legal document, as served by the public GET /legal. */
@@ -520,14 +735,14 @@ export interface UserProfile {
   pendingPayment: { id: string; planName: string; paymentMethod: string; amount: number } | null;
   settings: { autoplayNext?: boolean; previewAutoplay?: boolean } | null;
   privacy: Record<string, string> | null;
-  stats: { enrolled: number; completed: number; saved: number; liked: number; lists: number; reviews: number };
+  stats: { downloaded: number; saved: number; liked: number; lists: number; reviews: number };
   sessions: { id: string; device: string | null; ip: string | null; active: boolean; createdAt: string }[];
 }
 
 export interface UserStats {
   engagedTotal: number;
   ratingDistribution: { stars: number; count: number }[];
-  monthlyCompleted: { month: string; count: number }[];
+  monthlyDownloads: { month: string; count: number }[];
   categoryCounts: { label: string; count: number }[];
   instructorCounts: { label: string; count: number }[];
   languageCounts: { label: string; count: number }[];
@@ -537,7 +752,7 @@ export interface UserStats {
   yourWeek: { day: string; count: number }[];
   watchlistGrowth: { month: string; count: number }[];
   topTags: { label: string; count: number }[];
-  pathProgress: { id: string; title: string; coverUrl: string | null; enrolled: number; completed: number; total: number; pct: number }[];
+  pathProgress: { id: string; title: string; coverUrl: string | null; inLibrary: number; downloaded: number; total: number; pct: number }[];
   hasGoogle: boolean;
   hasPassword: boolean;
   emailVerified: boolean;

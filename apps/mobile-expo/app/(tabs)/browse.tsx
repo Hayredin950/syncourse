@@ -20,7 +20,7 @@ import { Stars } from "../../components/StarRating";
 
 const SORTS = [
   { id: "top-rated", label: "Top rated" },
-  { id: "most-enrolled", label: "Most enrolled" },
+  { id: "most-downloaded", label: "Most downloaded" },
   { id: "newest", label: "Newest" },
   { id: "a-z", label: "A–Z" },
 ] as const;

@@ -188,8 +188,8 @@ function UserDetail() {
 
       <div className="admin-minitiles" style={{ marginBottom: 14 }}>
         <div className="admin-minitile">
-          <strong>{account.enrollments.toLocaleString("en-US")}</strong>
-          <span>Enrolled</span>
+          <strong>{account.downloads.toLocaleString("en-US")}</strong>
+          <span>Downloads</span>
         </div>
         <div className="admin-minitile">
           <strong>{account.reviews.toLocaleString("en-US")}</strong>

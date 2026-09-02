@@ -9,25 +9,13 @@ import { get, post } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { formatDate } from "@/lib/format";
 import { MobileHeader } from "@/components/Nav";
-
-interface ListRow {
-  id: string;
-  name: string;
-  description: string | null;
-  visibility: string;
-  savesCount: number;
-  itemCount: number;
-  ownerName: string | null;
-  ownerUsername: string | null;
-  createdAt: string;
-  covers: string[];
-}
+import type { CollectionSummary } from "@/lib/types";
 
 export default function ListsPage() {
   const router = useRouter();
   const { token } = useAuth();
-  const [lists, setLists] = useState<ListRow[]>([]);
-  const [myLists, setMyLists] = useState<ListRow[]>([]);
+  const [lists, setLists] = useState<CollectionSummary[]>([]);
+  const [myLists, setMyLists] = useState<CollectionSummary[]>([]);
   const [q, setQ] = useState("");
   const [sort, setSort] = useState("top");
   const [showCreate, setShowCreate] = useState(false);
@@ -37,11 +25,11 @@ export default function ListsPage() {
   const { toast, setToast } = useToast();
 
   useEffect(() => {
-    get<{ results: ListRow[] }>(`/lists?sort=${sort}&q=${encodeURIComponent(q)}`).then((d) => setLists(d.results)).catch(() => {});
+    get<{ results: CollectionSummary[] }>(`/lists?sort=${sort}&q=${encodeURIComponent(q)}`).then((d) => setLists(d.results)).catch(() => {});
   }, [q, sort]);
 
   useEffect(() => {
-    if (token) get<ListRow[]>("/me/lists").then(setMyLists).catch(() => {});
+    if (token) get<CollectionSummary[]>("/me/lists").then(setMyLists).catch(() => {});
   }, [token, showCreate]);
 
   const createList = async () => {
@@ -51,13 +39,15 @@ export default function ListsPage() {
     }
     if (!name.trim()) return;
     try {
-      await post("/lists", { name, description, visibility });
+      const created = await post<CollectionSummary>("/lists", { name, description, visibility });
       setShowCreate(false);
       setName("");
       setDescription("");
-      setToast("List created");
-    } catch (e: any) {
-      setToast(e.message);
+      // Straight into the new list: a name and a description on their own are an
+      // empty shelf, and the picker that fills it lives on the detail page.
+      router.push(`/lists/${created.id}`);
+    } catch (e) {
+      setToast((e as Error).message);
     }
   };
 
@@ -100,7 +90,7 @@ export default function ListsPage() {
                 <ListPlus size={16} className="rating" />
                 <span>{l.name}</span>
                 <span className="muted" style={{ marginLeft: "auto" }}>
-                  {l.visibility} · {l.itemCount} items · {formatDate(l.createdAt)}
+                  {l.visibility} · {l.itemCount} {l.itemCount === 1 ? "course" : "courses"} · edited {formatDate(l.updatedAt)}
                 </span>
               </Link>
             ))}
@@ -108,12 +98,21 @@ export default function ListsPage() {
         </section>
       )}
 
-      {lists.length === 0 && !q ? (
+      {lists.length === 0 ? (
         <div className="dark-panel" style={{ padding: 40, textAlign: "center", marginTop: 30 }}>
           <ListPlus size={28} className="rating" />
-          <h3>No lists yet</h3>
-          <p className="muted">Create your first list to organize the courses you want next.</p>
-          <button className="btn primary" onClick={() => setShowCreate(true)}>Create a list</button>
+          {q ? (
+            <>
+              <h3>No lists match “{q}”</h3>
+              <p className="muted">Only public lists are searchable — your private ones are above.</p>
+            </>
+          ) : (
+            <>
+              <h3>No lists yet</h3>
+              <p className="muted">Create your first list to organize the courses you want next.</p>
+              <button className="btn primary" onClick={() => setShowCreate(true)}>Create a list</button>
+            </>
+          )}
         </div>
       ) : (
         <div className="grid" style={{ marginTop: 28, gridTemplateColumns: "repeat(3, minmax(0,1fr))" }}>

@@ -272,9 +272,9 @@ export default function SettingsScreen() {
       <Text style={styles.heading}>What others can see</Text>
       <View style={styles.card}>
         {[
-          ["watchHistory", "Watch history"],
+          ["downloadHistory", "Download history"],
           ["reviews", "Reviews in friends' feeds"],
-          ["watchlist", "Watchlist"],
+          ["watchlist", "Saved"],
           ["likes", "Likes"],
         ].map(([key, label]) => (
           <PrivacyRow

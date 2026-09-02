@@ -29,12 +29,15 @@ export default function ListsScreen() {
 
   const createMut = useMutation({
     mutationFn: () => api.createList({ name: name.trim(), description: description.trim() || undefined, visibility }),
-    onSuccess: () => {
+    onSuccess: (created) => {
       setName("");
       setDescription("");
       setVisibility("private");
       setShowCreate(false);
       queryClient.invalidateQueries({ queryKey: ["my-lists"] });
+      // Straight into the new list: a name and a description on their own are an
+      // empty shelf, and the picker that fills it lives on the detail screen.
+      router.push(`/lists/${created.id}`);
     },
   });
 

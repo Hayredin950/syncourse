@@ -1,3 +1,4 @@
+import { Ionicons } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
 import { Link, useRouter } from "expo-router";
 import React from "react";
@@ -31,8 +32,7 @@ export default function MeScreen() {
   }
 
   const stats = [
-    { label: "Enrolled", value: user.stats.enrolled },
-    { label: "Completed", value: user.stats.completed },
+    { label: "Downloaded", value: user.stats.downloaded },
     { label: "Saved", value: user.stats.saved },
     { label: "Liked", value: user.stats.liked },
     { label: "Lists", value: user.stats.lists },
@@ -72,10 +72,11 @@ export default function MeScreen() {
       </View>
 
       <MenuRow icon="list" label="My lists" href="/lists" />
-      <MenuRow icon="chart" label="Stats" href="/stats" />
-      <MenuRow icon="path" label="Learning paths" href="/paths" />
+      <MenuRow icon="document-text" label="Resources" href="/resources" />
+      <MenuRow icon="stats-chart" label="Stats" href="/stats" />
+      <MenuRow icon="trail-sign" label="Learning paths" href="/paths" />
       <MenuRow icon="download" label="Downloads" href="/downloads" />
-      <MenuRow icon="bell" label="Notifications" href="/notifications" />
+      <MenuRow icon="notifications" label="Notifications" href="/notifications" />
       <MenuRow icon="ribbon" label="Subscription" href="/premium" />
       <MenuRow icon="people" label="Circles" href="/circles" />
       <MenuRow icon="sparkles" label="What's new" href="/changelog" />
@@ -94,11 +95,20 @@ export default function MeScreen() {
   );
 }
 
-function MenuRow({ icon, label, href }: { icon: string; label: string; href: string }) {
+/** The `icon` was being rendered as a bare string, so every row read "chart Stats". */
+function MenuRow({
+  icon,
+  label,
+  href,
+}: {
+  icon: React.ComponentProps<typeof Ionicons>["name"];
+  label: string;
+  href: string;
+}) {
   const router = useRouter();
   return (
     <Pressable style={styles.menuRow} onPress={() => router.push(href as any)}>
-      <Text style={{ color: colors.accent, fontSize: 18 }}>{icon}</Text>
+      <Ionicons name={icon} size={18} color={colors.accent} style={{ width: 22 }} />
       <Text style={styles.menuLabel}>{label}</Text>
       <Text style={{ color: colors.dim }}>›</Text>
     </Pressable>

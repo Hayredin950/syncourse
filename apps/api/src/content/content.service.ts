@@ -11,7 +11,7 @@ export class ContentService {
   ) {}
 
   /** Lesson detail — mirrors the file metadata card from the reference. */
-  async lessonDetail(lessonId: string, userId?: string) {
+  async lessonDetail(lessonId: string) {
     const lesson = await this.prisma.lesson.findUnique({
       where: { id: lessonId },
       include: {
@@ -23,19 +23,6 @@ export class ContentService {
       },
     });
     if (!lesson) throw new NotFoundException('Lesson not found');
-
-    let watched = false;
-    let courseProgress = 0;
-    if (userId) {
-      const enrollment = await this.prisma.enrollment.findFirst({
-        where: { userId, courseId: lesson.courseId },
-        include: { lessonProgress: { where: { lessonId } } },
-      });
-      if (enrollment) {
-        courseProgress = enrollment.progressPct;
-        watched = enrollment.lessonProgress.length > 0 && enrollment.lessonProgress[0].completed;
-      }
-    }
 
     return {
       id: lesson.id,
@@ -72,15 +59,13 @@ export class ContentService {
         sizeMb: a.sizeMb,
         fileName: fileNameFromUrl(a.fileUrl),
       })),
-      watched,
-      courseProgress,
     };
   }
 
   /**
    * Signed video URL issuance.
-   * Client → /lessons/:id/video-url → entitlement check (preview or
-   * enrollment or premium) → short-lived signed URL → stream from storage.
+   * Client → /lessons/:id/video-url → entitlement check (preview, then signed
+   * in, then premium) → short-lived signed URL → stream from storage.
    */
   async getVideoUrl(lessonId: string, userId?: string) {
     const lesson = await this.prisma.lesson.findUnique({
@@ -91,12 +76,6 @@ export class ContentService {
 
     if (!lesson.isPreview) {
       if (!userId) throw new ForbiddenException('Sign in to watch this lesson');
-      const enrollment = await this.prisma.enrollment.findFirst({
-        where: { userId, courseId: lesson.courseId },
-      });
-      if (!enrollment) {
-        throw new ForbiddenException('Enroll in this course to watch the lesson');
-      }
       if (lesson.course.isPremium) {
         const user = await this.prisma.user.findUnique({ where: { id: userId } });
         const premiumActive =
@@ -113,8 +92,8 @@ export class ContentService {
 
   /**
    * Signed download URL for a lesson attachment (ZIPs, PDFs, notes).
-   * Same entitlement model as video: previews open, enrolled required otherwise,
-   * premium courses require an active premium plan.
+   * Same entitlement model as video: previews open, everything else needs a
+   * signed-in reader, and premium courses need an active premium plan.
    */
   async getFileUrl(lessonId: string, userId: string | undefined, attachmentId: string) {
     const lesson = await this.prisma.lesson.findUnique({
@@ -125,12 +104,6 @@ export class ContentService {
 
     if (!lesson.isPreview) {
       if (!userId) throw new ForbiddenException('Sign in to download this file');
-      const enrollment = await this.prisma.enrollment.findFirst({
-        where: { userId, courseId: lesson.courseId },
-      });
-      if (!enrollment) {
-        throw new ForbiddenException('Enroll in this course to download files');
-      }
       if (lesson.course.isPremium) {
         const user = await this.prisma.user.findUnique({ where: { id: userId } });
         const premiumActive =

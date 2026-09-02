@@ -26,7 +26,7 @@ export class CollectionsService {
     const list = await this.prisma.collectionList.findUnique({
       where: { id },
       include: {
-        user: { select: { name: true, username: true } },
+        user: { select: { id: true, name: true, username: true } },
         items: { include: { course: { include: { level: true } } }, orderBy: { addedAt: 'desc' } },
         savedBy: true,
       },
@@ -43,7 +43,13 @@ export class CollectionsService {
       savesCount: list.savedBy.length,
       itemCount: list.items.length,
       ownerName: list.user.name,
+      ownerUsername: list.user.username,
+      /** Drives the owner's edit/add/remove controls without a second request. */
+      isOwner: !!userId && list.userId === userId,
+      /** The client used to assume `false`, so a list you had saved read "Save list". */
+      saved: !!userId && list.savedBy.some((s) => s.userId === userId),
       createdAt: list.createdAt,
+      updatedAt: list.updatedAt,
       items: list.items.map((i) => ({
         id: i.course.id,
         title: i.course.title,
@@ -57,30 +63,116 @@ export class CollectionsService {
     };
   }
 
+  /** Rename, re-describe or flip a list between public and private. */
+  async updateList(
+    userId: string,
+    listId: string,
+    data: { name?: string; description?: string | null; visibility?: 'public' | 'private' },
+  ) {
+    await this.assertOwner(userId, listId);
+    const name = data.name?.trim();
+    if (data.name !== undefined && !name) throw new BadRequestException('List name is required');
+    await this.prisma.collectionList.update({
+      where: { id: listId },
+      data: {
+        ...(name ? { name } : {}),
+        ...(data.description !== undefined ? { description: data.description?.trim() || null } : {}),
+        ...(data.visibility ? { visibility: data.visibility } : {}),
+      },
+    });
+    return this.getList(listId, userId);
+  }
+
   async addItem(userId: string, listId: string, courseId: string) {
-    const list = await this.prisma.collectionList.findUnique({ where: { id: listId } });
-    if (!list || list.userId !== userId) throw new NotFoundException('List not found');
+    await this.assertOwner(userId, listId);
+    const course = await this.prisma.course.findFirst({
+      where: { id: courseId, deletedAt: null },
+      select: { id: true },
+    });
+    if (!course) throw new NotFoundException('Course not found');
     const existing = await this.prisma.collectionItem.findUnique({
       where: { listId_courseId: { listId, courseId } },
     });
     if (!existing) {
       await this.prisma.collectionItem.create({ data: { listId, courseId } });
+      await this.touch(listId);
+    }
+    return this.getList(listId, userId);
+  }
+
+  /** Add several at once — the picker lets you tick a few before closing it. */
+  async addItems(userId: string, listId: string, courseIds: string[]) {
+    await this.assertOwner(userId, listId);
+    const courses = await this.prisma.course.findMany({
+      where: { id: { in: courseIds }, deletedAt: null },
+      select: { id: true },
+    });
+    if (courses.length) {
+      await this.prisma.collectionItem.createMany({
+        data: courses.map((c) => ({ listId, courseId: c.id })),
+        skipDuplicates: true,
+      });
+      await this.touch(listId);
     }
     return this.getList(listId, userId);
   }
 
   async removeItem(userId: string, listId: string, courseId: string) {
-    const list = await this.prisma.collectionList.findUnique({ where: { id: listId } });
-    if (!list || list.userId !== userId) throw new NotFoundException('List not found');
-    await this.prisma.collectionItem.deleteMany({ where: { listId, courseId } });
+    await this.assertOwner(userId, listId);
+    const { count } = await this.prisma.collectionItem.deleteMany({ where: { listId, courseId } });
+    if (count) await this.touch(listId);
     return this.getList(listId, userId);
   }
 
   async deleteList(userId: string, listId: string) {
-    const list = await this.prisma.collectionList.findUnique({ where: { id: listId } });
-    if (!list || list.userId !== userId) throw new NotFoundException('List not found');
+    await this.assertOwner(userId, listId);
     await this.prisma.collectionList.delete({ where: { id: listId } });
     return { deleted: true };
+  }
+
+  /**
+   * Which of my lists already hold this course. The "Add to list" control on a
+   * course page needs both halves in one request, or it opens showing nothing
+   * ticked and silently re-adds what is already there.
+   */
+  async listsForCourse(userId: string, courseId: string) {
+    const lists = await this.prisma.collectionList.findMany({
+      where: { userId },
+      orderBy: { updatedAt: 'desc' },
+      select: {
+        id: true,
+        name: true,
+        visibility: true,
+        _count: { select: { items: true } },
+        items: { where: { courseId }, select: { courseId: true } },
+      },
+    });
+    return lists.map((l) => ({
+      id: l.id,
+      name: l.name,
+      visibility: l.visibility,
+      itemCount: l._count.items,
+      contains: l.items.length > 0,
+    }));
+  }
+
+  private async assertOwner(userId: string, listId: string) {
+    const list = await this.prisma.collectionList.findUnique({ where: { id: listId } });
+    // Deliberately "not found" rather than "forbidden": a private list should not
+    // confirm its own existence to someone who does not own it.
+    if (!list || list.userId !== userId) throw new NotFoundException('List not found');
+    return list;
+  }
+
+  /**
+   * `updatedAt` only moves when the list row itself is written, so adding a
+   * course used to leave "Last edited" and the default sort stuck at creation.
+   */
+  private touch(listId: string) {
+    return this.prisma.collectionList.update({
+      where: { id: listId },
+      data: { updatedAt: new Date() },
+    });
   }
 
   async saveList(userId: string, listId: string) {
@@ -103,10 +195,11 @@ export class CollectionsService {
   async browseLists(filters: { q?: string; sort?: string; limit?: number; offset?: number }) {
     const where: any = { visibility: 'public' };
     if (filters.q) {
+      // Postgres `contains` is case-sensitive without this, so "React" missed "react".
       where.OR = [
-        { name: { contains: filters.q } },
-        { user: { name: { contains: filters.q } } },
-        { user: { username: { contains: filters.q } } },
+        { name: { contains: filters.q, mode: 'insensitive' } },
+        { user: { name: { contains: filters.q, mode: 'insensitive' } } },
+        { user: { username: { contains: filters.q, mode: 'insensitive' } } },
       ];
     }
     const orderBy =

@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { Course, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { legalTitle } from '../legal/legal.constants';
+import { withPartNumbers } from '../telegram/part-numbering';
 
 type CourseWith = Prisma.CourseGetPayload<{
   include: {
@@ -38,7 +39,7 @@ export class CatalogService {
     const now = new Date();
     const [trending, latest, topRated, featuredPaths, categories, lecturers, organizations] =
       await Promise.all([
-        // Trending = velocity (recent downloads dominate), NOT the same as most-enrolled.
+        // Trending = raw download volume, tie-broken by rating then recency.
         this.prisma.course.findMany({
           where: { deletedAt: null },
           orderBy: [{ downloadCount: 'desc' }, { ratingAvg: 'desc' }, { publishedAt: 'desc' }],
@@ -214,8 +215,10 @@ export class CatalogService {
     const orderBy: Prisma.CourseOrderByWithRelationInput[] =
       filters.sort === 'top-rated'
         ? [{ ratingAvg: 'desc' }, { ratingCount: 'desc' }]
-        : filters.sort === 'most-enrolled'
-          ? [{ enrollmentCount: 'desc' }]
+        : // 'most-enrolled' is the old name for this sort, still sent by app
+          // builds that predate the enrolment removal.
+          filters.sort === 'most-downloaded' || filters.sort === 'most-enrolled'
+          ? [{ downloadCount: 'desc' }]
           : filters.sort === 'a-z'
             ? [{ title: 'asc' }]
             : [{ publishedAt: 'desc' }];
@@ -242,7 +245,10 @@ export class CatalogService {
         ...courseInclude,
         sections: { orderBy: { orderIndex: 'asc' }, include: { lessons: { orderBy: { orderIndex: 'asc' } } } },
         telegramFiles: {
-          orderBy: [{ moduleOrder: 'asc' }, { partIndex: 'asc' }],
+          // createdAt breaks ties: rows that predate per-module numbering share
+          // partIndex 1, and without it their order — and so the repaired part
+          // numbers — would differ between the site and the bot.
+          orderBy: [{ moduleOrder: 'asc' }, { partIndex: 'asc' }, { createdAt: 'asc' }],
         },
       },    });
 
@@ -340,8 +346,10 @@ export class CatalogService {
         })),
       })),
       downloads: downloadStats,
-      // Telegram-linked files — the actual course content delivered via Telegram
-      telegramFiles: course.telegramFiles.map((f) => ({
+      // Telegram-linked files — the actual course content delivered via Telegram.
+      // Part numbers are repaired on the way out so the page agrees with the
+      // bot's own buttons; see withPartNumbers for why they can be wrong.
+      telegramFiles: withPartNumbers(course.telegramFiles).map((f) => ({
         id: f.id,
         moduleTitle: f.moduleTitle,
         moduleOrder: f.moduleOrder,
@@ -510,7 +518,6 @@ export class CatalogService {
       lessonCount: c.sections.reduce((s, sec) => s + sec.lessons.length, 0),
       ratingAvg: c.ratingAvg,
       ratingCount: c.ratingCount,
-      enrollmentCount: c.enrollmentCount,
       downloadCount: c.downloadCount,
       isPremium: c.isPremium,
       isFeatured: c.isFeatured,

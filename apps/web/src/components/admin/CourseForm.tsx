@@ -15,7 +15,18 @@ import { useAdminToast } from "./AdminToast";
 import UploadField from "./UploadField";
 import { EntityPicker, MultiEntityPicker, type PickerOption } from "./EntityPicker";
 
-const CONTENT_TYPES = ["course", "mini-course", "cheat-sheet", "roadmap"];
+/**
+ * Only the two teachable formats.
+ *
+ * Cheat-sheets, roadmaps and notes are single Telegram posts — a few files and a
+ * body of text, no lecturer, no curriculum, no price. They are authored under
+ * Admin → Resources with a form of their own, so offering them here only ever
+ * produced a "course" that could never be filled in.
+ */
+const CONTENT_TYPES = [
+  { value: "course", label: "Course" },
+  { value: "mini-course", label: "Mini-course" },
+];
 const LESSON_TYPES = ["video", "article", "quiz", "notes"];
 const emptyLesson = { title: "", type: "video", durationSec: 0, videoUrl: "", isPreview: false, fileUrl: "" };
 const courseCount = (n: number) => (n === 1 ? "1 course" : `${n} courses`);
@@ -186,10 +197,16 @@ export function CourseForm({ initial }: Props) {
               onChange={(e) => setContentType(e.target.value)}
             >
               {CONTENT_TYPES.map((t) => (
-                <option key={t} value={t}>
-                  {t}
+                <option key={t.value} value={t.value}>
+                  {t.label}
                 </option>
               ))}
+              {/* An older row may still carry cheat-sheet or roadmap. Keeping its
+                  own value selectable stops a plain save from silently retyping
+                  it as a course. */}
+              {!CONTENT_TYPES.some((t) => t.value === contentType) && (
+                <option value={contentType}>{contentType}</option>
+              )}
             </select>
           </label>
           <label className="admin-field">
@@ -348,7 +365,7 @@ export function CourseForm({ initial }: Props) {
             value={previewVideoUrl}
             onChange={setPreviewVideoUrl}
             placeholder="https://… mp4 or stream"
-            hint="Optional. Plays on the course page before enrolment."
+            hint="Optional. Plays on the course page before downloading."
           />
         </div>
       </div>

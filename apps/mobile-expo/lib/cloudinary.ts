@@ -20,3 +20,19 @@ export function cloudinaryUrl(
 
   return `https://res.cloudinary.com/${CLOUD}/image/fetch/${parts.join(",")}/${encodeURIComponent(url)}`;
 }
+
+/**
+ * Force a Cloudinary asset to arrive as a saved file rather than opening in a
+ * viewer, by injecting `fl_attachment` into the transformation chain. A plain
+ * link hands a spreadsheet or a zip to whatever the OS thinks can preview it;
+ * `fl_attachment` makes Cloudinary send `Content-Disposition: attachment`, so
+ * the browser's download manager takes it instead.
+ *
+ * Non-Cloudinary URLs are returned untouched — there is nothing to rewrite.
+ */
+export function attachmentUrl(url: string | null | undefined): string | null {
+  if (!url) return null;
+  const m = /^(https:\/\/res\.cloudinary\.com\/[^/]+\/[^/]+\/upload\/)(.*)$/.exec(url);
+  if (!m) return url;
+  return m[2].startsWith("fl_attachment") ? url : `${m[1]}fl_attachment/${m[2]}`;
+}

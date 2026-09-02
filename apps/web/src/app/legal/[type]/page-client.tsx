@@ -5,6 +5,7 @@ import { useParams } from "next/navigation";
 import { get, post } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { MobileHeader } from "@/components/Nav";
+import { Markdown } from "@/components/Markdown";
 import type { AcceptedLegalDoc, LegalDoc, LegalStatus, PendingLegalDoc } from "@/lib/types";
 
 const TITLES: Record<string, string> = {
@@ -113,9 +114,7 @@ export default function LegalPage() {
       {loading ? (
         <p className="muted">Loading…</p>
       ) : (
-        <div className="whitespace-pre-wrap" style={{ marginTop: 18 }}>
-          {doc?.bodyMd || "Document coming soon."}
-        </div>
+        <Markdown text={doc?.bodyMd || "Document coming soon."} className="md--doc" />
       )}
     </main>
   );

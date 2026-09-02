@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState, useRef, useCallback, type FormEvent, type ReactNode } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useState, useRef, useCallback, type FormEvent, type ReactNode } from "react";
 import {
   Bookmark,
   BookOpen,
@@ -15,17 +15,24 @@ import {
   Map,
   MessageCircle,
   Search,
+  StickyNote,
   Zap,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 
 /* ---------- TopNav — desktop top bar (phonofilm-style, two rows) ---------- */
+/**
+ * Row-2 tabs. Each entry owns its destination because they no longer all land on
+ * /browse: cheat-sheets, roadmaps and notes became Resources rather than Courses
+ * carrying a `contentType`, so `/browse?type=cheat-sheet` now matches nothing.
+ */
 const CONTENT_TYPES = [
-  { value: "", label: "All", icon: LayoutGrid },
-  { value: "course", label: "Course", icon: BookOpen },
-  { value: "mini-course", label: "Mini-course", icon: Zap },
-  { value: "cheat-sheet", label: "Cheat-sheet", icon: FileText },
-  { value: "roadmap", label: "Roadmap", icon: Map },
+  { label: "All", icon: LayoutGrid, href: "/browse" },
+  { label: "Course", icon: BookOpen, href: "/browse?type=course" },
+  { label: "Mini-course", icon: Zap, href: "/browse?type=mini-course" },
+  { label: "Cheat-sheet", icon: FileText, href: "/resources?type=cheat-sheet" },
+  { label: "Roadmap", icon: Map, href: "/resources?type=roadmap" },
+  { label: "Notes", icon: StickyNote, href: "/resources?type=note" },
 ];
 
 export function TopNav() {
@@ -33,7 +40,6 @@ export function TopNav() {
   const router = useRouter();
   const { user, isPremium, logout } = useAuth();
   const [value, setValue] = useState("");
-  const [type, setType] = useState("");
   const [meOpen, setMeOpen] = useState(false);
   const meRef = useRef<HTMLDivElement>(null);
 
@@ -50,20 +56,17 @@ export function TopNav() {
   // Close on route change
   useEffect(() => setMeOpen(false), [pathname]);
 
-  // phonofilm: auth screens have no site navbar
-  if (pathname.startsWith("/auth")) return null;
-
-  // Row-2 active state reads ?type= from the URL (avoids useSearchParams/Suspense in the layout).
-  useEffect(() => {
-    setType(new URLSearchParams(window.location.search).get("type") ?? "");
-  }, [pathname]);
-
   const submit = (event: FormEvent) => {
     event.preventDefault();
     router.push(`/search${value.trim() ? `?q=${encodeURIComponent(value.trim())}` : ""}`);
   };
 
   const active = (href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href));
+
+  // phonofilm: auth screens have no site navbar. This must sit *below* every
+  // hook — an early return above them changes the hook count between routes,
+  // which React rejects outright.
+  if (pathname.startsWith("/auth")) return null;
 
   return (
     <header className="topbar desktop-only">
@@ -85,6 +88,9 @@ export function TopNav() {
         <nav className="nav-links">
           <Link href="/browse" className={`nav-pill ${active("/browse") ? "active" : ""}`}>
             <LayoutGrid size={14} /> Browse
+          </Link>
+          <Link href="/resources" className={`nav-pill ${active("/resources") ? "active" : ""}`}>
+            <FileText size={14} /> Resources
           </Link>
           <Link href="/circles" className={`nav-pill ${active("/circles") ? "active" : ""}`}>
             <MessageCircle size={14} /> Circles
@@ -158,18 +164,42 @@ export function TopNav() {
           )}
         </nav>
       </div>
-      <div className="topbar-row topbar-row--types">
-        {CONTENT_TYPES.map((t) => (
-          <Link
-            key={t.value || "all"}
-            href={t.value ? `/browse?type=${t.value}` : "/browse"}
-            className={`type-pill ${type === t.value ? "active" : ""}`}
-          >
+      {/* The admin console has its own chrome; catalogue filters there just
+          confused the two navigations for each other. */}
+      {!pathname.startsWith("/admin") && (
+        <Suspense fallback={<div className="topbar-row topbar-row--types" />}>
+          <TypeTabs />
+        </Suspense>
+      )}
+    </header>
+  );
+}
+
+/**
+ * Row 2 — content-type filters.
+ *
+ * The active pill has to be derived from the live URL with `useSearchParams`,
+ * not from a state set in an effect keyed on the pathname: several of these
+ * links share a route, so the pathname never changes between them and the
+ * highlight stayed on whichever pill was clicked first. A tab matches only when
+ * both its path and its `type` do, so /resources with no type highlights
+ * nothing — no tab claims to mean "every resource".
+ */
+function TypeTabs() {
+  const pathname = usePathname();
+  const type = useSearchParams().get("type") ?? "";
+  return (
+    <div className="topbar-row topbar-row--types">
+      {CONTENT_TYPES.map((t) => {
+        const [base, query = ""] = t.href.split("?");
+        const active = pathname === base && type === (new URLSearchParams(query).get("type") ?? "");
+        return (
+          <Link key={t.href} href={t.href} className={`type-pill ${active ? "active" : ""}`}>
             <t.icon size={13} /> {t.label}
           </Link>
-        ))}
-      </div>
-    </header>
+        );
+      })}
+    </div>
   );
 }
 

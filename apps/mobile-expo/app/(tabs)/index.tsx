@@ -12,7 +12,7 @@ import {
   Text,
   View,
 } from "react-native";
-import { Rail } from "../../components/Rail";
+import { Rail, ResourceRail } from "../../components/Rail";
 import { CourseCard } from "../../components/CourseCard";
 import { cloudinaryUrl } from "../../lib/cloudinary";
 import * as api from "../../lib/api";
@@ -44,6 +44,14 @@ export default function HomeScreen() {
   });
   const router = useRouter();
   const goTo = useCallback((href: string) => () => router.push(href as any), [router]);
+
+  // Resources aren't part of /home, which is a course feed. The rail simply
+  // doesn't render if this fails or comes back empty, so a library with no
+  // cheat-sheets yet costs the home screen nothing.
+  const resourcesQ = useQuery({
+    queryKey: ["home-resources"],
+    queryFn: () => api.resources({ limit: 8 }),
+  });
 
   if (isLoading) {
     return (
@@ -114,6 +122,12 @@ export default function HomeScreen() {
       <Rail title="🔥 Trending" courses={feed.trending} href="/browse" />
       <Rail title="✨ Latest added" courses={feed.latest} href="/browse" />
       <Rail title="⭐ Top rated" courses={feed.topRated} href="/browse" />
+
+      <ResourceRail
+        title="📄 Cheat-sheets & roadmaps"
+        resources={resourcesQ.data?.results ?? []}
+        href="/resources"
+      />
 
       {/* Explore by Category — dropdown row (phonofilm: Movie Genre →) */}
       <DropdownRow

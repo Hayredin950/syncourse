@@ -12,6 +12,7 @@ import {
   Check,
   ChevronRight,
   CreditCard,
+  Download,
   Eye,
   Heart,
   Layers,
@@ -273,8 +274,7 @@ export default function MePage() {
   };
 
   const statsGrid: [string, number][] = [
-    ["ENROLLED", user.stats.enrolled],
-    ["COMPLETED", user.stats.completed],
+    ["DOWNLOADED", user.stats.downloaded],
     ["SAVED", user.stats.saved],
     ["LIKED", user.stats.liked],
     ["LISTS", user.stats.lists],
@@ -289,9 +289,9 @@ export default function MePage() {
   ];
 
   const privacyDefaults: { key: string; label: string; desc: string }[] = [
-    { key: "watchHistory", label: "Watch history", desc: "Courses you've started or finished" },
+    { key: "downloadHistory", label: "Download history", desc: "Courses you've downloaded" },
     { key: "reviews", label: "Reviews", desc: "Your ratings and written reviews" },
-    { key: "watchlist", label: "Watchlist", desc: "Courses you've saved" },
+    { key: "watchlist", label: "Saved", desc: "Courses you've saved for later" },
     { key: "likes", label: "Likes", desc: "Courses you've liked" },
   ];
 
@@ -365,7 +365,7 @@ export default function MePage() {
             <div className="dark-panel">
               <Link href="/my-learning" className="lesson">
                 <span className="icon-badge icon-badge--amber"><BookOpen size={15} /></span>
-                <span>My Learning</span>
+                <span>My Library</span>
                 <span className="muted" style={{ marginLeft: "auto" }}>›</span>
               </Link>
               <Link href="/premium" className="lesson">
@@ -384,15 +384,15 @@ export default function MePage() {
                 <span className="activity-icon"><Bookmark size={16} /></span>
                 <span>
                   <strong>{user.stats.saved}</strong>
-                  <span className="muted">Watchlist</span>
+                  <span className="muted">Saved</span>
                 </span>
                 <ChevronRight size={15} style={{ marginLeft: "auto", color: "hsl(var(--muted-foreground))" }} />
               </Link>
               <Link href="/my-learning" className="activity-card">
-                <span className="activity-icon"><Eye size={16} /></span>
+                <span className="activity-icon"><Download size={16} /></span>
                 <span>
-                  <strong>{user.stats.completed}</strong>
-                  <span className="muted">Watched</span>
+                  <strong>{user.stats.downloaded}</strong>
+                  <span className="muted">Downloaded</span>
                 </span>
                 <ChevronRight size={15} style={{ marginLeft: "auto", color: "hsl(var(--muted-foreground))" }} />
               </Link>
@@ -430,7 +430,7 @@ export default function MePage() {
                     <span>
                       {p.title}
                       <br />
-                      <small className="muted">{p.completed}/{p.total} courses · {p.pct}%</small>
+                      <small className="muted">{p.downloaded}/{p.total} courses · {p.pct}%</small>
                     </span>
                     <span className="muted" style={{ marginLeft: "auto" }}>›</span>
                   </div>
@@ -467,7 +467,7 @@ export default function MePage() {
                 ) : (
                   <div className="empty-state">
                     <div className="empty-icon">🔄</div>
-                    <p>Progress against curated learning paths fills in as you complete courses inside them.</p>
+                    <p>Progress against curated learning paths fills in as you download the courses inside them.</p>
                   </div>
                 )}
               </div>
@@ -482,8 +482,8 @@ export default function MePage() {
                 {/* learning rhythm */}
                 <div className="stat-panel">
                   <h3>Your learning rhythm</h3>
-                  <MonthBars data={stats.monthlyCompleted} />
-                  <p className="muted" style={{ fontSize: 10, margin: "8px 0 0" }}>Courses completed per month</p>
+                  <MonthBars data={stats.monthlyDownloads} />
+                  <p className="muted" style={{ fontSize: 10, margin: "8px 0 0" }}>Courses downloaded per month</p>
                 </div>
 
                 {/* categories */}

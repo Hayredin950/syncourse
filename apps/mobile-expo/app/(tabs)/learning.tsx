@@ -11,19 +11,34 @@ import {
 } from "react-native";
 import * as api from "../../lib/api";
 import { colors } from "../../lib/tokens";
-import type { MyLearningItem } from "../../lib/types";
+import type { LibraryCourse } from "../../lib/types";
 
-export default function LearningScreen() {
+/**
+ * A reader's library: downloaded, saved, liked.
+ *
+ * There is no "in progress" or "completed" here. Courses arrive whole as
+ * Telegram archives, so there is no lesson-by-lesson position to report — the
+ * honest facts are which courses you took and which you marked.
+ *
+ * The route keeps its `learning` name so deep links still resolve; only the
+ * label changed.
+ */
+const EMPTY: Record<number, string> = {
+  0: "Courses you download through the Telegram bot show up here.",
+  1: "Tap the bookmark on a course to keep it here.",
+  2: "Courses you like show up here.",
+};
+
+export default function LibraryScreen() {
   const [tab, setTab] = useState(0);
   const { data, isLoading, error } = useQuery({
-    queryKey: ["my-learning"],
-    queryFn: api.myLearning,
+    queryKey: ["my-library"],
+    queryFn: api.myLibrary,
   });
 
   const tabs = [
-    { label: "In progress", items: data?.inProgress ?? [] },
-    { label: "Completed", items: data?.completed ?? [] },
-    { label: "Wishlist", items: data?.watchlist ?? [] },
+    { label: "Downloaded", items: data?.downloaded ?? [] },
+    { label: "Saved", items: data?.saved ?? [] },
     { label: "Liked", items: data?.liked ?? [] },
   ];
 
@@ -38,7 +53,7 @@ export default function LearningScreen() {
   if (error) {
     return (
       <View style={styles.center}>
-        <Text style={styles.muted}>Sign in to see your learning</Text>
+        <Text style={styles.muted}>Sign in to see your library</Text>
         <Link href="/auth" style={styles.signIn}>
           Sign in
         </Link>
@@ -63,29 +78,34 @@ export default function LearningScreen() {
         data={tabs[tab].items}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.list}
-        ListEmptyComponent={<Text style={styles.muted}>Nothing here yet</Text>}
-        renderItem={({ item }) => <LearningRow item={item} />}
+        ListEmptyComponent={<Text style={styles.muted}>{EMPTY[tab]}</Text>}
+        renderItem={({ item }) => <LibraryRow item={item} />}
       />
     </View>
   );
 }
 
-function LearningRow({ item }: { item: MyLearningItem }) {
+function LibraryRow({ item }: { item: LibraryCourse }) {
   const router = useRouter();
+  const when = item.downloadedAt ?? item.savedAt ?? item.likedAt ?? null;
   return (
     <Pressable style={styles.card} onPress={() => router.push(`/courses/${item.slug}`)}>
       <View style={styles.thumb}>
-        <Text style={{ color: colors.dim, fontSize: 14 }}>▶</Text>
+        <Text style={{ color: colors.dim, fontSize: 14 }}>{item.title.charAt(0).toUpperCase()}</Text>
       </View>
       <View style={{ flex: 1 }}>
         <Text numberOfLines={1} style={styles.cardTitle}>
           {item.title}
         </Text>
-        <View style={styles.progressTrack}>
-          <View style={[styles.progressFill, { width: `${Math.min(item.progressPct, 100)}%` }]} />
-        </View>
-        <Text style={styles.progressText}>{item.progressPct}% complete</Text>
+        <Text style={styles.cardMeta}>
+          ★ {item.ratingAvg.toFixed(1)} · {item.level}
+        </Text>
       </View>
+      {when && (
+        <Text style={styles.when}>
+          {new Date(when).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+        </Text>
+      )}
     </Pressable>
   );
 }
@@ -93,7 +113,7 @@ function LearningRow({ item }: { item: MyLearningItem }) {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   center: { flex: 1, backgroundColor: colors.bg, alignItems: "center", justifyContent: "center", gap: 10 },
-  muted: { color: colors.muted, fontSize: 13 },
+  muted: { color: colors.muted, fontSize: 13, textAlign: "center", paddingHorizontal: 24 },
   signIn: { color: colors.accent, fontWeight: "700" },
   tabBar: {
     flexDirection: "row",
@@ -121,13 +141,6 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   cardTitle: { color: colors.text, fontSize: 14, fontWeight: "600" },
-  progressTrack: {
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: "rgba(255,255,255,0.12)",
-    marginTop: 6,
-    overflow: "hidden",
-  },
-  progressFill: { height: 4, backgroundColor: colors.accent, borderRadius: 2 },
-  progressText: { color: colors.dim, fontSize: 11, marginTop: 3 },
+  cardMeta: { color: colors.dim, fontSize: 11, marginTop: 3 },
+  when: { color: colors.dim, fontSize: 10 },
 });

@@ -8,8 +8,9 @@ import { PrismaModule } from './prisma/prisma.module';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { CatalogModule } from './catalog/catalog.module';
+import { ResourcesModule } from './resources/resources.module';
 import { ContentModule } from './content/content.module';
-import { EnrollmentModule } from './enrollment/enrollment.module';
+import { LibraryModule } from './library/library.module';
 import { LegalModule } from './legal/legal.module';
 import { ReviewsModule } from './reviews/reviews.module';
 import { CollectionsModule } from './collections/collections.module';
@@ -32,8 +33,9 @@ import { TelegramIngestModule } from './telegram-ingest/telegram-ingest.module';
     AuthModule,
     UsersModule,
     CatalogModule,
+    ResourcesModule,
     ContentModule,
-    EnrollmentModule,
+    LibraryModule,
     LegalModule,
     ReviewsModule,
     CollectionsModule,

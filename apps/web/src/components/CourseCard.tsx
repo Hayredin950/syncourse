@@ -115,7 +115,7 @@ export function CourseCard({
         <div className="quick-actions">
           <button
             onClick={toggleSave}
-            title={saved ? "Remove from watchlist" : "Add to watchlist"}
+            title={saved ? "Remove from your library" : "Save for later"}
             className="quick-action"
             aria-label="Save"
           >
@@ -156,11 +156,6 @@ export function CourseCard({
         <span>·</span>
         <span>{formatDuration(course.durationMin)}</span>
       </div>
-      {course.progress !== undefined && (
-        <div style={{ height: 3, background: "#2c2924", marginTop: 8, borderRadius: 5 }}>
-          <div style={{ width: `${course.progress}%`, height: "100%", background: "hsl(var(--primary))", borderRadius: 5 }} />
-        </div>
-      )}
     </Link>
   );
 }
@@ -181,7 +176,7 @@ export function CourseRow({ course }: { course: CourseSummary }) {
           <Star size={11} fill="currentColor" className="rating" />
           <span className="rating">{course.ratingAvg.toFixed(1)}</span>
           <span className="text-dim">·</span>
-          <span>{compact(course.enrollmentCount)} students</span>
+          <span>{compact(course.downloadCount)} downloads</span>
           <span className="text-dim">·</span>
           <span>{formatDuration(course.durationMin)}</span>
         </div>

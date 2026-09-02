@@ -210,6 +210,89 @@ class AdminPaymentActionDto {
   status: 'approved' | 'rejected';
 }
 
+class AdminResourceMediaDto {
+  @IsOptional()
+  @IsString()
+  kind?: string;
+
+  @IsOptional()
+  @IsString()
+  url?: string;
+
+  @IsOptional()
+  @IsString()
+  fileName?: string;
+
+  @IsOptional()
+  @IsNumber()
+  fileSizeMb?: number;
+
+  @IsOptional()
+  @IsString()
+  caption?: string;
+}
+
+class AdminResourceDto {
+  @IsOptional()
+  @IsIn(['cheat-sheet', 'roadmap', 'note'])
+  type?: string;
+
+  @IsOptional()
+  @IsString()
+  title?: string;
+
+  @IsOptional()
+  @IsString()
+  summary?: string;
+
+  @IsOptional()
+  @IsString()
+  bodyMd?: string;
+
+  @IsOptional()
+  @IsString()
+  coverUrl?: string;
+
+  @IsOptional()
+  @IsString()
+  categoryName?: string;
+
+  @IsOptional()
+  @IsString()
+  lecturerName?: string;
+
+  @IsOptional()
+  @IsString()
+  organizationName?: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  tags?: string[];
+
+  @IsOptional()
+  @IsBoolean()
+  isPremium?: boolean;
+
+  @IsOptional()
+  @IsBoolean()
+  isFeatured?: boolean;
+
+  @IsOptional()
+  @IsString()
+  sourceUrl?: string;
+
+  @IsOptional()
+  @IsInt()
+  readMinutes?: number;
+
+  @IsOptional()
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => AdminResourceMediaDto)
+  media?: AdminResourceMediaDto[];
+}
+
 class AdminLegalDto {
   @IsOptional()
   @IsString()
@@ -432,6 +515,40 @@ export class AdminController {
   @Delete('categories/:id')
   removeCategory(@CurrentUser() user: AuthUser, @Param('id') id: string) {
     return this.admin.removeCategory(user.id, id);
+  }
+
+  // -----------------------------------------------------------------
+  // Resources — cheat-sheets, roadmaps, notes
+  // -----------------------------------------------------------------
+
+  @Get('resources')
+  listResources(@CurrentUser() user: AuthUser) {
+    return this.admin.listResources(user.id);
+  }
+
+  @Get('resources/:slug')
+  getResource(@CurrentUser() user: AuthUser, @Param('slug') slug: string) {
+    return this.admin.getResource(user.id, slug);
+  }
+
+  @Post('resources')
+  createResource(@CurrentUser() user: AuthUser, @Body() dto: AdminResourceDto) {
+    return this.admin.createResource(user.id, dto);
+  }
+
+  @Patch('resources/:slug')
+  updateResource(
+    @CurrentUser() user: AuthUser,
+    @Param('slug') slug: string,
+    @Body() dto: AdminResourceDto,
+  ) {
+    return this.admin.updateResource(user.id, slug, dto);
+  }
+
+  /** Soft delete, and the same call restores it. */
+  @Delete('resources/:slug')
+  removeResource(@CurrentUser() user: AuthUser, @Param('slug') slug: string) {
+    return this.admin.deleteResource(user.id, slug);
   }
 
   @Get('legal')

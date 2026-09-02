@@ -31,8 +31,6 @@ async function main() {
 
   // wipe (dev convenience)
   await prisma.$transaction([
-    prisma.lessonProgress.deleteMany(),
-    prisma.enrollment.deleteMany(),
     prisma.rating.deleteMany(),
     prisma.reviewUpvote.deleteMany(),
     prisma.notification.deleteMany(),
@@ -141,7 +139,7 @@ async function main() {
       lecturer: 'Derek Cheung',
       org: 'DevPack',
       level: 'Beginner',
-      rating: 4.5, votes: 730, enrolled: 12400,
+      rating: 4.5, votes: 730, downloads: 12400,
       originalPrice: 44.99, isPremium: false, featured: true,
       contentType: 'course',
       tags: ['n8n', 'LangChain', 'AI Automation', 'No-Code', 'ChatGPT', 'Workflow'],
@@ -155,7 +153,7 @@ async function main() {
       lecturer: 'Andrei Neagoie',
       org: 'Zero To Mastery',
       level: 'All Levels',
-      rating: 4.8, votes: 152000, enrolled: 890000,
+      rating: 4.8, votes: 152000, downloads: 890000,
       originalPrice: 94.99, isPremium: true, featured: true,
       contentType: 'course',
       tags: ['HTML', 'CSS', 'JavaScript', 'React', 'Node.js', 'Full-Stack'],
@@ -169,7 +167,7 @@ async function main() {
       lecturer: 'Daniel Bourke',
       org: 'Zero To Mastery',
       level: 'Beginner',
-      rating: 4.7, votes: 31000, enrolled: 120000,
+      rating: 4.7, votes: 31000, downloads: 120000,
       originalPrice: 64.99, isPremium: false, featured: false,
       contentType: 'course',
       tags: ['PyTorch', 'Machine Learning', 'Python', 'Neural Networks'],
@@ -183,7 +181,7 @@ async function main() {
       lecturer: 'Max Schwarzmüller',
       org: 'Academind',
       level: 'Intermediate',
-      rating: 4.6, votes: 98000, enrolled: 760000,
+      rating: 4.6, votes: 98000, downloads: 760000,
       originalPrice: 84.99, isPremium: true, featured: true,
       contentType: 'course',
       tags: ['React', 'Hooks', 'Redux', 'Next.js', 'JavaScript'],
@@ -197,7 +195,7 @@ async function main() {
       lecturer: 'Derek Cheung',
       org: 'DevPack',
       level: 'All Levels',
-      rating: 4.4, votes: 1900, enrolled: 8400,
+      rating: 4.4, votes: 1900, downloads: 8400,
       originalPrice: 19.99, isPremium: false, featured: false,
       contentType: 'roadmap',
       tags: ['Roadmap', 'AI', 'ML', 'Career'],
@@ -211,7 +209,7 @@ async function main() {
       lecturer: 'Derek Cheung',
       org: 'DevPack',
       level: 'All Levels',
-      rating: 4.6, votes: 2750, enrolled: 15000,
+      rating: 4.6, votes: 2750, downloads: 15000,
       originalPrice: 9.99, isPremium: false, featured: false,
       contentType: 'cheat-sheet',
       tags: ['Algorithms', 'Cheat-Sheet', 'AI', 'Reference'],
@@ -225,7 +223,7 @@ async function main() {
       lecturer: 'Max Schwarzmüller',
       org: 'Academind',
       level: 'Intermediate',
-      rating: 4.7, votes: 42000, enrolled: 210000,
+      rating: 4.7, votes: 42000, downloads: 210000,
       originalPrice: 74.99, isPremium: true, featured: false,
       contentType: 'course',
       tags: ['Docker', 'Kubernetes', 'DevOps', 'Cloud'],
@@ -239,7 +237,7 @@ async function main() {
       lecturer: 'Max Schwarzmüller',
       org: 'Academind',
       level: 'Beginner',
-      rating: 4.6, votes: 38000, enrolled: 190000,
+      rating: 4.6, votes: 38000, downloads: 190000,
       originalPrice: 89.99, isPremium: false, featured: false,
       contentType: 'course',
       tags: ['Flutter', 'Dart', 'Mobile', 'iOS', 'Android'],
@@ -273,8 +271,7 @@ async function main() {
         prerequisites: d.prereq,
         ratingAvg: d.rating,
         ratingCount: d.votes,
-        enrollmentCount: d.enrolled,
-        downloadCount: d.enrolled * 7,
+        downloadCount: d.downloads,
         publishedAt: new Date(Date.now() - i * 5 * 24 * 60 * 60 * 1000),
       },
     });
@@ -379,20 +376,7 @@ async function main() {
     data: { name: 'Selam Test', username: 'selam_test', email: 'selam@syncourse.app', passwordHash: demoPassword, isVerified: true },
   });
 
-  // enrollments + progress + ratings + reviews + downloads
-  const enroll = await prisma.enrollment.create({
-    data: { userId: demo.id, courseId: courseIds[0], progressPct: 60, status: 'in_progress' },
-  });
-  const completedEnroll = await prisma.enrollment.create({
-    data: { userId: demo.id, courseId: courseIds[5], progressPct: 100, status: 'completed' },
-  });
-  await prisma.lessonProgress.createMany({
-    data: [
-      { enrollmentId: enroll.id, lessonId: (await firstLessons(courseIds[0]))[0], completed: true, completedAt: new Date() },
-      { enrollmentId: enroll.id, lessonId: (await firstLessons(courseIds[0]))[1], completed: true, completedAt: new Date() },
-      { enrollmentId: completedEnroll.id, lessonId: (await firstLessons(courseIds[5]))[0], completed: true, completedAt: new Date() },
-    ],
-  });
+  // library + ratings + reviews + downloads
   await prisma.savedCourse.create({ data: { userId: demo.id, courseId: courseIds[2] } });
   await prisma.likedCourse.create({ data: { userId: demo.id, courseId: courseIds[1] } });
 

@@ -28,7 +28,7 @@ Expo Router file-based navigation — 5-tab bottom nav + stack screens:
 | Screen | Route | Notes |
 |---|---|---|
 | Home | `(tabs)/index` | Trending / Latest / Top rated rails + Best-of + Featured paths |
-| Browse | `(tabs)/browse` | Sortable course list (top-rated / most-enrolled / A–Z) |
+| Browse | `(tabs)/browse` | Sortable course list (top-rated / most-downloaded / A–Z) |
 | Search | `(tabs)/search` | Live search + "Everyone is searching" trending chips |
 | Learning | `(tabs)/learning` | In progress / Completed / Wishlist / Liked with progress bars |
 | Me | `(tabs)/me` | Stat grid, premium badge, lists / subscription / circles, sign out |

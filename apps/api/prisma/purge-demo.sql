@@ -179,9 +179,9 @@ DELETE FROM purge_user WHERE id IN (SELECT id FROM kept_user);
 \echo ''
 \echo '=== courses to delete ==='
 SELECT slug, matched_by, was_soft_deleted AS soft_deleted,
-       (SELECT count(*) FROM "Lesson"     l WHERE l."courseId" = p.id) AS lessons,
-       (SELECT count(*) FROM "Enrollment" e WHERE e."courseId" = p.id) AS enrolments,
-       (SELECT count(*) FROM "Review"     r WHERE r."courseId" = p.id) AS reviews
+       (SELECT count(*) FROM "Lesson"        l WHERE l."courseId" = p.id) AS lessons,
+       (SELECT count(*) FROM "DownloadEvent" d WHERE d."courseId" = p.id) AS downloads,
+       (SELECT count(*) FROM "Review"        r WHERE r."courseId" = p.id) AS reviews
 FROM purge_course p
 ORDER BY matched_by, slug;
 
@@ -203,9 +203,9 @@ ORDER BY c."createdAt";
 \echo ''
 \echo '=== accounts to delete ==='
 SELECT email,
-       (SELECT count(*) FROM "Enrollment" e WHERE e."userId" = u.id) AS enrolments,
-       (SELECT count(*) FROM "Review"     r WHERE r."userId" = u.id) AS reviews,
-       (SELECT count(*) FROM "Session"    s WHERE s."userId" = u.id) AS sessions
+       (SELECT count(*) FROM "DownloadEvent" d WHERE d."userId" = u.id) AS downloads,
+       (SELECT count(*) FROM "Review"        r WHERE r."userId" = u.id) AS reviews,
+       (SELECT count(*) FROM "Session"       s WHERE s."userId" = u.id) AS sessions
 FROM purge_user u
 ORDER BY email;
 
@@ -215,8 +215,8 @@ SELECT u.email,
        u."isStaff"        AS staff,
        u."isVerified"     AS verified,
        u."createdAt"::date AS created,
-       (SELECT count(*) FROM "Subscription" s WHERE s."userId" = u.id) AS subscriptions,
-       (SELECT count(*) FROM "Enrollment"   e WHERE e."userId" = u.id) AS enrolments
+       (SELECT count(*) FROM "Subscription"  s WHERE s."userId" = u.id) AS subscriptions,
+       (SELECT count(*) FROM "DownloadEvent" d WHERE d."userId" = u.id) AS downloads
 FROM "User" u
 WHERE u.id NOT IN (SELECT id FROM purge_user)
 ORDER BY u."isStaff" DESC, u."createdAt";
@@ -256,10 +256,8 @@ INSERT INTO purge_log (step, rows)
 SELECT 'Section (cascade)',        count(*) FROM "Section"     WHERE "courseId" IN (SELECT id FROM purge_course)
 UNION ALL SELECT 'Lesson (cascade)',         count(*) FROM "Lesson"      WHERE "courseId" IN (SELECT id FROM purge_course)
 UNION ALL SELECT 'LessonFile (cascade)',     count(*) FROM "LessonFile"  WHERE "lessonId" IN (SELECT id FROM "Lesson" WHERE "courseId" IN (SELECT id FROM purge_course))
-UNION ALL SELECT 'LessonProgress (cascade)', count(*) FROM "LessonProgress" WHERE "lessonId" IN (SELECT id FROM "Lesson" WHERE "courseId" IN (SELECT id FROM purge_course))
 UNION ALL SELECT 'Note (cascade)',           count(*) FROM "Note"        WHERE "courseId" IN (SELECT id FROM purge_course)
 UNION ALL SELECT 'Attachment (cascade)',     count(*) FROM "Attachment"  WHERE "courseId" IN (SELECT id FROM purge_course)
-UNION ALL SELECT 'Enrollment (cascade)',     count(*) FROM "Enrollment"  WHERE "courseId" IN (SELECT id FROM purge_course) OR "userId" IN (SELECT id FROM purge_user)
 UNION ALL SELECT 'Review (cascade)',         count(*) FROM "Review"      WHERE "courseId" IN (SELECT id FROM purge_course) OR "userId" IN (SELECT id FROM purge_user)
 UNION ALL SELECT 'Rating (cascade)',         count(*) FROM "Rating"      WHERE "courseId" IN (SELECT id FROM purge_course) OR "userId" IN (SELECT id FROM purge_user)
 UNION ALL SELECT 'SavedCourse (cascade)',    count(*) FROM "SavedCourse" WHERE "courseId" IN (SELECT id FROM purge_course) OR "userId" IN (SELECT id FROM purge_user)
@@ -386,7 +384,7 @@ UNION ALL SELECT 'Category',      count(*) FROM "Category"
 UNION ALL SELECT 'Level',         count(*) FROM "Level"
 UNION ALL SELECT 'LearningPath',  count(*) FROM "LearningPath"
 UNION ALL SELECT 'Review',        count(*) FROM "Review"
-UNION ALL SELECT 'Enrollment',    count(*) FROM "Enrollment"
+UNION ALL SELECT 'DownloadEvent', count(*) FROM "DownloadEvent"
 UNION ALL SELECT 'Subscription',  count(*) FROM "Subscription"
 UNION ALL SELECT 'LegalDocument', count(*) FROM "LegalDocument"
 UNION ALL SELECT 'AppVersion',    count(*) FROM "AppVersion"
