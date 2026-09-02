@@ -1,36 +1,45 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useToast } from "@/lib/useToast";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ListPlus, Plus, X } from "lucide-react";
-import { get, post } from "@/lib/api";
+import { ListPlus, Pencil, Plus, Trash2, X } from "lucide-react";
+import { del, get, post } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { formatDate } from "@/lib/format";
 import { MobileHeader } from "@/components/Nav";
+import { EditListSheet } from "@/components/EditListSheet";
 import type { CollectionSummary } from "@/lib/types";
 
 export default function ListsPage() {
   const router = useRouter();
-  const { token } = useAuth();
+  const { token, user } = useAuth();
   const [lists, setLists] = useState<CollectionSummary[]>([]);
   const [myLists, setMyLists] = useState<CollectionSummary[]>([]);
   const [q, setQ] = useState("");
   const [sort, setSort] = useState("top");
   const [showCreate, setShowCreate] = useState(false);
+  const [editing, setEditing] = useState<CollectionSummary | null>(null);
+  const [busy, setBusy] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [visibility, setVisibility] = useState<"private" | "public">("private");
   const { toast, setToast } = useToast();
 
-  useEffect(() => {
-    get<{ results: CollectionSummary[] }>(`/lists?sort=${sort}&q=${encodeURIComponent(q)}`).then((d) => setLists(d.results)).catch(() => {});
+  const loadPublic = useCallback(() => {
+    get<{ results: CollectionSummary[] }>(`/lists?sort=${sort}&q=${encodeURIComponent(q)}`)
+      .then((d) => setLists(d.results))
+      .catch(() => {});
   }, [q, sort]);
 
-  useEffect(() => {
+  const loadMine = useCallback(() => {
     if (token) get<CollectionSummary[]>("/me/lists").then(setMyLists).catch(() => {});
-  }, [token, showCreate]);
+    else setMyLists([]);
+  }, [token]);
+
+  useEffect(loadPublic, [loadPublic]);
+  useEffect(loadMine, [loadMine, showCreate]);
 
   const createList = async () => {
     if (!token) {
@@ -45,11 +54,31 @@ export default function ListsPage() {
       setDescription("");
       // Straight into the new list: a name and a description on their own are an
       // empty shelf, and the picker that fills it lives on the detail page.
-      router.push(`/lists/${created.id}`);
+      router.push(`/lists/detail?id=${created.id}`);
     } catch (e) {
       setToast((e as Error).message);
     }
   };
+
+  /** Deleting from the index, so a list you regret never has to be opened first. */
+  const destroy = async (l: CollectionSummary) => {
+    if (!confirm(`Delete “${l.name}”? The courses in it stay in the catalogue.`)) return;
+    setBusy(l.id);
+    try {
+      await del(`/lists/${l.id}`);
+      setLists((prev) => prev.filter((x) => x.id !== l.id));
+      setMyLists((prev) => prev.filter((x) => x.id !== l.id));
+      setToast(`Deleted “${l.name}”`);
+    } catch (e) {
+      setToast((e as Error).message);
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  // The public rows carry a username rather than an ownership flag, so this is
+  // how the index knows which cards are yours to change.
+  const mine = (l: CollectionSummary) => !!user?.username && l.ownerUsername === user.username;
 
   return (
     <main className="page">
@@ -86,13 +115,37 @@ export default function ListsPage() {
           <div className="section-head"><h2>My lists</h2></div>
           <div className="dark-panel" style={{ padding: 12 }}>
             {myLists.map((l) => (
-              <Link key={l.id} href={`/lists/${l.id}`} className="lesson">
-                <ListPlus size={16} className="rating" />
-                <span>{l.name}</span>
-                <span className="muted" style={{ marginLeft: "auto" }}>
-                  {l.visibility} · {l.itemCount} {l.itemCount === 1 ? "course" : "courses"} · edited {formatDate(l.updatedAt)}
-                </span>
-              </Link>
+              <div key={l.id} className="lesson">
+                <Link
+                  href={`/lists/detail?id=${l.id}`}
+                  style={{ display: "flex", alignItems: "center", gap: 12, flex: 1, minWidth: 0, color: "inherit" }}
+                >
+                  <ListPlus size={16} className="rating" />
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{l.name}</span>
+                  <span className="muted" style={{ marginLeft: "auto", whiteSpace: "nowrap" }}>
+                    {l.visibility} · {l.itemCount} {l.itemCount === 1 ? "course" : "courses"} · edited {formatDate(l.updatedAt)}
+                  </span>
+                </Link>
+                <button
+                  className="icon-btn"
+                  style={{ padding: "6px 8px" }}
+                  title="Rename or change visibility"
+                  aria-label={`Edit ${l.name}`}
+                  onClick={() => setEditing(l)}
+                >
+                  <Pencil size={13} />
+                </button>
+                <button
+                  className="icon-btn"
+                  style={{ padding: "6px 8px" }}
+                  title="Delete list"
+                  aria-label={`Delete ${l.name}`}
+                  disabled={busy === l.id}
+                  onClick={() => destroy(l)}
+                >
+                  <Trash2 size={13} />
+                </button>
+              </div>
             ))}
           </div>
         </section>
@@ -117,23 +170,66 @@ export default function ListsPage() {
       ) : (
         <div className="grid" style={{ marginTop: 28, gridTemplateColumns: "repeat(3, minmax(0,1fr))" }}>
           {lists.map((l) => (
-            <Link key={l.id} href={`/lists/${l.id}`} className="dark-panel" style={{ padding: 16, display: "block" }}>
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 4, height: 100 }}>
-                {l.covers.slice(0, 3).map((c, i) => (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img key={i} src={c} alt="" className="h-full w-full rounded-md object-cover" loading="lazy" />
-                ))}
-                {l.covers.length === 0 && [0, 1, 2].map((i) => <div key={i} style={{ borderRadius: 5, background: "linear-gradient(135deg, hsl(32 42% 18%), hsl(20 50% 9%))" }} />)}
-              </div>
-              <h3 style={{ margin: "16px 0 7px", fontSize: 14 }}>{l.name}</h3>
-              {l.description && <p className="muted" style={{ fontSize: 11 }}>{l.description}</p>}
-              <div className="card-meta">
-                <span>by {l.ownerName ?? "—"}</span>
-                <span style={{ marginLeft: "auto" }}>{l.itemCount} courses · {l.savesCount} saves</span>
-              </div>
-            </Link>
+            <div key={l.id} style={{ position: "relative" }}>
+              <Link href={`/lists/detail?id=${l.id}`} className="dark-panel" style={{ padding: 16, display: "block" }}>
+                <div style={{ display: "grid", gridTemplateColumns: "repeat(3,1fr)", gap: 4, height: 100 }}>
+                  {l.covers.slice(0, 3).map((c, i) => (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img key={i} src={c} alt="" className="h-full w-full rounded-md object-cover" loading="lazy" />
+                  ))}
+                  {l.covers.length === 0 && [0, 1, 2].map((i) => <div key={i} style={{ borderRadius: 5, background: "linear-gradient(135deg, hsl(32 42% 18%), hsl(20 50% 9%))" }} />)}
+                </div>
+                <h3 style={{ margin: "16px 0 7px", fontSize: 14 }}>{l.name}</h3>
+                {l.description && <p className="muted" style={{ fontSize: 11 }}>{l.description}</p>}
+                <div className="card-meta">
+                  <span>by {l.ownerName ?? "—"}</span>
+                  <span style={{ marginLeft: "auto" }}>{l.itemCount} courses · {l.savesCount} saves</span>
+                </div>
+              </Link>
+              {/* Sits outside the <Link>: a button nested in an anchor is invalid
+                  markup, and every click would navigate before it fired. */}
+              {mine(l) && (
+                <div style={{ position: "absolute", top: 24, right: 24, display: "flex", gap: 6 }}>
+                  <button
+                    className="icon-btn"
+                    style={{ padding: "6px 8px", background: "#0f0e0bdd" }}
+                    title="Rename or change visibility"
+                    aria-label={`Edit ${l.name}`}
+                    onClick={() => setEditing(l)}
+                  >
+                    <Pencil size={13} />
+                  </button>
+                  <button
+                    className="icon-btn"
+                    style={{ padding: "6px 8px", background: "#0f0e0bdd" }}
+                    title="Delete list"
+                    aria-label={`Delete ${l.name}`}
+                    disabled={busy === l.id}
+                    onClick={() => destroy(l)}
+                  >
+                    <Trash2 size={13} />
+                  </button>
+                </div>
+              )}
+            </div>
           ))}
         </div>
+      )}
+
+      {editing && (
+        <EditListSheet
+          list={editing}
+          onClose={() => setEditing(null)}
+          onSaved={() => {
+            setEditing(null);
+            setToast("List updated");
+            // Reload rather than patch in place: a rename changes the sort order
+            // and flipping to private removes the card from the public grid.
+            loadMine();
+            loadPublic();
+          }}
+          onError={setToast}
+        />
       )}
 
       {showCreate && (
