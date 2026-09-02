@@ -26,6 +26,7 @@ export default function CirclesPage() {
   const { toast, setToast } = useToast();
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [busyId, setBusyId] = useState<string | null>(null);
   const [newName, setNewName] = useState("");
   const [newDesc, setNewDesc] = useState("");
 
@@ -52,7 +53,13 @@ export default function CirclesPage() {
     let live = true;
     get<CircleDetail>(`/circles/${openId}`)
       .then((c) => live && setSelected(c))
-      .catch(() => live && setSelected(null));
+      .catch(() => {
+        if (!live) return;
+        setSelected(null);
+        // Nothing to edit if the detail never arrived; leaving the flag set would
+        // pop the sheet open on the next circle opened.
+        setEditing(false);
+      });
     return () => {
       live = false;
     };
@@ -101,18 +108,34 @@ export default function CirclesPage() {
     }
   };
 
-  const destroyCircle = async () => {
-    if (!selected) return;
-    if (!confirm(`Delete “${selected.name}”? Its wall and membership go with it.`)) return;
+  /**
+   * Takes the circle rather than reading `selected`, because the sidebar deletes
+   * circles that are not the one on screen — and a circle you regret starting
+   * should not have to be opened first.
+   */
+  const destroyCircle = async (c: { id: string; name: string }) => {
+    if (!confirm(`Delete “${c.name}”? Its wall and membership go with it.`)) return;
+    setBusyId(c.id);
     try {
-      await del(`/circles/${selected.id}`);
-      setSelected(null);
-      setOpenId(null);
-      loadCircles();
+      await del(`/circles/${c.id}`);
+      if (openId === c.id) {
+        setSelected(null);
+        setOpenId(null);
+      }
+      setCircles((prev) => prev.filter((x) => x.id !== c.id));
       flash("Circle deleted");
     } catch (e) {
       flash((e as Error).message);
+    } finally {
+      setBusyId(null);
     }
+  };
+
+  /** Sidebar Edit: open the circle, then let the sheet appear once detail lands. */
+  const editCircle = (id: string) => {
+    setPane("circle");
+    setOpenId(id);
+    setEditing(true);
   };
 
   const filtered = circles.filter(
@@ -149,20 +172,50 @@ export default function CirclesPage() {
           </button>
           <div className="circle-list">
             {filtered.map((c) => (
-              <button
-                key={c.id}
-                className={`circle-item ${pane === "circle" && openId === c.id ? "active" : ""}`}
-                onClick={() => openCircle(c.id)}
-              >
-                <span className="icon-badge icon-badge--amber"><Users size={14} /></span>
-                <span style={{ flex: 1, textAlign: "left", minWidth: 0 }}>
-                  <strong style={{ display: "block", fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.name}</strong>
-                  <small className="muted">
-                    {compact(c.memberCount)} members · {compact(c.postCount)} posts
-                  </small>
-                </span>
-                {c.joined && <span className="rating" style={{ fontSize: 10 }}>✓</span>}
-              </button>
+              // The row is a button, so the owner controls sit beside it rather
+              // than inside it — nested buttons never receive their own clicks.
+              <div key={c.id} className={`circle-row ${c.isOwner ? "circle-row--own" : ""}`}>
+                <button
+                  className={`circle-item ${pane === "circle" && openId === c.id ? "active" : ""}`}
+                  onClick={() => openCircle(c.id)}
+                >
+                  <span className="icon-badge icon-badge--amber"><Users size={14} /></span>
+                  <span style={{ flex: 1, textAlign: "left", minWidth: 0 }}>
+                    <strong style={{ display: "block", fontSize: 12, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{c.name}</strong>
+                    <small className="muted">
+                      {compact(c.memberCount)} members · {compact(c.postCount)} posts
+                    </small>
+                  </span>
+                  {c.isOwner ? (
+                    <span className="muted" style={{ fontSize: 9, letterSpacing: ".06em" }}>YOURS</span>
+                  ) : (
+                    c.joined && <span className="rating" style={{ fontSize: 10 }}>✓</span>
+                  )}
+                </button>
+                {c.isOwner && (
+                  <span className="circle-row__actions">
+                    <button
+                      className="icon-btn"
+                      style={{ padding: "5px 6px" }}
+                      onClick={() => editCircle(c.id)}
+                      aria-label={`Edit ${c.name}`}
+                      title="Rename this circle"
+                    >
+                      <Pencil size={12} />
+                    </button>
+                    <button
+                      className="icon-btn"
+                      style={{ padding: "5px 6px" }}
+                      onClick={() => destroyCircle(c)}
+                      disabled={busyId === c.id}
+                      aria-label={`Delete ${c.name}`}
+                      title="Delete this circle"
+                    >
+                      {busyId === c.id ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
+                    </button>
+                  </span>
+                )}
+              </div>
             ))}
             {filtered.length === 0 && (
               <p className="muted" style={{ fontSize: 11, padding: "10px 4px" }}>
@@ -183,7 +236,7 @@ export default function CirclesPage() {
               signedIn={!!token}
               onToggleJoin={() => toggleJoin(selected)}
               onEdit={() => setEditing(true)}
-              onDestroy={destroyCircle}
+              onDestroy={() => destroyCircle(selected)}
               onChanged={(next) => {
                 setSelected(next);
                 loadCircles();
@@ -223,7 +276,7 @@ export default function CirclesPage() {
         </div>
       )}
 
-      {editing && selected && (
+      {editing && selected && selected.id === openId && (
         <EditCircleSheet
           circle={selected}
           onClose={() => setEditing(false)}
