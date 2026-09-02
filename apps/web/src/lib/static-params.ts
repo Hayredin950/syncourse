@@ -5,6 +5,15 @@
  * real slug must exist as an exported file. These helpers fetch the live
  * slugs from the API at build time and fall back to a placeholder so the
  * build never fails when the API is unreachable.
+ *
+ * The placeholder is not optional, and not only for the unreachable case:
+ * with `output: export` Next fails the build outright on an empty
+ * `generateStaticParams()` ("at least one route must be generated"). So an
+ * empty catalogue still has to export something. The cost is that
+ * `/courses/course`, `/organizations/organization`, `/paths/path` and friends
+ * answer 200 with the client-side empty state instead of a 404 — visible only
+ * while a section has no rows, and cheaper than the alternative of failing
+ * every build the moment a table is empty.
  */
 const API = process.env.NEXT_PUBLIC_API_URL || "http://localhost:4000";
 
