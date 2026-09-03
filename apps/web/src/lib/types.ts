@@ -323,6 +323,7 @@ export interface CollectionSummary {
   itemCount: number;
   ownerName: string | null;
   ownerUsername: string | null;
+  ownerAvatarUrl?: string | null;
   createdAt: string;
   updatedAt: string;
   covers: string[];
@@ -337,6 +338,18 @@ export interface CollectionItemRow {
   ratingCount: number;
   level: string;
   addedAt: string;
+  /**
+   * The rest of what a course card prints. Optional because the API that serves
+   * them deploys separately from this build — a card missing a duration reads
+   * as a card, one missing `title` would not.
+   */
+  description?: string;
+  durationMin?: number;
+  lessonCount?: number;
+  downloadCount?: number;
+  isPremium?: boolean;
+  contentType?: string;
+  lecturerNames?: string[];
 }
 
 export interface CollectionDetail {
@@ -348,6 +361,7 @@ export interface CollectionDetail {
   itemCount: number;
   ownerName: string;
   ownerUsername: string;
+  ownerAvatarUrl?: string | null;
   isOwner: boolean;
   saved: boolean;
   createdAt: string;

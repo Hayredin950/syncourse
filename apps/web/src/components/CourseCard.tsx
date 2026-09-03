@@ -83,6 +83,12 @@ export function CourseCard({
   const { token } = useAuth();
   const [saved, setSaved] = useState(false);
 
+  // Only the facts this course actually has. Level is always known; a runtime
+  // usually is not, and printing the separator anyway left every card reading
+  // "All Levels · —". Joined here rather than emitted as sibling spans so there
+  // is no separator without something on both sides of it.
+  const facts = [course.level, formatDuration(course.durationMin)].filter(Boolean);
+
   const toggleSave = (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
@@ -149,18 +155,25 @@ export function CourseCard({
       </div>
       <div className="card-title">{course.title}</div>
       <div className="card-meta">
-        <span className="rating">
-          <Star size={10} fill="currentColor" /> {course.ratingAvg.toFixed(1)}
-        </span>
-        <span>{course.level}</span>
-        <span>·</span>
-        <span>{formatDuration(course.durationMin)}</span>
+        {/* An unrated course scored 0.0 out of five, which is worse than saying
+            nothing: it reads as a verdict rather than as a course nobody has
+            reviewed yet. */}
+        {course.ratingCount > 0 && (
+          <span className="rating">
+            <Star size={10} fill="currentColor" /> {course.ratingAvg.toFixed(1)}
+          </span>
+        )}
+        {facts.length > 0 && <span>{facts.join(" · ")}</span>}
       </div>
     </Link>
   );
 }
 
 export function CourseRow({ course }: { course: CourseSummary }) {
+  const facts = [
+    `${compact(course.downloadCount)} downloads`,
+    formatDuration(course.durationMin),
+  ].filter(Boolean);
   return (
     <Link
       href={`/courses/${course.slug}`}
@@ -173,12 +186,14 @@ export function CourseRow({ course }: { course: CourseSummary }) {
         <div className="line-clamp-1 text-sm font-medium text-text">{course.title}</div>
         <div className="line-clamp-1 text-xs text-muted">{course.description}</div>
         <div className="mt-1 flex items-center gap-1.5 text-[11px]">
-          <Star size={11} fill="currentColor" className="rating" />
-          <span className="rating">{course.ratingAvg.toFixed(1)}</span>
-          <span className="text-dim">·</span>
-          <span>{compact(course.downloadCount)} downloads</span>
-          <span className="text-dim">·</span>
-          <span>{formatDuration(course.durationMin)}</span>
+          {course.ratingCount > 0 && (
+            <>
+              <Star size={11} fill="currentColor" className="rating" />
+              <span className="rating">{course.ratingAvg.toFixed(1)}</span>
+              <span className="text-dim">·</span>
+            </>
+          )}
+          <span>{facts.join(" · ")}</span>
         </div>
       </div>
       <Play size={14} className="text-dim" />

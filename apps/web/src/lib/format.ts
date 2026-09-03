@@ -1,5 +1,14 @@
+/**
+ * A runtime, or nothing at all.
+ *
+ * Returns `""` rather than an em dash for an unknown duration. Courses here are
+ * delivered through Telegram, so most have no lesson runtimes to add up — and a
+ * dash is not the absence of a fact, it is a fact-shaped placeholder that leaves
+ * its separator dangling behind it ("All Levels · —"). Callers drop the empty
+ * string from their meta line instead.
+ */
 export function formatDuration(min: number): string {
-  if (!min) return "—";
+  if (!min) return "";
   if (min < 60) return `${min}m`;
   const h = Math.floor(min / 60);
   const m = Math.round(min % 60);

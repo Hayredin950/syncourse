@@ -27,6 +27,9 @@ export type EntityCourse = {
 /** 5-star visual + numeric score + vote count (phonofilm title-row pattern) */
 export function Stars({ value, votes }: { value: number; votes: number }) {
   const full = Math.round(value);
+  // Nobody has rated it yet — five empty stars and "0.0 · 0 votes" reads as a
+  // course that was reviewed and failed.
+  if (!votes) return <span className="muted" style={{ fontSize: 11 }}>Not yet rated</span>;
   return (
     <span className="title-stars" style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
       <span style={{ letterSpacing: 1, color: "hsl(var(--primary))", fontSize: 11 }}>
@@ -82,7 +85,7 @@ export function TitleRow({ course, index }: { course: EntityCourse; index: numbe
         <div className="title-row__title">{course.title}</div>
         <div className="title-row__meta">
           {year && <span>{year}</span>}
-          <span>{formatDuration(course.durationMin)}</span>
+          {course.durationMin > 0 && <span>{formatDuration(course.durationMin)}</span>}
           <span className="badge" style={{ fontSize: 9 }}>{typeLabel}</span>
           <span className="muted">{course.level}</span>
         </div>

@@ -73,8 +73,12 @@ export default function PathDetailPage() {
           <h1 className="display" style={{ fontSize: 38 }}>{path.title}</h1>
           {path.description && <p>{path.description}</p>}
           <div className="detail-meta">
-            <span><Star size={13} fill="currentColor" className="rating" /> {path.ratingAvg.toFixed(1)} avg</span>
-            <span>{path.totalVotes.toLocaleString()} votes</span>
+            {path.totalVotes > 0 && (
+              <>
+                <span><Star size={13} fill="currentColor" className="rating" /> {path.ratingAvg.toFixed(1)} avg</span>
+                <span>{path.totalVotes.toLocaleString()} votes</span>
+              </>
+            )}
             <span>{path.courseCount} courses</span>
           </div>
         </div>

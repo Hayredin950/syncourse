@@ -93,7 +93,12 @@ export default function MyLibraryPage() {
               <span>{c.title.charAt(0).toUpperCase()}</span>
               <span style={{ flex: 1 }}>{c.title}</span>
               <span className="muted" style={{ marginRight: 12 }}>
-                <Star size={11} fill="currentColor" className="rating" style={{ display: "inline", verticalAlign: "middle" }} /> {c.ratingAvg.toFixed(1)} · {c.level}
+                {c.ratingCount > 0 && (
+                  <>
+                    <Star size={11} fill="currentColor" className="rating" style={{ display: "inline", verticalAlign: "middle" }} /> {c.ratingAvg.toFixed(1)} ·{" "}
+                  </>
+                )}
+                {c.level}
               </span>
               {when(c) && (
                 <span className="muted mono" style={{ fontSize: 9 }}>

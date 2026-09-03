@@ -120,7 +120,11 @@ export function CoursePickerSheet({
                   <span style={{ flex: 1, minWidth: 0 }}>
                     <strong style={{ display: "block", fontSize: 12 }}>{c.title}</strong>
                     <small className="muted">
-                      {owned ? "already in this list" : `★ ${c.ratingAvg.toFixed(1)} · ${c.level}`}
+                      {owned
+                        ? "already in this list"
+                        : c.ratingCount > 0
+                          ? `★ ${c.ratingAvg.toFixed(1)} · ${c.level}`
+                          : c.level}
                     </small>
                   </span>
                 </button>

@@ -1003,6 +1003,103 @@ h1, h2, h3, .display, .card-title, .res-card__title, .home-res__leadtitle { over
 .path-card__bar { margin-top: 14px; height: 3px; background: rgba(255,255,255,.16); }
 .path-card__bar i { display: block; height: 100%; background: hsl(var(--primary)); }
 
+/* ============ one collection: /lists/detail?id= ============
+   A collection is a shelf somebody built, so it opens like one: the covers it
+   holds are the artwork, fanned out behind the title rather than illustrated
+   with a stock banner. The page was written in Tailwind utilities while the
+   rest of the site is this stylesheet — and unlayered CSS outranks any
+   `@layer utilities` rule, so its `text-lg`, `p-4` and `mt-1` were silently
+   losing to the global h1/p rules. Hence real class names for all of it. */
+.col-hero { position: relative; margin-top: 14px; border: 1px solid hsl(var(--border)); border-radius: 22px; overflow: hidden; background: linear-gradient(180deg, hsl(30 9% 12%), #100f0d 78%); }
+.col-hero__art { position: absolute; inset: 0; display: flex; gap: 2px; opacity: .34; }
+.col-hero__art img { flex: 1 1 0; min-width: 0; height: 100%; object-fit: cover; }
+/* The scrim is what makes text on top of four arbitrary covers readable: opaque
+   at the left where the copy sits, clear at the right where the art should show. */
+.col-hero__scrim { position: absolute; inset: 0; background: linear-gradient(90deg, rgba(9,8,7,.97) 0%, rgba(9,8,7,.9) 38%, rgba(9,8,7,.55) 74%, rgba(9,8,7,.42) 100%), radial-gradient(120% 150% at 2% 0%, rgba(246,164,55,.14), transparent 52%); }
+.col-hero__body { position: relative; z-index: 1; padding: 34px 34px 30px; max-width: 760px; }
+.col-hero__title { font-size: clamp(30px, 4.4vw, 54px); margin: 9px 0 0; }
+.col-hero__desc { margin: 12px 0 0; max-width: 62ch; font-size: 13.5px; line-height: 1.65; color: #c9c0b5; }
+.col-hero__meta { display: flex; align-items: center; flex-wrap: wrap; gap: 9px; margin: 18px 0 0; }
+.col-chip { display: inline-flex; align-items: center; gap: 6px; padding: 6px 11px; border-radius: 999px; border: 1px solid rgba(255,255,255,.1); background: rgba(255,255,255,.05); color: #cfc6bb; font-size: 11px; }
+.col-chip svg { flex: none; color: hsl(var(--primary)); }
+.col-chip--owner { padding-left: 5px; }
+.col-chip__avatar { width: 21px; height: 21px; border-radius: 50%; display: grid; place-items: center; overflow: hidden; background: linear-gradient(135deg, #f5a331, #7b3e1c); color: #1b110a; font-size: 10px; font-weight: 800; flex: none; }
+.col-chip__avatar img { width: 100%; height: 100%; object-fit: cover; }
+.col-hero__actions { display: flex; flex-wrap: wrap; gap: 9px; margin: 20px 0 0; }
+
+/* The courses. A fixed six-column track leaves 20px slivers on a tablet and
+   stretches a three-course collection into three billboards, so the shelf sizes
+   its own columns and simply fits as many posters as the width allows. The
+   wrapper exists to hang a remove control off a card that is otherwise one big
+   link — a <button> inside an <a> is invalid markup and navigates on click. */
+.col-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(148px, 1fr)); gap: 24px 13px; margin-top: 2px; }
+.col-item { position: relative; min-width: 0; }
+.col-item__remove { position: absolute; top: 7px; right: 7px; z-index: 4; width: 27px; height: 27px; display: grid; place-items: center; border: 1px solid rgba(255,255,255,.22); border-radius: 50%; background: rgba(8,7,6,.72); backdrop-filter: blur(4px); color: #fff; opacity: 0; transition: opacity .15s ease, background .15s ease; }
+.col-item:hover .col-item__remove, .col-item__remove:focus-visible { opacity: 1; }
+.col-item__remove:hover { background: hsl(var(--destructive)); border-color: hsl(var(--destructive)); }
+
+/* ============ collections on the home page ============
+   Community shelves, not another poster rail: each card has to say who built it
+   and what is inside, so the covers are stacked as a spine strip and the curator
+   is named on the card. */
+.home-col { margin-top: 46px; padding: 24px 24px 26px; border: 1px solid hsl(var(--border)); border-radius: 22px; background: radial-gradient(120% 150% at 97% -20%, rgba(246,164,55,.1), transparent 46%), linear-gradient(180deg, hsl(30 8% 11%), #100f0d); }
+.home-col__head { display: flex; align-items: flex-end; justify-content: space-between; gap: 20px; flex-wrap: wrap; }
+.home-col__title { margin: 9px 0 0; font-size: 25px; font-weight: 800; letter-spacing: -.035em; }
+.home-col__lede { margin: 9px 0 0; max-width: 62ch; font-size: 12.5px; line-height: 1.65; }
+/* A rail, not a fixed grid: the site is young enough that this band will often
+   hold one or two shelves, and a four-column grid renders those as two cards
+   with half a panel of dead space beside them. Flex basis + max-width keeps a
+   lone card card-sized, fills the row exactly at any count, and scrolls once
+   there are more than fit. */
+.home-col__grid { display: flex; align-items: stretch; gap: 14px; margin-top: 20px; overflow-x: auto; scrollbar-width: none; padding-bottom: 4px; }
+.home-col__grid::-webkit-scrollbar { display: none; }
+.home-col__grid > * { flex: 1 0 218px; max-width: 300px; min-width: 0; }
+.col-card { display: flex; flex-direction: column; border: 1px solid hsl(var(--border)); border-radius: 18px; overflow: hidden; background: linear-gradient(180deg, hsl(30 9% 12.5%), #100f0d 74%); transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease; }
+.col-card:hover { transform: translateY(-3px); border-color: hsl(var(--primary) / .55); box-shadow: 0 16px 38px rgba(0,0,0,.48); }
+.col-card__strip { position: relative; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 2px; aspect-ratio: 16 / 9; background: #14120f; border-bottom: 1px solid hsl(var(--border)); }
+.col-card__strip img { width: 100%; height: 100%; object-fit: cover; }
+.col-card__blank { background: linear-gradient(150deg, hsl(32 42% 16%), hsl(20 50% 9%)); }
+.col-card__count { position: absolute; right: 9px; bottom: 9px; padding: 4px 9px; border-radius: 999px; background: rgba(8,7,6,.8); backdrop-filter: blur(6px); font: 10px var(--app-font-mono); color: #f0e7db; }
+.col-card__body { display: flex; flex-direction: column; gap: 7px; padding: 13px 15px 14px; flex: 1; }
+.col-card__name { font-size: 13.5px; font-weight: 700; line-height: 1.35; color: hsl(var(--foreground)); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.col-card__desc { font-size: 11.5px; line-height: 1.55; color: hsl(var(--muted-foreground)); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.col-card__foot { margin-top: auto; padding-top: 10px; border-top: 1px solid hsl(var(--border)); display: flex; align-items: center; gap: 7px; font-size: 10.5px; color: #a89e93; }
+.col-card__by { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.col-card__saves { margin-left: auto; display: inline-flex; align-items: center; gap: 4px; flex: none; }
+/* The invitation tile: on a site this young most people arrive before anyone has
+   published a shelf, and an odd number of cards leaves a hole in the grid. */
+.col-cta { display: flex; flex-direction: column; justify-content: center; gap: 8px; padding: 18px; border: 1px dashed rgba(255,255,255,.17); border-radius: 18px; background: rgba(255,255,255,.02); text-align: left; }
+.col-cta strong { font-size: 13.5px; color: hsl(var(--foreground)); }
+.col-cta span { font-size: 11.5px; line-height: 1.55; color: hsl(var(--muted-foreground)); }
+.col-cta em { font-style: normal; margin-top: 4px; font-size: 11.5px; font-weight: 700; color: hsl(var(--primary)); }
+.col-cta:hover { border-color: hsl(var(--primary) / .5); }
+
+@media (max-width: 1180px) {
+  .home-col { padding: 22px 18px 24px; }
+}
+
+@media (max-width: 760px) {
+  /* A collection cover strip four across a phone is four 20px slivers, and the
+     hero copy needs the whole width once the art is only a backdrop. */
+  .col-hero { border-radius: 18px; }
+  .col-hero__body { padding: 20px 18px 22px; }
+  .col-hero__scrim { background: linear-gradient(180deg, rgba(9,8,7,.72) 0%, rgba(9,8,7,.93) 46%, rgba(9,8,7,.98) 100%), radial-gradient(120% 90% at 2% 0%, rgba(246,164,55,.16), transparent 60%); }
+  .col-hero__desc { font-size: 12.5px; }
+  .col-hero__actions .btn { flex: 1 0 auto; text-align: center; }
+  .home-col { margin-top: 34px; padding: 18px 16px 20px; border-radius: 18px; }
+  .home-col__title { font-size: 21px; }
+  .home-col__cta { width: 100%; justify-content: center; }
+  .home-col__grid { gap: 11px; }
+  /* Two cards and the edge of a third: the cut-off card is what tells you the
+     row scrolls, which nothing else on a touch screen does. */
+  .home-col__grid > * { flex: 0 0 172px; max-width: 172px; }
+}
+
+@media (max-width: 430px) {
+  .col-card__strip { aspect-ratio: 16 / 10; }
+  .col-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 20px 10px; }
+}
+
 @media (max-width: 760px) {
   /* A section head can carry tabs or a dropdown as well as a title and a link.
      On their own full-width line they stay tappable; left in the row they eat
@@ -1046,6 +1143,9 @@ h1, h2, h3, .display, .card-title, .res-card__title, .home-res__leadtitle { over
   .quick-actions .quick-action + .quick-action { display: none; }
   .quick-action { width: 30px; height: 30px; }
   .res-shot__zoom { opacity: 1; }
+  /* Same reason: hidden until hover means an owner on a phone has no way to take
+     a course off their own shelf. */
+  .col-item__remove { opacity: 1; }
 }
 
 

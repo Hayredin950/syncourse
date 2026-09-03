@@ -1,17 +1,19 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useToast } from "@/lib/useToast";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Lock, Pencil, Plus, Trash2, Users, X } from "lucide-react";
+import { ArrowLeft, Bookmark, Check, Layers, Lock, Pencil, Plus, Trash2, Users, X } from "lucide-react";
 import { del, get, post } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { formatDate } from "@/lib/format";
-import { EmptyState } from "@/components/EmptyState";
+import { cloudinaryUrl } from "@/lib/cloudinary";
+import { CourseCard } from "@/components/CourseCard";
+import { MobileHeader } from "@/components/Nav";
 import { CoursePickerSheet } from "@/components/CoursePickerSheet";
 import { EditListSheet } from "@/components/EditListSheet";
-import type { CollectionDetail } from "@/lib/types";
+import type { CollectionDetail, CollectionItemRow, CourseSummary } from "@/lib/types";
 
 /**
  * One collection, at /lists/detail?id=…
@@ -24,10 +26,47 @@ import type { CollectionDetail } from "@/lib/types";
  */
 export default function ListDetailPage() {
   return (
-    <Suspense fallback={<div className="p-4 text-center text-sm text-muted">Loading list…</div>}>
+    <Suspense
+      fallback={
+        <main className="page">
+          <p className="muted">Loading collection…</p>
+        </main>
+      }
+    >
       <ListDetail />
     </Suspense>
   );
+}
+
+/**
+ * A collection row carries less than a catalogue row does, so the rest is filled
+ * in rather than left undefined: `CourseCard` is the same card the whole site
+ * uses and a collection has no business rendering a different one. The `?? 0`
+ * defaults matter because the API that sends these fields deploys separately
+ * from this build.
+ */
+function asSummary(c: CollectionItemRow): CourseSummary {
+  return {
+    id: c.id,
+    title: c.title,
+    slug: c.slug,
+    description: c.description ?? "",
+    thumbnailUrl: c.thumbnailUrl,
+    level: c.level,
+    durationMin: c.durationMin ?? 0,
+    lessonCount: c.lessonCount ?? 0,
+    ratingAvg: c.ratingAvg,
+    ratingCount: c.ratingCount,
+    downloadCount: c.downloadCount ?? 0,
+    isPremium: c.isPremium ?? false,
+    isFeatured: false,
+    contentType: c.contentType ?? "course",
+    categoryNames: [],
+    lecturerName: c.lecturerNames?.[0] ?? null,
+    lecturerNames: c.lecturerNames ?? [],
+    organizationName: null,
+    publishedAt: c.addedAt,
+  };
 }
 
 function ListDetail() {
@@ -109,102 +148,164 @@ function ListDetail() {
     }
   };
 
+  // Up to four covers fan out behind the title. Fewer than four is fine — they
+  // stretch to fill; none at all leaves the panel's own gradient, which is why
+  // there is no placeholder art here.
+  const art = useMemo(
+    () => (list?.items ?? []).map((i) => i.thumbnailUrl).filter(Boolean).slice(0, 4) as string[],
+    [list],
+  );
+
   if (gone) {
     return (
-      <div className="p-8 text-center">
-        <p className="text-sm text-muted">This list is private or no longer exists.</p>
-        <Link href="/lists" className="btn primary mt-4 inline-block">All lists</Link>
-      </div>
+      <main className="page">
+        <MobileHeader title="Collection" />
+        <div className="empty-state" style={{ marginTop: 30 }}>
+          <div className="empty-icon">🔒</div>
+          <p>This collection is private or no longer exists.</p>
+          <Link href="/lists" className="btn primary" style={{ display: "inline-block", marginTop: 14 }}>
+            Browse collections
+          </Link>
+        </div>
+      </main>
     );
   }
-  if (!list) return <div className="p-4 text-center text-sm text-muted">Loading list…</div>;
+
+  if (!list) {
+    return (
+      <main className="page">
+        <MobileHeader title="Collection" />
+        <p className="muted">Loading collection…</p>
+      </main>
+    );
+  }
 
   return (
-    <div className="pb-6">
-      <div className="border-b border-border px-4 py-3">
-        <div className="text-[11px] uppercase tracking-wide text-dim">by {list.ownerName}</div>
-        <h1 className="text-lg font-bold text-text">{list.name}</h1>
-        {list.description && <p className="mt-1 text-sm text-muted">{list.description}</p>}
-        <div className="mt-2 flex flex-wrap items-center gap-3 text-[11px] text-dim">
-          <span className="inline-flex items-center gap-1">
-            {list.visibility === "public" ? <Users size={10} /> : <Lock size={10} />}
-            {list.visibility}
-          </span>
-          <span>·</span>
-          <span>{list.itemCount} {list.itemCount === 1 ? "course" : "courses"}</span>
-          <span>·</span>
-          <span>{list.savesCount} saves</span>
-          <span>·</span>
-          <span>Last edited {formatDate(list.updatedAt)}</span>
-        </div>
+    <main className="page">
+      <MobileHeader title="Collection" />
 
-        <div className="mt-3 flex flex-wrap gap-2">
-          {list.isOwner ? (
-            <>
-              <button className="btn primary" onClick={() => setPicking(true)}>
-                <Plus size={13} style={{ display: "inline", verticalAlign: "middle" }} /> Add courses
-              </button>
-              <button className="btn" onClick={() => setEditing(true)}>
-                <Pencil size={13} style={{ display: "inline", verticalAlign: "middle" }} /> Edit
-              </button>
-              <button className="btn" onClick={destroy}>
-                <Trash2 size={13} style={{ display: "inline", verticalAlign: "middle" }} /> Delete
-              </button>
-            </>
-          ) : (
-            <button
-              onClick={save}
-              className={`rounded-full px-4 py-1.5 text-xs font-bold ${list.saved ? "bg-accent-soft text-accent" : "bg-accent text-black"}`}
-            >
-              {list.saved ? "✓ Saved" : "Save list"}
-            </button>
-          )}
-        </div>
-      </div>
+      <Link href="/lists" className="back-btn">
+        <ArrowLeft size={14} /> Collections
+      </Link>
 
-      {list.items.length === 0 ? (
-        <div className="p-4">
-          <EmptyState
-            title={
-              list.isOwner
-                ? "This list is empty — add courses from the catalogue."
-                : "Nothing here. This collection is empty."
-            }
-          />
-          {list.isOwner && (
-            <div className="mt-3 text-center">
-              <button className="btn primary" onClick={() => setPicking(true)}>Add your first course</button>
-            </div>
-          )}
-        </div>
-      ) : (
-        <div className="grid grid-cols-2 gap-3 p-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 2xl:grid-cols-6">
-          {list.items.map((c) => (
-            <div key={c.id} className="group relative min-w-0">
-              <Link href={`/courses/${c.slug}`} className="block min-w-0">
-                <div className="aspect-[2/3] overflow-hidden rounded-lg bg-surface">
-                  {c.thumbnailUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={c.thumbnailUrl} alt={c.title} loading="lazy" className="h-full w-full object-cover transition-transform group-hover:scale-105" />
-                  ) : null}
-                </div>
-                <div className="mt-1 line-clamp-1 min-w-0 text-xs text-text">{c.title}</div>
-                <div className="text-[10px] text-muted">★ {c.ratingAvg.toFixed(1)} · {c.level}</div>
-              </Link>
-              {list.isOwner && (
-                <button
-                  onClick={() => removeCourse(c.id, c.title)}
-                  aria-label={`Remove ${c.title}`}
-                  title="Remove from list"
-                  className="absolute right-1.5 top-1.5 rounded-full bg-black/70 p-1.5 text-text opacity-0 transition-opacity group-hover:opacity-100 focus:opacity-100"
-                >
-                  <X size={12} />
+      <header className="col-hero">
+        {art.length > 0 && (
+          <div className="col-hero__art" aria-hidden>
+            {art.map((src, i) => (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img key={i} src={cloudinaryUrl(src, { width: 420, height: 560 }) ?? undefined} alt="" loading="lazy" />
+            ))}
+          </div>
+        )}
+        <div className="col-hero__scrim" aria-hidden />
+        <div className="col-hero__body">
+          <span className="eyebrow">Collection</span>
+          <h1 className="display col-hero__title">{list.name}</h1>
+          {list.description && <p className="col-hero__desc">{list.description}</p>}
+
+          <div className="col-hero__meta">
+            {/* Deliberately not a link: there is no public profile route — /me is
+                your own page only — so a link here would 404 on the static export. */}
+            <span className="col-chip col-chip--owner">
+              <span className="col-chip__avatar">
+                {list.ownerAvatarUrl ? (
+                  // eslint-disable-next-line @next/next/no-img-element
+                  <img src={cloudinaryUrl(list.ownerAvatarUrl, { width: 42, height: 42 }) ?? undefined} alt="" />
+                ) : (
+                  (list.ownerName ?? "?").charAt(0).toUpperCase()
+                )}
+              </span>
+              {list.ownerName}
+            </span>
+            <span className="col-chip">
+              {list.visibility === "public" ? <Users size={11} /> : <Lock size={11} />}
+              {list.visibility === "public" ? "Public" : "Private"}
+            </span>
+            <span className="col-chip">
+              <Layers size={11} />
+              {list.itemCount} {list.itemCount === 1 ? "course" : "courses"}
+            </span>
+            <span className="col-chip">
+              <Bookmark size={11} />
+              {list.savesCount} {list.savesCount === 1 ? "save" : "saves"}
+            </span>
+            <span className="col-chip">Edited {formatDate(list.updatedAt)}</span>
+          </div>
+
+          <div className="col-hero__actions">
+            {list.isOwner ? (
+              <>
+                <button className="btn primary" onClick={() => setPicking(true)}>
+                  <Plus size={14} style={{ display: "inline", verticalAlign: "middle" }} /> Add courses
                 </button>
-              )}
-            </div>
-          ))}
+                <button className="btn" onClick={() => setEditing(true)}>
+                  <Pencil size={13} style={{ display: "inline", verticalAlign: "middle" }} /> Edit
+                </button>
+                <button className="btn" onClick={destroy}>
+                  <Trash2 size={13} style={{ display: "inline", verticalAlign: "middle" }} /> Delete
+                </button>
+              </>
+            ) : (
+              <button className={`btn ${list.saved ? "" : "primary"}`} onClick={save}>
+                {list.saved ? (
+                  <>
+                    <Check size={14} style={{ display: "inline", verticalAlign: "middle" }} /> Saved
+                  </>
+                ) : (
+                  <>
+                    <Bookmark size={14} style={{ display: "inline", verticalAlign: "middle" }} /> Save collection
+                  </>
+                )}
+              </button>
+            )}
+          </div>
         </div>
-      )}
+      </header>
+
+      <section className="rail">
+        <div className="section-head">
+          <h2>In this collection</h2>
+          {list.items.length > 0 && (
+            <span className="muted" style={{ fontSize: 11 }}>
+              Newest addition first
+            </span>
+          )}
+        </div>
+
+        {list.items.length === 0 ? (
+          <div className="empty-state">
+            <div className="empty-icon">📚</div>
+            <p>
+              {list.isOwner
+                ? "Nothing on this shelf yet. Add the courses you want to come back to."
+                : "This collection is empty — its owner has not added anything yet."}
+            </p>
+            {list.isOwner && (
+              <button className="btn primary" style={{ marginTop: 14 }} onClick={() => setPicking(true)}>
+                <Plus size={14} style={{ display: "inline", verticalAlign: "middle" }} /> Add your first course
+              </button>
+            )}
+          </div>
+        ) : (
+          <div className="col-grid">
+            {list.items.map((c) => (
+              <div key={c.id} className="col-item">
+                <CourseCard course={asSummary(c)} fill />
+                {list.isOwner && (
+                  <button
+                    onClick={() => removeCourse(c.id, c.title)}
+                    aria-label={`Remove ${c.title} from this collection`}
+                    title="Remove from collection"
+                    className="col-item__remove"
+                  >
+                    <X size={13} />
+                  </button>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
 
       {picking && (
         <CoursePickerSheet
@@ -229,10 +330,12 @@ function ListDetail() {
       )}
 
       {toast && (
-        <div className="fixed inset-x-0 bottom-16 z-40 mx-auto w-fit rounded-full bg-surface-raised px-4 py-2 text-xs text-text shadow-lg">
-          {toast}
+        <div className="sheet" style={{ pointerEvents: "none", background: "transparent", display: "grid", placeItems: "end center", paddingBottom: 40 }}>
+          <div className="dark-panel" style={{ padding: "14px 22px", background: "#f6a437", color: "#211308", fontWeight: 800, fontSize: 12 }}>
+            {toast}
+          </div>
         </div>
       )}
-    </div>
+    </main>
   );
 }

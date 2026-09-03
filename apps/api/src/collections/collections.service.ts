@@ -26,8 +26,24 @@ export class CollectionsService {
     const list = await this.prisma.collectionList.findUnique({
       where: { id },
       include: {
-        user: { select: { id: true, name: true, username: true } },
-        items: { include: { course: { include: { level: true } } }, orderBy: { addedAt: 'desc' } },
+        user: { select: { id: true, name: true, username: true, avatarUrl: true } },
+        items: {
+          include: {
+            course: {
+              include: {
+                level: true,
+                lecturers: {
+                  include: { lecturer: { select: { name: true } } },
+                  orderBy: { orderIndex: 'asc' },
+                },
+                // Lesson durations, so a collection renders the same course card
+                // as the rest of the site instead of a title over a bare cover.
+                lessons: { select: { durationSec: true } },
+              },
+            },
+          },
+          orderBy: { addedAt: 'desc' },
+        },
         savedBy: true,
       },
     });
@@ -44,6 +60,7 @@ export class CollectionsService {
       itemCount: list.items.length,
       ownerName: list.user.name,
       ownerUsername: list.user.username,
+      ownerAvatarUrl: list.user.avatarUrl,
       /** Drives the owner's edit/add/remove controls without a second request. */
       isOwner: !!userId && list.userId === userId,
       /** The client used to assume `false`, so a list you had saved read "Save list". */
@@ -54,10 +71,17 @@ export class CollectionsService {
         id: i.course.id,
         title: i.course.title,
         slug: i.course.slug,
+        description: i.course.description,
         thumbnailUrl: i.course.thumbnailUrl,
         ratingAvg: i.course.ratingAvg,
         ratingCount: i.course.ratingCount,
         level: i.course.level?.name ?? 'All Levels',
+        durationMin: Math.round(i.course.lessons.reduce((s, l) => s + l.durationSec, 0) / 60),
+        lessonCount: i.course.lessons.length,
+        downloadCount: i.course.downloadCount,
+        isPremium: i.course.isPremium,
+        contentType: i.course.contentType,
+        lecturerNames: i.course.lecturers.map((cl) => cl.lecturer.name),
         addedAt: i.addedAt,
       })),
     };
@@ -216,7 +240,7 @@ export class CollectionsService {
         take: Math.min(filters.limit ?? 30, 100),
         skip: filters.offset ?? 0,
         include: {
-          user: { select: { name: true, username: true } },
+          user: { select: { name: true, username: true, avatarUrl: true } },
           items: { include: { course: true } },
         },
       }),
@@ -235,6 +259,7 @@ export class CollectionsService {
       itemCount: items.length,
       ownerName: list.user?.name ?? null,
       ownerUsername: list.user?.username ?? null,
+      ownerAvatarUrl: list.user?.avatarUrl ?? null,
       createdAt: list.createdAt,
       updatedAt: list.updatedAt,
       covers: items.slice(0, 5).map((i: any) => i.course?.thumbnailUrl).filter(Boolean),

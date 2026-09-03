@@ -7,6 +7,7 @@ import { get } from "@/lib/api";
 import type { CourseSummary, HomeData, LibraryData } from "@/lib/types";
 import { CourseCard } from "@/components/CourseCard";
 import { LecturerCard, PublisherCard } from "@/components/EntityCard";
+import { HomeCollections } from "@/components/HomeCollections";
 import { HomeResources } from "@/components/HomeResources";
 import { MobileHeader } from "@/components/Nav";
 import { useAuth } from "@/lib/auth";
@@ -99,9 +100,15 @@ export default function HomePage() {
             <h1 className="display">Make fast feel<br />intentional.</h1>
             <p>{featured.description || "A hands-on course for engineers who care about the details users can feel."}</p>
             <div className="detail-meta">
-              <span><Star size={13} fill="currentColor" className="rating" /> {featured.ratingAvg.toFixed(1)}</span>
-              <span>{formatDuration(featured.durationMin)}</span>
-              <span>{featured.lessonCount} lessons</span>
+              {/* The hero prints the biggest version of every one of these, so an
+                  unrated course claiming 0.0 and a Telegram course claiming no
+                  runtime and no lessons are all suppressed rather than shown as
+                  zeroes. */}
+              {featured.ratingCount > 0 && (
+                <span><Star size={13} fill="currentColor" className="rating" /> {featured.ratingAvg.toFixed(1)}</span>
+              )}
+              {featured.durationMin > 0 && <span>{formatDuration(featured.durationMin)}</span>}
+              {featured.lessonCount > 0 && <span>{featured.lessonCount} lessons</span>}
               <span>{featured.level}</span>
             </div>
             <div className="actions">
@@ -307,7 +314,8 @@ export default function HomePage() {
                   </div>
                 )}
                 <p className="muted" style={{ margin: "12px 0 0", fontSize: 11 }}>
-                  {p.courseCount} courses · ★ {p.ratingAvg.toFixed(1)} avg · {p.totalVotes.toLocaleString()} votes
+                  {p.courseCount} courses
+                  {p.totalVotes > 0 && ` · ★ ${p.ratingAvg.toFixed(1)} avg · ${p.totalVotes.toLocaleString()} votes`}
                 </p>
                 <div className="path-card__bar"><i style={{ width: "38%" }} /></div>
               </Link>
@@ -315,6 +323,9 @@ export default function HomePage() {
           </div>
         </section>
       )}
+
+      {/* Community shelves — self-fetching, and absent unless someone has built one */}
+      <HomeCollections />
 
       {/* Explore by category */}
       {home.categories.length > 0 && (

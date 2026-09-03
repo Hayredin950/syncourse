@@ -56,7 +56,8 @@ export default function PathsPage() {
                 </div>
               )}
               <p className="muted" style={{ margin: "12px 0 0", fontSize: 11 }}>
-                {p.courseCount} courses · ★ {p.ratingAvg.toFixed(1)} avg · {p.totalVotes.toLocaleString()} votes
+                {p.courseCount} courses
+                {p.totalVotes > 0 && ` · ★ ${p.ratingAvg.toFixed(1)} avg · ${p.totalVotes.toLocaleString()} votes`}
               </p>
             </Link>
           ))}
