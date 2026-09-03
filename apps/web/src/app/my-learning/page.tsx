@@ -8,6 +8,7 @@ import { get } from "@/lib/api";
 import type { LibraryData, LibraryCourse } from "@/lib/types";
 import { useAuth } from "@/lib/auth";
 import { MobileHeader } from "@/components/Nav";
+import { SkRows } from "@/components/Skeleton";
 
 /**
  * A reader's library: downloaded, saved, liked.
@@ -50,8 +51,10 @@ export default function MyLibraryPage() {
     return (
       <main className="page">
         <MobileHeader title="My Library" />
-        <div className="dark-panel" style={{ padding: 40, textAlign: "center" }}>
-          <p className="muted">Loading your library…</p>
+        <span className="eyebrow">Your library</span>
+        <h1 className="display" style={{ fontSize: 42 }}>My Library</h1>
+        <div style={{ marginTop: 18 }}>
+          <SkRows n={6} label="Loading your library" />
         </div>
       </main>
     );

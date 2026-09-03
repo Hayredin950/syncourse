@@ -32,6 +32,8 @@ import type { UserProfile, UserStats } from "@/lib/types";
 import { useAuth } from "@/lib/auth";
 import { formatDate } from "@/lib/format";
 import { MobileHeader } from "@/components/Nav";
+import { SkCards, SkEntityPage } from "@/components/Skeleton";
+import { Toast } from "@/components/Toast";
 
 type Tab = "library" | "stats" | "subscription" | "settings";
 
@@ -147,8 +149,8 @@ export default function MePage() {
 
   if (loading) {
     return (
-      <main className="page" style={{ display: "grid", placeItems: "center", minHeight: 300 }}>
-        <div className="muted mono">Loading…</div>
+      <main className="page">
+        <SkEntityPage label="Loading your profile" rows={3} />
       </main>
     );
   }
@@ -466,9 +468,7 @@ export default function MePage() {
       {tab === "stats" && (
         <>
           {!stats ? (
-            <div className="dark-panel" style={{ padding: 40, textAlign: "center" }}>
-              <p className="muted">Loading your stats…</p>
-            </div>
+            <SkCards n={4} label="Loading your stats" />
           ) : (
             <>
               {/* progress rings — curated paths */}
@@ -946,13 +946,7 @@ export default function MePage() {
         </div>
       )}
 
-      {toast && (
-        <div className="sheet" style={{ pointerEvents: "none", background: "transparent", display: "grid", placeItems: "end center", paddingBottom: 40 }}>
-          <div className="dark-panel" style={{ padding: "14px 22px", background: "#f6a437", color: "#211308", fontWeight: 800, fontSize: 12 }}>
-            {toast}
-          </div>
-        </div>
-      )}
+      <Toast message={toast} />
     </main>
   );
 }

@@ -20,10 +20,12 @@ import { get, post } from "@/lib/api";
 import type { ResourceDetail, ResourceMedia } from "@/lib/types";
 import { Markdown, markdownHeadings } from "@/components/Markdown";
 import { MobileHeader } from "@/components/Nav";
+import { SkHero } from "@/components/Skeleton";
 import { attachmentUrl, cloudinaryUrl } from "@/lib/cloudinary";
 import { compact, formatDate } from "@/lib/format";
 import { ResourceCard, mediaMeta, resourceTint, typeMeta } from "@/components/ResourceCard";
 import { useToast } from "@/lib/useToast";
+import { Toast } from "@/components/Toast";
 
 /**
  * A resource, in full.
@@ -118,19 +120,17 @@ export function ResourceDetailView({ slug }: { slug: string }) {
         <Link href="/resources" className="res-back">
           <ArrowLeft size={13} /> Resources
         </Link>
-        <div className="dark-panel res-empty">
-          {error ? (
-            <>
-              <h3>This resource is not here.</h3>
-              <p className="muted">It may have been unpublished, or the link is wrong.</p>
-              <Link className="btn" href="/resources">
-                Back to the library
-              </Link>
-            </>
-          ) : (
-            <p className="muted">Loading…</p>
-          )}
-        </div>
+        {error ? (
+          <div className="dark-panel res-empty">
+            <h3>This resource is not here.</h3>
+            <p className="muted">It may have been unpublished, or the link is wrong.</p>
+            <Link className="btn" href="/resources">
+              Back to the library
+            </Link>
+          </div>
+        ) : (
+          <SkHero label="Loading the resource" />
+        )}
       </main>
     );
   }
@@ -495,7 +495,7 @@ export function ResourceDetailView({ slug }: { slug: string }) {
         </div>
       )}
 
-      {toast && <div className="res-toast">{toast}</div>}
+      <Toast message={toast} />
     </main>
   );
 }

@@ -6,6 +6,7 @@ import { get, post } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { MobileHeader } from "@/components/Nav";
 import { Markdown } from "@/components/Markdown";
+import { SkText } from "@/components/Skeleton";
 import type { AcceptedLegalDoc, LegalDoc, LegalStatus, PendingLegalDoc } from "@/lib/types";
 
 const TITLES: Record<string, string> = {
@@ -112,7 +113,7 @@ export default function LegalPage() {
       )}
 
       {loading ? (
-        <p className="muted">Loading…</p>
+        <SkText lines={9} label="Loading the document" />
       ) : (
         <Markdown text={doc?.bodyMd || "Document coming soon."} className="md--doc" />
       )}

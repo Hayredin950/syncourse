@@ -8,6 +8,7 @@ import { get } from "@/lib/api";
 import type { CourseSummary } from "@/lib/types";
 import { CourseRow } from "@/components/CourseCard";
 import { MobileHeader } from "@/components/Nav";
+import { SkHero } from "@/components/Skeleton";
 
 interface PathDetail {
   id: string;
@@ -49,7 +50,7 @@ export default function PathDetailPage() {
     return (
       <main className="page">
         <MobileHeader title="Learning path" />
-        <p className="muted">Loading…</p>
+        <SkHero label="Loading the learning path" />
       </main>
     );
   }

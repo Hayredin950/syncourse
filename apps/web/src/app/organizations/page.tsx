@@ -5,6 +5,7 @@ import { get } from "@/lib/api";
 import type { OrganizationRow } from "@/lib/types";
 import { MobileHeader } from "@/components/Nav";
 import { PublisherCard } from "@/components/EntityCard";
+import { SkEntities } from "@/components/Skeleton";
 
 export default function OrganizationsPage() {
   const [orgs, setOrgs] = useState<OrganizationRow[]>([]);
@@ -28,19 +29,23 @@ export default function OrganizationsPage() {
         {loading ? "…" : `${orgs.length} publishers`}
       </p>
 
-      {loading ? (
-        <div className="grid">
-          {[...Array(8)].map((_, i) => (
-            <div key={i} className="h-24 animate-pulse rounded-xl bg-surface" />
-          ))}
-        </div>
-      ) : (
-        <div className="grid">
-          {orgs.map((o) => (
-            <PublisherCard key={o.id} org={o} />
-          ))}
-        </div>
-      )}
+      <div style={{ marginTop: 24 }}>
+        {loading ? (
+          <SkEntities n={12} label="Loading channels" />
+        ) : orgs.length === 0 ? (
+          <div className="empty-state">
+            <div className="empty-icon">🏫</div>
+            <h3 style={{ margin: "0 0 6px" }}>No channels yet</h3>
+            <p>Channels and schools appear here once their courses go live.</p>
+          </div>
+        ) : (
+          <div className="grid">
+            {orgs.map((o) => (
+              <PublisherCard key={o.id} org={o} />
+            ))}
+          </div>
+        )}
+      </div>
     </main>
   );
 }

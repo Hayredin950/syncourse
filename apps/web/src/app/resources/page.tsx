@@ -8,6 +8,7 @@ import { get } from "@/lib/api";
 import type { ResourceList, ResourceSummary } from "@/lib/types";
 import { MobileHeader } from "@/components/Nav";
 import { ResourceCard, ResourceFeature, typeMeta } from "@/components/ResourceCard";
+import { SkCards } from "@/components/Skeleton";
 
 /**
  * The resource library — cheat-sheets, roadmaps and useful notes.
@@ -233,11 +234,7 @@ function ResourcesInner() {
 
       <section className="res-results">
         {loading && items.length === 0 ? (
-          <div className="res-grid">
-            {[...Array(8)].map((_, i) => (
-              <span key={i} className="res-skeleton" />
-            ))}
-          </div>
+          <SkCards n={8} grid="res-grid" label="Loading the library" />
         ) : error ? (
           <div className="dark-panel res-empty">
             <h3>The library could not be loaded.</h3>
@@ -292,7 +289,7 @@ export default function ResourcesPage() {
     <Suspense
       fallback={
         <main className="page">
-          <p className="muted">Loading…</p>
+          <SkCards n={8} grid="res-grid" label="Loading the library" />
         </main>
       }
     >

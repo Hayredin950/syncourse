@@ -27,6 +27,8 @@ import { cloudinaryUrl } from "@/lib/cloudinary";
 import { hueFromString, CourseCard } from "@/components/CourseCard";
 import { AddToListSheet } from "@/components/AddToListSheet";
 import { MobileHeader } from "@/components/Nav";
+import { SkHero } from "@/components/Skeleton";
+import { Toast } from "@/components/Toast";
 
 const BOT_USERNAME = "syncourse_bot";
 
@@ -273,13 +275,25 @@ export function CourseDetailView({ slug }: { slug: string }) {
     }
   };
 
-  if (error || !course) {
+  if (error) {
     return (
       <main className="page">
         <MobileHeader title="Course" />
-        <div className="dark-panel" style={{ padding: 40, textAlign: "center" }}>
-          <p className="muted">{error ? "Course not found" : "Loading…"}</p>
+        <div className="empty-state" style={{ padding: "48px 24px" }}>
+          <div className="empty-icon">🔎</div>
+          <h3 style={{ margin: "0 0 6px" }}>We can&apos;t find that course</h3>
+          <p>It may have been unpublished, or the link may be out of date.</p>
+          <Link href="/browse" className="btn" style={{ marginTop: 18 }}>Browse the catalogue</Link>
         </div>
+      </main>
+    );
+  }
+
+  if (!course) {
+    return (
+      <main className="page">
+        <MobileHeader title="Course" />
+        <SkHero label="Loading the course" />
       </main>
     );
   }
@@ -814,13 +828,7 @@ export function CourseDetailView({ slug }: { slug: string }) {
         />
       )}
 
-      {toast && (
-        <div className="sheet" style={{ pointerEvents: "none", background: "transparent", display: "grid", placeItems: "end center", paddingBottom: 40 }}>
-          <div className="dark-panel" style={{ padding: "14px 22px", background: "#f6a437", color: "#211308", fontWeight: 800, fontSize: 12 }}>
-            {toast}
-          </div>
-        </div>
-      )}
+      <Toast message={toast} />
     </main>
   );
 }

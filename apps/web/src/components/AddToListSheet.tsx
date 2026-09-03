@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Check, Loader2, Lock, Plus, Users, X } from "lucide-react";
 import { ApiError, del, get, post } from "@/lib/api";
 import type { CollectionMembership } from "@/lib/types";
+import { SkList } from "@/components/Skeleton";
 
 /**
  * "Add to list" from anywhere a course is shown. It asks the API which of your
@@ -107,7 +108,7 @@ export function AddToListSheet({
         </p>
 
         {lists === null ? (
-          <p className="muted" style={{ fontSize: 12 }}>Loading your lists…</p>
+          <SkList n={3} label="Loading your collections" />
         ) : lists.length === 0 ? (
           <p className="muted" style={{ fontSize: 12 }}>
             {error ?? "You have no lists yet. Name one below and this course goes straight into it."}

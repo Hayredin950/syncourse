@@ -10,7 +10,9 @@ import type { ActivityFeed, CircleDetail, CircleLite, CirclePost, CourseSummary 
 import { useAuth } from "@/lib/auth";
 import { compact, formatDate } from "@/lib/format";
 import { MobileHeader } from "@/components/Nav";
+import { SkRows } from "@/components/Skeleton";
 import { CoursePickerSheet } from "@/components/CoursePickerSheet";
+import { Toast } from "@/components/Toast";
 
 type Pane = "activity" | "circle";
 
@@ -290,11 +292,7 @@ export default function CirclesPage() {
         />
       )}
 
-      {toast && (
-        <div className="sheet" style={{ pointerEvents: "none", background: "transparent", display: "grid", placeItems: "end center", paddingBottom: 40 }}>
-          <div className="dark-panel" style={{ padding: "14px 22px", background: "#f6a437", color: "#211308", fontWeight: 800, fontSize: 12 }}>{toast}</div>
-        </div>
-      )}
+      <Toast message={toast} />
     </main>
   );
 }
@@ -313,7 +311,7 @@ function ActivityPane({ feed, token, onGoCircles }: { feed: ActivityFeed | null;
     );
   }
   if (!feed) {
-    return <div className="dark-panel" style={{ padding: 32, textAlign: "center" }}><p className="muted">Loading your feed…</p></div>;
+    return <SkRows n={4} label="Loading your feed" />;
   }
   if (feed.items.length === 0) {
     return (

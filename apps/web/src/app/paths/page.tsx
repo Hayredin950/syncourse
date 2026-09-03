@@ -5,6 +5,7 @@ import Link from "next/link";
 import { get } from "@/lib/api";
 import type { LearningPathRow } from "@/lib/types";
 import { MobileHeader } from "@/components/Nav";
+import { SkCards } from "@/components/Skeleton";
 
 export default function PathsPage() {
   const [paths, setPaths] = useState<LearningPathRow[]>([]);
@@ -29,10 +30,14 @@ export default function PathsPage() {
       </p>
 
       {loading ? (
-        <div className="path-grid" style={{ marginTop: 24 }}>
-          {[...Array(3)].map((_, i) => (
-            <div key={i} className="h-40 animate-pulse rounded-xl bg-surface" />
-          ))}
+        <div style={{ marginTop: 24 }}>
+          <SkCards n={3} grid="path-grid" label="Loading learning paths" />
+        </div>
+      ) : paths.length === 0 ? (
+        <div className="empty-state" style={{ marginTop: 24 }}>
+          <div className="empty-icon">🗺️</div>
+          <h3 style={{ margin: "0 0 6px" }}>No learning paths yet</h3>
+          <p>A path stitches several courses into one order worth following. The first ones are on the way.</p>
         </div>
       ) : (
         <div className="path-grid" style={{ marginTop: 24 }}>

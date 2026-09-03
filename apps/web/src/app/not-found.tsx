@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { Sk } from "@/components/Skeleton";
 import { CourseDetailView } from "./courses/[slug]/page-client";
 import { ResourceDetailView } from "./resources/[slug]/page-client";
 
@@ -35,9 +36,14 @@ export default function NotFound() {
 
   if (hit === undefined) {
     return (
-      <div style={{ padding: "40vh 20px", textAlign: "center" }}>
-        <p className="muted">Loading…</p>
-      </div>
+      <main className="page" role="status" aria-busy="true">
+        <span className="sk-label">Checking that link…</span>
+        <Sk className="sk-title" w={45} />
+        <div className="sk-text">
+          <Sk className="sk-line" />
+          <Sk className="sk-line" w={60} />
+        </div>
+      </main>
     );
   }
   if (hit === null) {

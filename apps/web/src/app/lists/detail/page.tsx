@@ -11,9 +11,11 @@ import { formatDate } from "@/lib/format";
 import { cloudinaryUrl } from "@/lib/cloudinary";
 import { CourseCard } from "@/components/CourseCard";
 import { MobileHeader } from "@/components/Nav";
+import { SkCards, SkHero } from "@/components/Skeleton";
 import { CoursePickerSheet } from "@/components/CoursePickerSheet";
 import { EditListSheet } from "@/components/EditListSheet";
 import type { CollectionDetail, CollectionItemRow, CourseSummary } from "@/lib/types";
+import { Toast } from "@/components/Toast";
 
 /**
  * One collection, at /lists/detail?id=…
@@ -29,7 +31,7 @@ export default function ListDetailPage() {
     <Suspense
       fallback={
         <main className="page">
-          <p className="muted">Loading collection…</p>
+          <SkCards n={6} label="Loading the collection" />
         </main>
       }
     >
@@ -175,7 +177,7 @@ function ListDetail() {
     return (
       <main className="page">
         <MobileHeader title="Collection" />
-        <p className="muted">Loading collection…</p>
+        <SkHero label="Loading the collection" />
       </main>
     );
   }
@@ -329,13 +331,7 @@ function ListDetail() {
         />
       )}
 
-      {toast && (
-        <div className="sheet" style={{ pointerEvents: "none", background: "transparent", display: "grid", placeItems: "end center", paddingBottom: 40 }}>
-          <div className="dark-panel" style={{ padding: "14px 22px", background: "#f6a437", color: "#211308", fontWeight: 800, fontSize: 12 }}>
-            {toast}
-          </div>
-        </div>
-      )}
+      <Toast message={toast} />
     </main>
   );
 }

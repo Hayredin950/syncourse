@@ -10,6 +10,7 @@ import { LecturerCard, PublisherCard } from "@/components/EntityCard";
 import { HomeCollections } from "@/components/HomeCollections";
 import { HomeResources } from "@/components/HomeResources";
 import { MobileHeader } from "@/components/Nav";
+import { Sk, SkCard } from "@/components/Skeleton";
 import { useAuth } from "@/lib/auth";
 import { formatDuration } from "@/lib/format";
 
@@ -61,9 +62,17 @@ export default function HomePage() {
     return (
       <main className="page">
         <MobileHeader />
-        <div className="dark-panel" style={{ padding: 40, textAlign: "center" }}>
-          <h3>Can&apos;t reach the API</h3>
-          <p className="muted">Start the backend with `npm run dev:api` (it serves on http://localhost:4000).</p>
+        <div className="empty-state" style={{ padding: "54px 26px" }}>
+          <div className="empty-icon">📡</div>
+          <h3 style={{ margin: "0 0 6px" }}>We couldn&apos;t load the catalogue</h3>
+          {/* The old copy here told the reader to run `npm run dev:api`, which is
+              advice for whoever wrote the site rather than whoever is reading it. */}
+          <p style={{ margin: "0 auto", maxWidth: "44ch" }}>
+            The connection dropped on the way to our servers. Your courses are still there.
+          </p>
+          <button className="btn primary" style={{ marginTop: 18 }} onClick={() => window.location.reload()}>
+            Try again
+          </button>
         </div>
       </main>
     );
@@ -73,8 +82,19 @@ export default function HomePage() {
     return (
       <main className="page">
         <MobileHeader />
-        <div className="dark-panel" style={{ padding: 40, textAlign: "center" }}>
-          <p className="muted">Loading…</p>
+        <div role="status" aria-busy="true">
+          <span className="sk-label">Loading the catalogue…</span>
+          <Sk className="sk-hero" style={{ minHeight: 440, borderRadius: 22 }} />
+          {[0, 1].map((i) => (
+            <div key={i} style={{ marginTop: 42 }}>
+              <Sk className="sk-line sk-line--lg" style={{ width: 168, marginBottom: 16 }} />
+              <div className="rail-row">
+                {Array.from({ length: 7 }, (_, j) => (
+                  <SkCard key={j} />
+                ))}
+              </div>
+            </div>
+          ))}
         </div>
       </main>
     );

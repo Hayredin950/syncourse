@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Check, Plus, Search, X } from "lucide-react";
 import { get } from "@/lib/api";
+import { SkList } from "@/components/Skeleton";
 import type { CourseSummary } from "@/lib/types";
 
 /**
@@ -92,7 +93,7 @@ export function CoursePickerSheet({
         </div>
 
         {results === null ? (
-          <p className="muted" style={{ fontSize: 12 }}>Searching…</p>
+          <SkList n={4} label="Searching the catalogue" />
         ) : results.length === 0 ? (
           <p className="muted" style={{ fontSize: 12 }}>
             {dq ? `Nothing matches “${dq}”.` : "The catalogue is empty."}

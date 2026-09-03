@@ -11,6 +11,7 @@ import { formatDate } from "@/lib/format";
 import { MobileHeader } from "@/components/Nav";
 import { EditListSheet } from "@/components/EditListSheet";
 import type { CollectionSummary } from "@/lib/types";
+import { Toast } from "@/components/Toast";
 
 export default function ListsPage() {
   const router = useRouter();
@@ -251,13 +252,7 @@ export default function ListsPage() {
         </div>
       )}
 
-      {toast && (
-        <div className="sheet" style={{ pointerEvents: "none", background: "transparent", display: "grid", placeItems: "end center", paddingBottom: 40 }}>
-          <div className="dark-panel" style={{ padding: "14px 22px", background: "#f6a437", color: "#211308", fontWeight: 800, fontSize: 12 }}>
-            {toast}
-          </div>
-        </div>
-      )}
+      <Toast message={toast} />
     </main>
   );
 }

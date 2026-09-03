@@ -10,6 +10,7 @@ import { cloudinaryUrl } from "@/lib/cloudinary";
 import { compact } from "@/lib/format";
 import { CourseCard } from "@/components/CourseCard";
 import { MobileHeader } from "@/components/Nav";
+import { SkEntityPage } from "@/components/Skeleton";
 import { TitleRow, TitleToolbar, type EntityCourse, type SortMode, type ViewMode } from "@/components/TitleList";
 
 export default function PublisherPage({ backHref = "/" }: { backHref?: string }) {
@@ -39,13 +40,25 @@ export default function PublisherPage({ backHref = "/" }: { backHref?: string })
     return list;
   }, [o, sort, filterQ]);
 
-  if (error || !o) {
+  if (error) {
     return (
       <main className="page">
         <MobileHeader title="Publisher" />
-        <div className="dark-panel" style={{ padding: 40, textAlign: "center" }}>
-          <p className="muted">{error ? "Publisher not found" : "Loading…"}</p>
+        <div className="empty-state" style={{ padding: "48px 24px" }}>
+          <div className="empty-icon">🔎</div>
+          <h3 style={{ margin: "0 0 6px" }}>We can&apos;t find that channel</h3>
+          <p>The page may have moved, or the name may have changed.</p>
+          <Link href="/organizations" className="btn" style={{ marginTop: 18 }}>All channels &amp; schools</Link>
         </div>
+      </main>
+    );
+  }
+
+  if (!o) {
+    return (
+      <main className="page">
+        <MobileHeader title="Publisher" />
+        <SkEntityPage label="Loading the channel" />
       </main>
     );
   }

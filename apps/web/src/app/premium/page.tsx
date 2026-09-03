@@ -11,6 +11,8 @@ import type { HomeData, Plan } from "@/lib/types";
 import { useAuth } from "@/lib/auth";
 import { cloudinaryUrl } from "@/lib/cloudinary";
 import { MobileHeader } from "@/components/Nav";
+import { Sk } from "@/components/Skeleton";
+import { Toast } from "@/components/Toast";
 
 interface CheckoutResult {
   subscriptionId: string;
@@ -189,8 +191,11 @@ export default function PremiumPage() {
               </button>
             ))}
             {plans.length === 0 && (
-              <div className="dark-panel" style={{ padding: 24, textAlign: "center" }}>
-                <p className="muted" style={{ margin: 0 }}>Loading plans…</p>
+              <div role="status" aria-busy="true" className="sk-stack">
+                <span className="sk-label">Loading plans…</span>
+                {[0, 1, 2].map((i) => (
+                  <Sk key={i} className="sk-plan" />
+                ))}
               </div>
             )}
           </div>
@@ -275,13 +280,7 @@ export default function PremiumPage() {
         <Link href="/legal/refund" style={{ textDecoration: "underline" }}>Refund Policy</Link>.
       </p>
 
-      {toast && (
-        <div className="sheet" style={{ pointerEvents: "none", background: "transparent", display: "grid", placeItems: "end center", paddingBottom: 40 }}>
-          <div className="dark-panel" style={{ padding: "14px 22px", background: "#f6a437", color: "#211308", fontWeight: 800, fontSize: 12 }}>
-            {toast}
-          </div>
-        </div>
-      )}
+      <Toast message={toast} />
     </main>
   );
 }

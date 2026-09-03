@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import { useParams } from "next/navigation";
 import { Plus } from "lucide-react";
 import { get } from "@/lib/api";
@@ -8,6 +9,7 @@ import type { LecturerDetail } from "@/lib/types";
 import { cloudinaryUrl } from "@/lib/cloudinary";
 import { CourseCard } from "@/components/CourseCard";
 import { MobileHeader } from "@/components/Nav";
+import { SkEntityPage } from "@/components/Skeleton";
 import { TitleRow, TitleToolbar, type EntityCourse, type SortMode, type ViewMode } from "@/components/TitleList";
 
 export default function LecturerPage() {
@@ -37,13 +39,25 @@ export default function LecturerPage() {
     return list;
   }, [l, sort, filterQ]);
 
-  if (error || !l) {
+  if (error) {
     return (
       <main className="page">
         <MobileHeader title="Lecturer" />
-        <div className="dark-panel" style={{ padding: 40, textAlign: "center" }}>
-          <p className="muted">{error ? "Lecturer not found" : "Loading…"}</p>
+        <div className="empty-state" style={{ padding: "48px 24px" }}>
+          <div className="empty-icon">🔎</div>
+          <h3 style={{ margin: "0 0 6px" }}>We can&apos;t find that lecturer</h3>
+          <p>The page may have moved, or the name may have changed.</p>
+          <Link href="/lecturers" className="btn" style={{ marginTop: 18 }}>All lecturers</Link>
         </div>
+      </main>
+    );
+  }
+
+  if (!l) {
+    return (
+      <main className="page">
+        <MobileHeader title="Lecturer" />
+        <SkEntityPage label="Loading the lecturer" />
       </main>
     );
   }

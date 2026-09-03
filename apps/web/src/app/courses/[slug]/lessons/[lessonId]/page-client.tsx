@@ -7,7 +7,9 @@ import { useParams, useRouter } from "next/navigation";
 import { get, post } from "@/lib/api";
 import type { LessonDetail } from "@/lib/types";
 import { useAuth } from "@/lib/auth";
+import { SkRows } from "@/components/Skeleton";
 import { formatSec } from "@/lib/format";
+import { Toast } from "@/components/Toast";
 
 // Static export: real lesson URLs are served at runtime via the SPA fallback (_redirects).
 export async function generateStaticParams() {
@@ -85,10 +87,8 @@ export default function LessonPage() {
 
   if (!lesson) {
     return (
-      <main className="page">
-        <div className="dark-panel" style={{ padding: 40, textAlign: "center" }}>
-          <p className="muted">Loading lesson…</p>
-        </div>
+      <main className="page" style={{ maxWidth: 860 }}>
+        <SkRows n={5} label="Loading the lesson" />
       </main>
     );
   }
@@ -252,13 +252,7 @@ export default function LessonPage() {
         </div>
       )}
 
-      {toast && (
-        <div className="sheet" style={{ pointerEvents: "none", background: "transparent", display: "grid", placeItems: "end center", paddingBottom: 40 }}>
-          <div className="dark-panel" style={{ padding: "14px 22px", background: "#f6a437", color: "#211308", fontWeight: 800, fontSize: 12 }}>
-            {toast}
-          </div>
-        </div>
-      )}
+      <Toast message={toast} />
       </div>
     </main>
   );

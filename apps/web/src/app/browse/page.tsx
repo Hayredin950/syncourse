@@ -7,6 +7,7 @@ import { get } from "@/lib/api";
 import type { CourseSummary } from "@/lib/types";
 import { CourseCard, CourseRow } from "@/components/CourseCard";
 import { MobileHeader } from "@/components/Nav";
+import { SkGrid } from "@/components/Skeleton";
 
 const LEVELS = ["All Levels", "Beginner", "Intermediate", "Advanced"];
 // Courses only — cheat-sheets, roadmaps and notes are Resources with their own
@@ -162,11 +163,7 @@ function BrowseInner() {
       </div>
 
       {loading ? (
-        <div className="grid">
-          {[...Array(12)].map((_, i) => (
-            <div key={i} className="aspect-[2/3] animate-pulse rounded-xl bg-surface" />
-          ))}
-        </div>
+        <SkGrid n={12} label="Loading courses" />
       ) : results.length === 0 ? (
         <div className="dark-panel" style={{ padding: 40, textAlign: "center" }}>
           <Search size={28} className="rating" />
@@ -271,7 +268,13 @@ function Chip({ active, onClick, children }: { active: boolean; onClick: () => v
 
 export default function BrowsePage() {
   return (
-    <Suspense fallback={<main className="page"><p className="muted">Loading…</p></main>}>
+    <Suspense
+      fallback={
+        <main className="page">
+          <SkGrid n={12} label="Loading the library" />
+        </main>
+      }
+    >
       <BrowseInner />
     </Suspense>
   );
