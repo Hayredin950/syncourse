@@ -1015,6 +1015,13 @@ h1, h2, h3, .display, .card-title, .res-card__title, .home-res__leadtitle { over
   .list-row__meta { display: none; }
   .mobile-nav { grid-template-columns: repeat(5, 1fr); }
   .mobile-nav a { font-size: 8.5px; }
+  /* Four tabs of icon + label are wider than a phone. The strip scrolls, but a
+     scroll with no visible edge reads as the end of the row — Settings, and the
+     sign-out inside it, simply looked absent. Full width, no icons and tighter
+     padding fit all four on a 360px screen; anything narrower still scrolls. */
+  .profile-tabs { display: flex; width: 100%; }
+  .profile-tabs .tab { flex: 1 0 auto; justify-content: center; padding: 8px 10px; font-size: 11.5px; }
+  .profile-tabs .tab svg { display: none; }
   /* The sheet becomes the bottom sheet the gesture expects, and its own scroll
      area rather than the page's. Centred rather than stretched: five dialogs cap
      themselves with an inline `maxWidth` for the desktop layout, which no stylesheet

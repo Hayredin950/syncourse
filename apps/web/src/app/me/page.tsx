@@ -328,6 +328,22 @@ export default function MePage() {
             <button className="btn" onClick={onShareProfile}>
               <Share2 size={14} style={{ display: "inline", verticalAlign: "middle" }} /> Share
             </button>
+            {/* Mobile only, and here rather than in the page header: the top bar
+                carries the Me menu with Sign out on a desktop but is hidden on a
+                phone, which left the one at the foot of Settings — behind a tab
+                that scrolls off a 360px screen — as the only way out. The bottom
+                tab bar lands on this page, so sign-out is now two taps from
+                anywhere. */}
+            <button
+              className="btn mobile-only"
+              style={{ color: "hsl(var(--destructive))" }}
+              onClick={() => {
+                logout();
+                router.push("/");
+              }}
+            >
+              <LogOut size={14} style={{ display: "inline", verticalAlign: "middle" }} /> Sign out
+            </button>
           </div>
         </div>
       </div>
