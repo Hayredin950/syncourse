@@ -85,6 +85,12 @@ class AdminCourseDto {
   levelName?: string;
 
   @IsOptional()
+  @IsArray()
+  @IsString({ each: true })
+  lecturerNames?: string[];
+
+  /** Deprecated — a client that predates co-teaching sends one name here. */
+  @IsOptional()
   @IsString()
   lecturerName?: string;
 

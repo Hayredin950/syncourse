@@ -9,7 +9,7 @@ type EngagedCourse = {
   title: string;
   language: string;
   contentType: string;
-  lecturer: { name: string; photoUrl: string | null } | null;
+  lecturers: { lecturer: { name: string; photoUrl: string | null } }[];
   level: { name: string } | null;
   categories: { category: { name: string } | null }[];
   tags: { tag: string }[];
@@ -131,7 +131,7 @@ export class UsersService {
         categories: { include: { category: true } },
         tags: true,
         level: true,
-        lecturer: true,
+        lecturers: { include: { lecturer: true }, orderBy: { orderIndex: 'asc' } },
       },
     } as const;
     const [saved, liked, ratings, reviews, downloads, user] = await Promise.all([
@@ -205,14 +205,25 @@ export class UsersService {
       engaged.flatMap((c) => c.categories.map((cc) => cc.category?.name ?? null)),
       (x) => x,
     );
-    const instructorCounts = countBy(engaged, (c) => c.lecturer?.name ?? null);
+    // Co-taught courses count for every teacher credited, the same way they
+    // count for every category they sit in.
+    const instructorCounts = countBy(
+      engaged.flatMap((c) => c.lecturers.map((cl) => cl.lecturer.name)),
+      (x) => x,
+    );
     const languageCounts = countBy(engaged, (c) => c.language);
 
     // --- instructors you learn from most (avatar grid) ---
-    const topInstructors = instructorCounts.slice(0, 8).map((row) => {
-      const c = engaged.find((x) => x.lecturer?.name === row.label);
-      return { name: row.label, count: row.count, photoUrl: c?.lecturer?.photoUrl ?? null };
-    });
+    const instructorPhotos = new Map<string, string | null>();
+    for (const c of engaged)
+      for (const cl of c.lecturers)
+        if (!instructorPhotos.has(cl.lecturer.name))
+          instructorPhotos.set(cl.lecturer.name, cl.lecturer.photoUrl);
+    const topInstructors = instructorCounts.slice(0, 8).map((row) => ({
+      name: row.label,
+      count: row.count,
+      photoUrl: instructorPhotos.get(row.label) ?? null,
+    }));
 
     // --- content type breakdown ---
     const typeCounts = new Map<string, number>();

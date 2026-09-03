@@ -133,8 +133,8 @@ function CourseDetail() {
           <div>
             <h1 className={row?.deleted ? "admin-strike" : undefined}>{course.title}</h1>
             <p className="page-desc">
-              {course.lecturerName ?? "No lecturer"} · {course.organizationName ?? "No publisher"} ·{" "}
-              {course.levelName ?? "No level"}
+              {course.lecturerNames?.join(", ") || course.lecturerName || "No lecturer"} ·{" "}
+              {course.organizationName ?? "No publisher"} · {course.levelName ?? "No level"}
             </p>
             <div className="admin-inline" style={{ gap: 5, marginTop: 6 }}>
               <span className="admin-badge admin-badge--gray">{course.contentType}</span>

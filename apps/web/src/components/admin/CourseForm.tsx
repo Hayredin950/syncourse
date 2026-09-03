@@ -54,7 +54,16 @@ export function CourseForm({ initial }: Props) {
   const [contentType, setContentType] = useState(initial?.contentType ?? "course");
   const [language, setLanguage] = useState(initial?.language ?? "English");
   const [levelName, setLevelName] = useState(initial?.levelName ?? "");
-  const [lecturerName, setLecturerName] = useState(initial?.lecturerName ?? "");
+  // A course can be taught by several people. `lecturerNames` is the real field;
+  // the one-name fallback keeps the form filled if the API has not shipped the
+  // new shape yet.
+  const [lecturerNames, setLecturerNames] = useState<string[]>(
+    initial?.lecturerNames?.length
+      ? initial.lecturerNames
+      : initial?.lecturerName
+        ? [initial.lecturerName]
+        : [],
+  );
   const [organizationName, setOrganizationName] = useState(initial?.organizationName ?? "");
   const [categories, setCategories] = useState<string[]>(initial?.categoryNames ?? []);
   const [tags, setTags] = useState(initial?.tags.join(", ") ?? "");
@@ -120,7 +129,7 @@ export function CourseForm({ initial }: Props) {
       contentType,
       language,
       levelName: levelName.trim() || undefined,
-      lecturerName: lecturerName.trim() || undefined,
+      lecturerNames: lecturerNames.map((s) => s.trim()).filter(Boolean),
       organizationName: organizationName.trim() || undefined,
       categoryNames: categories.map((s) => s.trim()).filter(Boolean),
       tags: tags.split(",").map((s) => s.trim()).filter(Boolean),
@@ -236,15 +245,14 @@ export function CourseForm({ initial }: Props) {
             createNote="will be added as a new level"
             emptyNote="No levels defined yet."
           />
-          <EntityPicker
-            label="Lecturer"
-            value={lecturerName}
-            onChange={setLecturerName}
+          <MultiEntityPicker
+            label="Lecturers"
+            values={lecturerNames}
+            onChange={setLecturerNames}
             options={options.lecturers}
             placeholder="Search or type an instructor name"
-            createNote="will be added as a new lecturer"
             emptyNote="No lecturers yet — type a name to add one."
-            hint="Photo and bio are set on the Lecturers page."
+            hint="Add everyone who teaches it; they are credited in the order you add them. Photo and bio are set on the Lecturers page."
           />
           <EntityPicker
             label="Publisher or channel"

@@ -165,6 +165,39 @@ const TYPE_LABELS: Record<string, string> = {
 const courseType = (value?: string | null): string =>
   (COURSE_TYPES as readonly string[]).includes(value ?? '') ? value! : 'course';
 
+/**
+ * Teacher names for a bot listing. A course can be taught by several people, so
+ * every credit is selected, ordered the way the course credits them.
+ */
+const LECTURER_SELECT = {
+  lecturers: { select: { lecturer: { select: { name: true } } }, orderBy: { orderIndex: 'asc' as const } },
+};
+
+/** Course with `LECTURER_SELECT` applied — the only shape `lecturerLine` needs. */
+type WithLecturers = { lecturers: { lecturer: { name: string } }[] };
+
+/** "Andrei Neagoie, Daniel Bourke", or null when nobody is credited yet. */
+const lecturerLine = (c: WithLecturers): string | null =>
+  c.lecturers.map((cl) => cl.lecturer.name).join(', ') || null;
+
+/**
+ * One typed teacher list. The bot asks for a single line, so a co-taught course
+ * is entered the way the source post writes it — "Andrei Neagoie, Daniel Bourke"
+ * — split on the separators `parseCourse` already splits "Taught By" on, and
+ * capped at the same four names.
+ */
+const splitLecturers = (input: string): string[] => {
+  const seen = new Set<string>();
+  const names: string[] = [];
+  for (const raw of input.split(/[,&/]/)) {
+    const name = raw.trim();
+    if (!name || seen.has(name.toLowerCase())) continue;
+    seen.add(name.toLowerCase());
+    names.push(name);
+  }
+  return names.slice(0, 4);
+};
+
 // ---------------------------------------------------------------------------
 // Premium design system — every bot message follows the same visual language:
 //   • ━━ divider bars for section separation
@@ -1006,7 +1039,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       orderBy: [{ createdAt: 'desc' }, { title: 'asc' }],
       skip: safePage * TelegramService.CATALOG_PAGE,
       take: TelegramService.CATALOG_PAGE,
-      select: { id: true, title: true, slug: true, ratingAvg: true, ratingCount: true, lecturer: { select: { name: true } } },
+      select: { id: true, title: true, slug: true, ratingAvg: true, ratingCount: true, ...LECTURER_SELECT },
     });
     const linkByCourse = await this.fileSummaryByCourse(courses.map((c) => c.id));
     const deepLinkBase = `https://t.me/${BOT_USERNAME}?start=dl_`;
@@ -1026,7 +1059,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
           (l
             ? `   📦 ${l.count > 1 ? `${l.count} files · ${fmtSize(l.sizeMb)}` : `${esc(l.firstName ?? 'file')}${l.sizeMb ? ` · ${fmtSize(l.sizeMb)}` : ''}`} · ${stars}`
             : `   📭 <i>no file yet</i> · ${stars}`) +
-          (c.lecturer ? ` · 👨‍🏫 ${esc(c.lecturer.name)}` : '')
+          (lecturerLine(c) ? ` · 👨‍🏫 ${esc(lecturerLine(c))}` : '')
         );
       })
       .join('\n\n');
@@ -1108,7 +1141,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       `🎴 <b>${esc(course.title)}</b>\n` +
       `${DIV}\n` +
       `${type} · ${course.level ? esc(course.level.name) : 'All levels'}\n` +
-      `👨‍🏫 ${course.lecturer ? esc(course.lecturer.name) : '—'}\n` +
+      `👨‍🏫 ${esc(lecturerLine(course)) || '—'}\n` +
       `🏷️ ${catNames}\n` +
       `${stars}${lessons}\n` +
       `${price}\n` +
@@ -1363,8 +1396,8 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
           `${this.brandHeader('New Course Wizard')}\n\n` +
             `✅ Title: <b>“${esc(text)}”</b>\n\n` +
             `<b>Step 2/7 · Instructor</b>\n\n` +
-            `👨‍🏫 Who is the <b>instructor</b>? (name)\n` +
-            `e.g. <i>Han-chung Lee</i>`,
+            `👨‍🏫 Who <b>teaches</b> it? (name)\n` +
+            `e.g. <i>Han-chung Lee</i> — several teachers? separate them with commas: <i>Andrei Neagoie, Daniel Bourke</i>`,
           undefined,
           threadId,
         );
@@ -1510,6 +1543,25 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     );
   }
 
+  /**
+   * Upsert every teacher on a typed line and return their ids in credited order.
+   * The bot has one instructor field, so a co-taught course is typed the way the
+   * source post writes it and split here rather than losing everyone but the first.
+   */
+  private async upsertLecturers(input: string): Promise<string[]> {
+    const ids: string[] = [];
+    for (const name of splitLecturers(input)) {
+      const lecturer = await this.prisma.lecturer.upsert({
+        where: { slug: slugify(name) },
+        update: {},
+        create: { name, slug: slugify(name) },
+      });
+      // Two spellings can share a slug ("J. Doe" / "J Doe"); one credit each.
+      if (!ids.includes(lecturer.id)) ids.push(lecturer.id);
+    }
+    return ids;
+  }
+
   /** Actually create the course from wizard data. */
   private async createCourseFromWizard(chatId: number, userId: number) {
     const wizard = await this.loadWizard(userId);
@@ -1521,11 +1573,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       return;
     }
     try {
-      const lecturer = await this.prisma.lecturer.upsert({
-        where: { slug: slugify(d.instructor) },
-        update: {},
-        create: { name: d.instructor, slug: slugify(d.instructor) },
-      });
+      const lecturerIds = await this.upsertLecturers(d.instructor);
       const level = d.levelName
         ? await this.prisma.level.findFirst({ where: { name: d.levelName } })
         : null;
@@ -1536,7 +1584,8 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
           title: d.title,
           slug,
           description: `Learn ${d.title} — brought to you by Syncourse. Start learning today.`,
-          lecturerId: lecturer.id,
+          lecturerId: lecturerIds[0] ?? null,
+          lecturers: { create: lecturerIds.map((lecturerId, i) => ({ lecturerId, orderIndex: i })) },
           levelId: level?.id ?? null,
           contentType: courseType(d.contentType),
           price: d.price ?? null,
@@ -1988,7 +2037,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
         field === 'title'
           ? `e.g. <i>Hands-On AI: Building Your First LLM-Powered App</i>\n`
           : field === 'instructor'
-            ? `e.g. <i>Han-chung Lee</i>\n`
+            ? `e.g. <i>Han-chung Lee</i>, or several separated by commas: <i>Andrei Neagoie, Daniel Bourke</i>\n`
             : '';
       await this.sendWizardStep(chatId, userId, header + `${hint}Just type the new value.`, undefined, threadId);
     }
@@ -2034,12 +2083,22 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
           await this.sendWizardStep(chatId, userId, `${this.brandHeader('Edit Course')}\n\n⚠️ Instructor can't be empty.`, undefined, threadId);
           return;
         }
-        const lecturer = await this.prisma.lecturer.upsert({
-          where: { slug: slugify(name) },
-          update: {},
-          create: { name, slug: slugify(name) },
+        const lecturerIds = await this.upsertLecturers(name);
+        if (lecturerIds.length === 0) {
+          await this.sendWizardStep(chatId, userId, `${this.brandHeader('Edit Course')}\n\n⚠️ Instructor can't be empty.`, undefined, threadId);
+          return;
+        }
+        // The typed line is the whole credit list, so it replaces what was there.
+        await this.prisma.course.update({
+          where: { id: course.id },
+          data: {
+            lecturerId: lecturerIds[0],
+            lecturers: {
+              deleteMany: {},
+              create: lecturerIds.map((lecturerId, i) => ({ lecturerId, orderIndex: i })),
+            },
+          },
         });
-        await this.prisma.course.update({ where: { id: course.id }, data: { lecturerId: lecturer.id } });
         valueLabel = `👨‍🏫 ${esc(name)}`;
       } else if (field === 'price') {
         const cleaned = (input.textValue ?? '').replace(/[$,]/g, '').trim();
@@ -2396,17 +2455,13 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
         chatId,
         `${this.brandHeader('New Course')}\n\n` +
           `<b>Usage:</b>\n<code>/newcourse Title | Instructor | Category | type | price | image-url</code>\n\n` +
-          `<b>Example:</b>\n<code>/newcourse Complete ML | Andrei Neagoie | Data Science | course | 64.99 | https://…/cover.jpg</code>\n\n` +
-          `<i>Only Title and Instructor are required. Type: course | mini-course — cheat-sheets and roadmaps are Resources, added under Admin → Resources.</i>`,
+          `<b>Example:</b>\n<code>/newcourse Complete ML | Andrei Neagoie, Daniel Bourke | Data Science | course | 64.99 | https://…/cover.jpg</code>\n\n` +
+          `<i>Only Title and Instructor are required — list co-teachers separated by commas. Type: course | mini-course — cheat-sheets and roadmaps are Resources, added under Admin → Resources.</i>`,
         threadId,
       );
     }
     try {
-      const lecturer = await this.prisma.lecturer.upsert({
-        where: { slug: slugify(instructor) },
-        update: {},
-        create: { name: instructor, slug: slugify(instructor) },
-      });
+      const lecturerIds = await this.upsertLecturers(instructor);
       const level = await this.prisma.level.findFirst({ where: { name: 'Beginner' } });
       const slug = await this.uniqueCourseSlug(slugify(title));
       const categoryRow = category
@@ -2421,7 +2476,8 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
           title,
           slug,
           description: `Learn ${title} — brought to you by Syncourse. Start learning today.`,
-          lecturerId: lecturer.id,
+          lecturerId: lecturerIds[0] ?? null,
+          lecturers: { create: lecturerIds.map((lecturerId, i) => ({ lecturerId, orderIndex: i })) },
           levelId: level?.id ?? null,
           contentType: courseType(contentType),
           price: price ? Number(price) : null,
@@ -2523,7 +2579,6 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
         slug: true,
         ratingAvg: true,
         price: true,
-        lecturer: { select: { name: true } },
       },
     });
     if (!course) return this.sendText(chatId, `Course “${slug}” not found. Try /courses.`);
@@ -2641,7 +2696,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
   ) {
     const course = await this.prisma.course.findUnique({
       where: { id: courseId },
-      select: { id: true, title: true, slug: true, ratingAvg: true, lecturer: { select: { name: true } } },
+      select: { id: true, title: true, slug: true, ratingAvg: true },
     });
     if (!course) return this.sendText(chatId, 'That course is no longer available.', threadId);
     const modules = await this.courseModules(course.id);
@@ -2678,7 +2733,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     }
     const course = await this.prisma.course.findUnique({
       where: { id: link.courseId },
-      select: { id: true, title: true, slug: true, ratingAvg: true, lecturer: { select: { name: true } } },
+      select: { id: true, title: true, slug: true, ratingAvg: true },
     });
     if (!course) return this.sendText(chatId, 'That course is no longer available.', threadId);
     // Grouping goes through courseModules so a part sent from the website gets
@@ -2701,7 +2756,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
    */
   private async deliverFiles(
     chatId: number,
-    course: { id: string; title: string; slug: string; ratingAvg: number; lecturer: { name: string } | null },
+    course: { id: string; title: string; slug: string; ratingAvg: number },
     files: TelegramFileRow[],
     threadId?: number | null,
     moduleTitle?: string | null,
@@ -2817,7 +2872,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
   private async sendCourseModule(chatId: number, courseId: string, moduleIndex: number | null, threadId?: number | null) {
     const course = await this.prisma.course.findUnique({
       where: { id: courseId },
-      select: { id: true, title: true, slug: true, ratingAvg: true, lecturer: { select: { name: true } } },
+      select: { id: true, title: true, slug: true, ratingAvg: true },
     });
     if (!course) return this.sendText(chatId, 'That course is no longer available.', threadId);
     const modules = await this.courseModules(course.id);
@@ -3185,7 +3240,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       contentType: true,
       thumbnailUrl: true,
       bannerUrl: true,
-      lecturer: { select: { name: true } },
+      ...LECTURER_SELECT,
       level: { select: { name: true } },
       categories: { include: { category: { select: { name: true } } } },
       _count: { select: { lessons: true } },
@@ -3277,7 +3332,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
         deletedAt: null,
         AND: words.map((w) => ({ title: { contains: w, mode: 'insensitive' } })),
       },
-      select: { id: true, title: true, slug: true, ratingAvg: true, lecturer: { select: { name: true } } },
+      select: { id: true, title: true, slug: true, ratingAvg: true, ...LECTURER_SELECT },
       take: 10,
     });
     if (matches.length === 0) {
@@ -3300,7 +3355,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
         return (
           `${i + 1}. ${title}\n` +
           `   🔑 <code>${esc(c.slug)}</code>${l ? ` · 📦 ${l.count > 1 ? `${l.count} files · ${fmtSize(l.sizeMb)}` : `${esc(l.firstName ?? 'file')}${l.sizeMb ? ` · ${fmtSize(l.sizeMb)}` : ''}`}` : ' · 📭 no file yet'}` +
-          (c.lecturer ? ` · 👨‍🏫 ${esc(c.lecturer.name)}` : '') +
+          (lecturerLine(c) ? ` · 👨‍🏫 ${esc(lecturerLine(c))}` : '') +
           ` · ⭐ ${c.ratingAvg.toFixed(1)}`
         );
       })

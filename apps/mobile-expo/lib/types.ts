@@ -16,7 +16,9 @@ export interface CourseSummary {
   isNew?: boolean;
   rank?: number;
   contentType?: string;
+  /** First credit only; `lecturerNames` carries every teacher. */
   lecturerName?: string | null;
+  lecturerNames?: string[];
   organizationName?: string | null;
   categoryNames?: string[];
 }
@@ -95,7 +97,10 @@ export interface CourseDetail extends CourseSummary {
   prerequisites: string | null;
   tags: string[];
   audience: string[];
+  /** First credit, kept in step with `lecturers[0]` by the API. */
   lecturer: Lecturer | null;
+  /** Every teacher credited, in the order the course credits them. */
+  lecturers?: Lecturer[];
   organization: Organization | null;
   sections: Section[];
   ratings: { avg: number; count: number; distribution: Record<number, number> };

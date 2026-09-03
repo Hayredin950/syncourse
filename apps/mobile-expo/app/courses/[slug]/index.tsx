@@ -104,8 +104,9 @@ export default function CourseDetailScreen() {
       const r = await api.browse({ category: catSlug, limit: 8 }).catch(() => ({ results: [] as CourseSummary[] }));
       const filtered = r.results.filter((x) => x.id !== c.id);
       if (filtered.length >= 4) return filtered;
-      if (c.lecturer?.slug) {
-        const r2 = await api.browse({ lecturer: c.lecturer.slug, limit: 8 }).catch(() => ({ results: [] as CourseSummary[] }));
+      const firstTeacher = c.lecturers?.[0] ?? c.lecturer;
+      if (firstTeacher?.slug) {
+        const r2 = await api.browse({ lecturer: firstTeacher.slug, limit: 8 }).catch(() => ({ results: [] as CourseSummary[] }));
         const f2 = r2.results.filter((x) => x.id !== c.id);
         if (f2.length >= 4) return f2;
       }
@@ -187,6 +188,9 @@ export default function CourseDetailScreen() {
   // course has some structure; rendering those gave "0 lessons · 0:00" rows that
   // only repeated the Course Materials list.
   const curriculum = c.sections.filter((s) => s.lessons.length > 0);
+  // A course can be taught by several people; `lecturer` is the older single
+  // field, kept so the screen still names someone against an older API.
+  const teachers = c.lecturers?.length ? c.lecturers : c.lecturer ? [c.lecturer] : [];
 
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
@@ -329,23 +333,25 @@ export default function CourseDetailScreen() {
           </View>
         )}
 
-        {c.lecturer && (
+        {teachers.length > 0 && (
           <>
-            <Text style={styles.heading}>Lecturer</Text>
-            <Pressable style={styles.lecturerRow} onPress={() => c.lecturer && router.push(`/lecturers/${c.lecturer.slug}`)}>
-              <View style={styles.avatar}>
-                <Text style={styles.avatarText}>{c.lecturer.name.charAt(0)}</Text>
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={styles.lecturerName}>{c.lecturer.name}</Text>
-                {(c.lecturer.credentials || c.lecturer.bio) && (
-                  <Text style={styles.muted} numberOfLines={2}>
-                    {[c.lecturer.credentials, c.lecturer.bio].filter(Boolean).join(" · ")}
-                  </Text>
-                )}
-              </View>
-              <Text style={{ color: colors.dim }}>›</Text>
-            </Pressable>
+            <Text style={styles.heading}>{teachers.length > 1 ? "Lecturers" : "Lecturer"}</Text>
+            {teachers.map((l) => (
+              <Pressable key={l.id} style={styles.lecturerRow} onPress={() => router.push(`/lecturers/${l.slug}`)}>
+                <View style={styles.avatar}>
+                  <Text style={styles.avatarText}>{l.name.charAt(0)}</Text>
+                </View>
+                <View style={{ flex: 1 }}>
+                  <Text style={styles.lecturerName}>{l.name}</Text>
+                  {(l.credentials || l.bio) && (
+                    <Text style={styles.muted} numberOfLines={2}>
+                      {[l.credentials, l.bio].filter(Boolean).join(" · ")}
+                    </Text>
+                  )}
+                </View>
+                <Text style={{ color: colors.dim }}>›</Text>
+              </Pressable>
+            ))}
           </>
         )}
 

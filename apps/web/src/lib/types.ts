@@ -14,7 +14,10 @@ export interface CourseSummary {
   isFeatured: boolean;
   contentType: string;
   categoryNames: string[];
+  /** First credit only — kept for compact rows. Use `lecturerNames` for the full list. */
   lecturerName: string | null;
+  /** Every teacher credited, in the order the course credits them. */
+  lecturerNames: string[];
   organizationName: string | null;
   publishedAt: string;
   rank?: number;
@@ -79,7 +82,9 @@ export interface CourseDetail extends CourseSummary {
   prerequisites: string | null;
   tags: string[];
   audience: string[];
+  /** First credit, kept in step with `lecturers[0]` for older callers. */
   lecturer: { id: string; name: string; slug: string; photoUrl: string | null; bio: string | null; credentials: string | null } | null;
+  lecturers: { id: string; name: string; slug: string; photoUrl: string | null; bio: string | null; credentials: string | null }[];
   organization: { id: string; name: string; slug: string; logoUrl: string | null; description: string | null; subscribers: number } | null;
   sections: Section[];
   ratings: RatingBlock;
@@ -400,6 +405,7 @@ export interface AdminCourseRow {
   createdAt: string;
   updatedAt: string;
   level: string | null;
+  /** Every teacher, already joined for the table cell: "Andrei Neagoie, Daniel Bourke". */
   lecturer: string | null;
   organization: string | null;
 }
@@ -700,6 +706,9 @@ export interface AdminCourseDetail {
   description: string;
   categoryNames: string[];
   levelName: string | null;
+  /** The form's real value — one entry per teacher, in credited order. */
+  lecturerNames: string[];
+  /** First credit, still sent by the API so an older form keeps working. */
   lecturerName: string | null;
   organizationName: string | null;
   language: string;

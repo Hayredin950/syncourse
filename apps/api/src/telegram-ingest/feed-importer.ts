@@ -165,8 +165,14 @@ export class FeedImporter {
   ) {
     const slug = await this.uniqueCourseSlug(pc.slug, pc.title);
     const existing = await this.prisma.course.findUnique({ where: { slug } });
-    const lecturer = pc.taughtBy[0] ? await this.getOrCreateLecturer(pc.taughtBy[0]) : null;
-    if (pc.taughtBy[0] && !lecturer) result.lecturersCreated++;
+    // "Taught By: Andrei Neagoie, Daniel Bourke" is one course with two teachers,
+    // so every name in the credit line becomes a lecturer, in the order given.
+    const lecturers: { id: string }[] = [];
+    for (const name of pc.taughtBy) {
+      const { lecturer, created } = await this.getOrCreateLecturer(name);
+      if (created) result.lecturersCreated++;
+      if (!lecturers.some((l) => l.id === lecturer.id)) lecturers.push(lecturer);
+    }
 
     const course = await this.prisma.course.upsert({
       where: { slug },
@@ -175,7 +181,7 @@ export class FeedImporter {
         title: pc.title,
         description: pc.description || `${pc.title} — added from the ${channelUsername ?? 'Telegram'} feed.`,
         organizationId: result.organization?.id ?? null,
-        lecturerId: lecturer?.id ?? null,
+        lecturerId: lecturers[0]?.id ?? null,
         ratingAvg: pc.ratingAvg ?? 0,
         ratingCount: pc.ratingCount ?? 0,
         originalPrice: pc.originalPrice ?? null,
@@ -188,13 +194,30 @@ export class FeedImporter {
         title: pc.title,
         description: pc.description || undefined,
         organizationId: result.organization?.id ?? null,
-        lecturerId: lecturer?.id ?? null,
+        lecturerId: lecturers[0]?.id ?? null,
         ratingAvg: pc.ratingAvg ?? undefined,
         ratingCount: pc.ratingCount ?? undefined,
         originalPrice: pc.originalPrice ?? undefined,
         sourceUrl: pc.sourceUrl ?? undefined,
       },
     });
+
+    // Credits are replaced, not appended, so re-importing a corrected post
+    // converges instead of piling up every name the feed has ever shown.
+    const keepLecturers = lecturers.map((l) => l.id);
+    await this.prisma.courseLecturer.deleteMany({
+      where: {
+        courseId: course.id,
+        ...(keepLecturers.length ? { lecturerId: { notIn: keepLecturers } } : {}),
+      },
+    });
+    for (const [i, l] of lecturers.entries()) {
+      await this.prisma.courseLecturer.upsert({
+        where: { courseId_lecturerId: { courseId: course.id, lecturerId: l.id } },
+        create: { courseId: course.id, lecturerId: l.id, orderIndex: i },
+        update: { orderIndex: i },
+      });
+    }
 
     if (existing) result.coursesUpdated++;
     else result.coursesCreated++;
@@ -320,13 +343,15 @@ export class FeedImporter {
     });
   }
 
-  private async getOrCreateLecturer(name: string) {
+  /** Existing teacher or a freshly created one, plus which of the two it was. */
+  private async getOrCreateLecturer(name: string): Promise<{ lecturer: { id: string }; created: boolean }> {
     const slug = slugify(name);
     const existing = await this.prisma.lecturer.findUnique({ where: { slug } });
-    if (existing) return existing;
-    return this.prisma.lecturer.create({
+    if (existing) return { lecturer: existing, created: false };
+    const lecturer = await this.prisma.lecturer.create({
       data: { slug, name, bio: null, credentials: null, socialLinks: JSON.stringify({}) },
     });
+    return { lecturer, created: true };
   }
 
   private async getOrCreateCategory(slug: string) {

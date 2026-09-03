@@ -7,7 +7,7 @@ import { withPartNumbers } from '../telegram/part-numbering';
 type CourseWith = Prisma.CourseGetPayload<{
   include: {
     level: true;
-    lecturer: true;
+    lecturers: { include: { lecturer: true } };
     organization: true;
     categories: { include: { category: true } };
     tags: true;
@@ -18,13 +18,20 @@ type CourseWith = Prisma.CourseGetPayload<{
 
 const courseInclude = {
   level: true,
-  lecturer: true,
+  // Ordered, because the order a course credits its teachers in is the order the
+  // source post lists them and the order the page should print them.
+  lecturers: { include: { lecturer: true }, orderBy: { orderIndex: 'asc' } },
   organization: true,
   categories: { include: { category: true } },
   tags: true,
   audience: true,
   sections: { include: { lessons: true } },
 } satisfies Prisma.CourseInclude;
+
+/** The teachers of a course, in credited order. */
+function lecturersOf(c: CourseWith) {
+  return c.lecturers.map((cl) => cl.lecturer);
+}
 
 @Injectable()
 export class CatalogService {
@@ -70,7 +77,7 @@ export class CatalogService {
         this.prisma.lecturer.findMany({
           orderBy: { name: 'asc' },
           take: 12,
-          include: { _count: { select: { courses: true } } },
+          include: { _count: { select: { courseLinks: true } } },
         }),
         this.prisma.organization.findMany({
           orderBy: { subscribers: 'desc' },
@@ -128,7 +135,7 @@ export class CatalogService {
         slug: l.slug,
         photoUrl: l.photoUrl,
         credentials: l.credentials,
-        courseCount: l._count.courses,
+        courseCount: l._count.courseLinks,
       })),
       organizations: organizations.map((o) => ({
         id: o.id,
@@ -199,7 +206,7 @@ export class CatalogService {
       where.organization = { slug: filters.organization };
     }
     if (filters.lecturer) {
-      where.lecturer = { slug: filters.lecturer };
+      where.lecturers = { some: { lecturer: { slug: filters.lecturer } } };
     }
     if (filters.q) {
       where.OR = [
@@ -324,7 +331,8 @@ export class CatalogService {
       prerequisites: course.prerequisites,
       tags: course.tags.map((t) => t.tag),
       audience: course.audience.map((a) => a.audienceTag),
-      lecturer: course.lecturer,
+      lecturer: lecturersOf(course)[0] ?? null,
+      lecturers: lecturersOf(course),
       organization: course.organization,
       sections,
       ratings: {
@@ -380,7 +388,7 @@ export class CatalogService {
   async lecturers() {
     const rows = await this.prisma.lecturer.findMany({
       orderBy: { name: 'asc' },
-      include: { _count: { select: { courses: true } } },
+      include: { _count: { select: { courseLinks: true } } },
     });
     return rows.map((l) => ({
       id: l.id,
@@ -389,7 +397,7 @@ export class CatalogService {
       photoUrl: l.photoUrl,
       bio: l.bio,
       credentials: l.credentials,
-      courseCount: l._count.courses,
+      courseCount: l._count.courseLinks,
     }));
   }
 
@@ -397,7 +405,7 @@ export class CatalogService {
     const lecturer = await this.prisma.lecturer.findUnique({ where: { slug } });
     if (!lecturer) throw new NotFoundException('Lecturer not found');
     const courses = await this.prisma.course.findMany({
-      where: { deletedAt: null, lecturerId: lecturer.id },
+      where: { deletedAt: null, lecturers: { some: { lecturerId: lecturer.id } } },
       orderBy: { ratingAvg: 'desc' },
       include: courseInclude,
     });
@@ -538,7 +546,10 @@ export class CatalogService {
       isFeatured: c.isFeatured,
       contentType: c.contentType,
       categoryNames: c.categories.map((cc) => cc.category?.name ?? '').filter(Boolean),
-      lecturerName: c.lecturer?.name ?? null,
+      // `lecturerName` is the first credit, kept for clients built against the
+      // single-lecturer shape; `lecturerNames` is the real answer.
+      lecturerName: lecturersOf(c)[0]?.name ?? null,
+      lecturerNames: lecturersOf(c).map((l) => l.name),
       organizationName: c.organization?.name ?? null,
       publishedAt: c.publishedAt,
     };

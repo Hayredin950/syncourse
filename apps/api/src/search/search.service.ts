@@ -33,7 +33,8 @@ export class SearchService {
         take: limit,
         include: {
           level: true,
-          lecturer: true,
+          // Every teacher, in credited order — a course can be taught by several.
+          lecturers: { include: { lecturer: true }, orderBy: { orderIndex: 'asc' } },
           organization: true,
           categories: { include: { category: true } },
           tags: true,
@@ -65,7 +66,8 @@ export class SearchService {
         downloadCount: c.downloadCount,
         durationMin: c.sections.reduce((s, sec) => s + sec.lessons.reduce((x, l) => x + l.durationSec, 0) / 60, 0),
         lessonCount: c.sections.reduce((s, sec) => s + sec.lessons.length, 0),
-        lecturerName: c.lecturer?.name ?? null,
+        lecturerName: c.lecturers[0]?.lecturer.name ?? null,
+        lecturerNames: c.lecturers.map((cl) => cl.lecturer.name),
         organizationName: c.organization?.name ?? null,
         categoryNames: c.categories.map((cc) => cc.category?.name ?? '').filter(Boolean),
         isPremium: c.isPremium,

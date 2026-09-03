@@ -117,11 +117,14 @@ export function CourseDetailView({ slug }: { slug: string }) {
             })
             .then((r) => {
               const filtered = r.results.filter((c) => c.id !== d.id);
+              // `lecturers` is the full credit list; `lecturer` is the older
+              // single field, still sent while the column exists.
+              const firstTeacher = d.lecturers?.[0] ?? d.lecturer;
               if (filtered.length >= 4) {
                 setSimilar(filtered);
-              } else if (d.lecturer) {
+              } else if (firstTeacher) {
                 // fallback: same instructor
-                return get<{ results: CourseSummary[] }>(`/courses?lecturer=${encodeURIComponent(d.lecturer.slug)}&limit=8`)
+                return get<{ results: CourseSummary[] }>(`/courses?lecturer=${encodeURIComponent(firstTeacher.slug)}&limit=8`)
                   .then((r2) => setSimilar(r2.results.filter((c) => c.id !== d.id)))
                   .catch(() => setSimilar(filtered));
               }
@@ -283,6 +286,9 @@ export function CourseDetailView({ slug }: { slug: string }) {
 
   const hue = hueFromString(course.slug);
   const firstLesson = course.sections[0]?.lessons[0];
+  // Every teacher credited, falling back to the single-lecturer field so the page
+  // still names someone if it is talking to an API that predates co-teaching.
+  const teachers = course.lecturers?.length ? course.lecturers : course.lecturer ? [course.lecturer] : [];
 
   return (
     <main className="page">
@@ -397,22 +403,24 @@ export function CourseDetailView({ slug }: { slug: string }) {
           </div>
 
           {/* instructors — avatar grid, every name clickable (phonofilm Actors) */}
-          {course.lecturer && (
+          {teachers.length > 0 && (
             <section className="rail">
-              <div className="section-head"><h2>Instructors</h2></div>
+              <div className="section-head"><h2>{teachers.length > 1 ? "Instructors" : "Instructor"}</h2></div>
               <div className="instructor-grid">
-                <Link href={`/lecturers/${course.lecturer.slug}`} className="instructor-card">
-                  <div className="instructor-card__avatar">
-                    {course.lecturer.photoUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={cloudinaryUrl(course.lecturer.photoUrl, { width: 120, height: 120 }) ?? undefined} alt={course.lecturer.name} />
-                    ) : (
-                      course.lecturer.name.charAt(0)
-                    )}
-                  </div>
-                  <span className="instructor-card__name">{course.lecturer.name}</span>
-                  <span className="instructor-card__role">Instructor</span>
-                </Link>
+                {teachers.map((l) => (
+                  <Link key={l.id} href={`/lecturers/${l.slug}`} className="instructor-card">
+                    <div className="instructor-card__avatar">
+                      {l.photoUrl ? (
+                        // eslint-disable-next-line @next/next/no-img-element
+                        <img src={cloudinaryUrl(l.photoUrl, { width: 120, height: 120 }) ?? undefined} alt={l.name} />
+                      ) : (
+                        l.name.charAt(0)
+                      )}
+                    </div>
+                    <span className="instructor-card__name">{l.name}</span>
+                    <span className="instructor-card__role">Instructor</span>
+                  </Link>
+                ))}
               </div>
             </section>
           )}

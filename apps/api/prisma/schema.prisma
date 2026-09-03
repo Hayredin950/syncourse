@@ -39,8 +39,11 @@ model Lecturer {
   socialLinks String   @default("{}") // JSON: { "twitter": ..., "github": ... }
   createdAt   DateTime @default(now())
 
-  courses   Course[]
-  resources Resource[]
+  /// Legacy single-lecturer link. Kept in step with courseLinks[0] so the column
+  /// can be dropped in a later release once the backfill is confirmed live.
+  courses     Course[]
+  resources   Resource[]
+  courseLinks CourseLecturer[]
 }
 
 model Organization {
@@ -74,6 +77,9 @@ model Course {
   language        String        @default("English")
   levelId         String?
   level           Level?        @relation(fields: [levelId], references: [id])
+  /// Deprecated: the first of `lecturers`, kept only so a client built against
+  /// the single-lecturer response keeps working through one deploy. Every read
+  /// goes through `lecturers`; writes set both.
   lecturerId      String?
   lecturer        Lecturer?     @relation(fields: [lecturerId], references: [id])
   organizationId  String?
@@ -94,6 +100,7 @@ model Course {
   deletedAt       DateTime? // soft delete — protects progress history
 
   categories      CourseCategory[]
+  lecturers       CourseLecturer[]
   tags            CourseTag[]
   audience        CourseAudience[]
   sections        Section[]
@@ -109,6 +116,21 @@ model Course {
   circlePosts     CirclePost[]
 
   @@index([publishedAt])
+}
+
+/// A course can be taught by several people — "Taught By: Andrei Neagoie, Daniel
+/// Bourke" is one course, not two. orderIndex preserves the order they are
+/// credited in, which is the order the source post lists them.
+model CourseLecturer {
+  courseId   String
+  lecturerId String
+  orderIndex Int      @default(0)
+  course     Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  lecturer   Lecturer @relation(fields: [lecturerId], references: [id], onDelete: Cascade)
+
+  @@id([courseId, lecturerId])
+  @@index([lecturerId])
+  @@index([courseId, orderIndex])
 }
 
 model CourseCategory {

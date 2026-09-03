@@ -32,6 +32,12 @@ export interface AdminCourseInput {
   description?: string;
   categoryNames?: string[];
   levelName?: string;
+  /** Every teacher credited on the course, in the order they should be printed. */
+  lecturerNames?: string[];
+  /**
+   * Deprecated single-teacher field. Still honoured so a client that has not
+   * been redeployed keeps working; treated as a one-name `lecturerNames`.
+   */
   lecturerName?: string;
   organizationName?: string;
   language?: string;
@@ -129,7 +135,7 @@ export class AdminService {
       orderBy: { createdAt: 'desc' },
       include: {
         level: true,
-        lecturer: true,
+        lecturers: { include: { lecturer: true }, orderBy: { orderIndex: 'asc' } },
         organization: true,
         _count: { select: { sections: true, telegramFiles: true } },
       },
@@ -150,7 +156,8 @@ export class AdminService {
       createdAt: c.createdAt,
       updatedAt: c.updatedAt,
       level: c.level?.name ?? null,
-      lecturer: c.lecturer?.name ?? null,
+      // One cell, every teacher: "Andrei Neagoie, Daniel Bourke".
+      lecturer: c.lecturers.map((cl) => cl.lecturer.name).join(', ') || null,
       organization: c.organization?.name ?? null,
     }));
   }
@@ -162,7 +169,7 @@ export class AdminService {
       where: { slug },
       include: {
         level: true,
-        lecturer: true,
+        lecturers: { include: { lecturer: true }, orderBy: { orderIndex: 'asc' } },
         organization: true,
         categories: { include: { category: true } },
         tags: true,
@@ -181,7 +188,9 @@ export class AdminService {
       description: course.description,
       categoryNames: course.categories.map((cc) => cc.category.name),
       levelName: course.level?.name ?? null,
-      lecturerName: course.lecturer?.name ?? null,
+      lecturerNames: course.lecturers.map((cl) => cl.lecturer.name),
+      // Kept so a form loaded from an older build still fills its one field.
+      lecturerName: course.lecturers[0]?.lecturer.name ?? null,
       organizationName: course.organization?.name ?? null,
       language: course.language,
       originalPrice: course.originalPrice,
@@ -222,7 +231,7 @@ export class AdminService {
     const description = dto.description.trim();
 
     const slug = await this.uniqueSlug(slugify(title));
-    const { levelId, lecturerId, organizationId, categoryIds } = await this.resolveRefs(dto);
+    const { levelId, lecturerIds, organizationId, categoryIds } = await this.resolveRefs(dto);
 
     const course = await this.prisma.$transaction(async (tx) => {
       const c = await tx.course.create({
@@ -232,7 +241,8 @@ export class AdminService {
           description,
           language: dto.language || 'English',
           levelId,
-          lecturerId,
+          // Mirror of the first credit, kept only while the deprecated column lives.
+          lecturerId: lecturerIds[0] ?? null,
           organizationId,
           originalPrice: dto.originalPrice ?? null,
           price: dto.price ?? dto.originalPrice ?? null,
@@ -244,6 +254,7 @@ export class AdminService {
           bannerUrl: dto.bannerUrl || null,
           previewVideoUrl: dto.previewVideoUrl || null,
           categories: { create: categoryIds.map((categoryId) => ({ categoryId })) },
+          lecturers: { create: lecturerIds.map((lecturerId, i) => ({ lecturerId, orderIndex: i })) },
           tags: { create: (dto.tags ?? []).map((tag) => ({ tag: tag.trim() })) },
           audience: { create: (dto.audience ?? []).map((a) => ({ audienceTag: a.trim() })) },
         },
@@ -260,15 +271,24 @@ export class AdminService {
     const existing = await this.prisma.course.findUnique({ where: { slug } });
     if (!existing || existing.deletedAt) throw new NotFoundException('Course not found');
 
-    const { levelId, lecturerId, organizationId, categoryIds } = await this.resolveRefs(dto, existing);
+    const { levelId, lecturerIds, organizationId, categoryIds } = await this.resolveRefs(dto, existing);
+    const lecturerNames = requestedLecturers(dto);
 
     const data: Prisma.CourseUpdateInput = {
       ...(dto.title !== undefined ? { title: dto.title.trim() } : {}),
       ...(dto.description !== undefined ? { description: dto.description.trim() } : {}),
       ...(dto.language !== undefined ? { language: dto.language } : {}),
       ...(dto.levelName !== undefined ? { level: levelId ? { connect: { id: levelId } } : { disconnect: true } } : {}),
-      ...(dto.lecturerName !== undefined
-        ? { lecturer: lecturerId ? { connect: { id: lecturerId } } : { disconnect: true } }
+      ...(lecturerNames !== undefined
+        ? {
+            // Whole credit list replaced, and the deprecated single link follows the
+            // first name so both shapes agree until the column goes.
+            lecturers: {
+              deleteMany: {},
+              create: lecturerIds.map((lecturerId, i) => ({ lecturerId, orderIndex: i })),
+            },
+            lecturer: lecturerIds[0] ? { connect: { id: lecturerIds[0] } } : { disconnect: true },
+          }
         : {}),
       ...(dto.organizationName !== undefined
         ? { organization: organizationId ? { connect: { id: organizationId } } : { disconnect: true } }
@@ -651,7 +671,7 @@ export class AdminService {
     await this.assertStaff(userId);
     const rows = await this.prisma.lecturer.findMany({
       orderBy: { name: 'asc' },
-      include: { _count: { select: { courses: true } } },
+      include: { _count: { select: { courseLinks: true } } },
     });
     return rows.map((l) => ({
       id: l.id,
@@ -660,7 +680,7 @@ export class AdminService {
       photoUrl: l.photoUrl,
       bio: l.bio,
       credentials: l.credentials,
-      courseCount: l._count.courses,
+      courseCount: l._count.courseLinks,
       createdAt: l.createdAt,
     }));
   }
@@ -697,7 +717,11 @@ export class AdminService {
 
   async removeLecturer(userId: string, id: string) {
     await this.assertStaff(userId);
-    const count = await this.prisma.course.count({ where: { lecturerId: id, deletedAt: null } });
+    // Counted through the join table: a co-teacher who is nobody's first credit
+    // is still teaching, and deleting them would silently cascade the link away.
+    const count = await this.prisma.course.count({
+      where: { deletedAt: null, lecturers: { some: { lecturerId: id } } },
+    });
     if (count > 0) {
       throw new BadRequestException(`This lecturer teaches ${count} course(s) — reassign them first.`);
     }
@@ -1227,7 +1251,7 @@ export class AdminService {
   private async resolveRefs(
     dto: AdminCourseInput,
     existing?: { id: string },
-  ): Promise<{ levelId: string | null; lecturerId: string | null; organizationId: string | null; categoryIds: string[] }> {
+  ): Promise<{ levelId: string | null; lecturerIds: string[]; organizationId: string | null; categoryIds: string[] }> {
     let levelId: string | null = null;
     if (dto.levelName) {
       const level = await this.prisma.level.upsert({
@@ -1240,18 +1264,23 @@ export class AdminService {
       levelId = null;
     }
 
-    let lecturerId: string | null = null;
-    if (dto.lecturerName) {
-      const trimmed = dto.lecturerName.trim();
+    // Every credited teacher, in the order the form lists them; names not on file
+    // yet are created, exactly as categories are. Duplicates collapse, so pasting
+    // "Andrei Neagoie, Andrei Neagoie" cannot break the composite primary key.
+    const lecturerIds: string[] = [];
+    const seenLecturers = new Set<string>();
+    for (const name of requestedLecturers(dto) ?? []) {
+      const trimmed = name.trim();
+      const key = trimmed.toLowerCase();
+      if (!trimmed || seenLecturers.has(key)) continue;
+      seenLecturers.add(key);
       const existingLecturer = await this.prisma.lecturer.findFirst({ where: { name: trimmed } });
       const lecturer =
         existingLecturer ??
         (await this.prisma.lecturer.create({
           data: { name: trimmed, slug: await this.uniqueSlugFor('lecturer', slugify(trimmed)) },
         }));
-      lecturerId = lecturer.id;
-    } else if (existing && dto.lecturerName !== undefined) {
-      lecturerId = null;
+      lecturerIds.push(lecturer.id);
     }
 
     let organizationId: string | null = null;
@@ -1280,7 +1309,7 @@ export class AdminService {
         }));
       categoryIds.push(category.id);
     }
-    return { levelId, lecturerId, organizationId, categoryIds };
+    return { levelId, lecturerIds, organizationId, categoryIds };
   }
 
   /** Slug is the only unique field on Category/Lecturer/Organization — generate one. */
@@ -1558,6 +1587,18 @@ function cleanTags(tags?: string[]): string[] {
     if (trimmed) seen.add(trimmed);
   }
   return [...seen];
+}
+
+/**
+ * The teachers a request is asking for, whichever field it used: `lecturerNames`
+ * from a current client, `lecturerName` from one that predates co-teaching.
+ * `undefined` means the request never mentioned teachers, so the existing
+ * credits must be left alone — an empty array means "clear them".
+ */
+function requestedLecturers(dto: AdminCourseInput): string[] | undefined {
+  if (dto.lecturerNames !== undefined) return cleanTags(dto.lecturerNames);
+  if (dto.lecturerName !== undefined) return cleanTags([dto.lecturerName]);
+  return undefined;
 }
 
 /** Drop blank rows, normalise the kind, and let list order set orderIndex. */

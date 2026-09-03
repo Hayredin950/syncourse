@@ -129,6 +129,7 @@ function toSummary(c: EntityCourse) {
     contentType: c.contentType ?? "course",
     categoryNames: [],
     lecturerName: null,
+    lecturerNames: [],
     organizationName: null,
     publishedAt: c.publishedAt ?? "",
   };
