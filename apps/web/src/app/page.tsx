@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { ArrowRight, ChevronRight, Play, Star } from "lucide-react";
 import { get } from "@/lib/api";
@@ -25,19 +25,50 @@ export default function HomePage() {
 
   // "Best of" — one row with a dropdown to switch organizations
   const [bestOfOrgId, setBestOfOrgId] = useState("");
+
+  /**
+   * The three dropdown rails below, ordered by how much each option actually
+   * holds.
+   *
+   * All three used to open on `[0]`, and in a library this size `[0]` was the
+   * emptiest choice in every one of them at once — one course by Andrei Neagoie,
+   * one from LinkedIn Learning, two under Artificial Intelligence — so the home
+   * page led with three rails holding a single poster each in a row six wide,
+   * which reads as five cards that failed to load rather than as a filter. The
+   * fullest option is the honest default for a row whose whole job is to show a
+   * selection, and the picker leading with the substantial names is what someone
+   * scanning it wants first. The standalone category and lecturer grids further
+   * down keep their own order.
+   */
+  const categoriesByCount = useMemo(
+    () => (home ? [...home.categories].sort((a, b) => b.courseCount - a.courseCount) : []),
+    [home],
+  );
+  const lecturersByCount = useMemo(
+    () => (home ? [...home.lecturers].sort((a, b) => b.courseCount - a.courseCount) : []),
+    [home],
+  );
+  const bestOfByCount = useMemo(
+    () =>
+      home
+        ? home.bestOf.filter((o) => o.courses.length > 0).sort((a, b) => b.courses.length - a.courses.length)
+        : [],
+    [home],
+  );
+
   useEffect(() => {
-    if (bestOfOrgId || !home || home.bestOf.length === 0) return;
-    setBestOfOrgId(home.bestOf[0].id);
-  }, [home, bestOfOrgId]);
-  const activeOrg = home?.bestOf.find((o) => o.id === bestOfOrgId) ?? home?.bestOf[0];
+    if (bestOfOrgId || bestOfByCount.length === 0) return;
+    setBestOfOrgId(bestOfByCount[0].id);
+  }, [bestOfByCount, bestOfOrgId]);
+  const activeOrg = bestOfByCount.find((o) => o.id === bestOfOrgId) ?? bestOfByCount[0];
 
   // Curated rows with dropdowns (PhonoFilm: Movie Genre → / Directors →)
   const [catRowSlug, setCatRowSlug] = useState("");
   const [instructorRowSlug, setInstructorRowSlug] = useState("");
   const [catRowCourses, setCatRowCourses] = useState<CourseSummary[]>([]);
   const [instructorRowCourses, setInstructorRowCourses] = useState<CourseSummary[]>([]);
-  const catRow = home?.categories.find((c) => c.slug === catRowSlug) ?? home?.categories[0];
-  const instructorRow = home?.lecturers.find((l) => l.slug === instructorRowSlug) ?? home?.lecturers[0];
+  const catRow = categoriesByCount.find((c) => c.slug === catRowSlug) ?? categoriesByCount[0];
+  const instructorRow = lecturersByCount.find((l) => l.slug === instructorRowSlug) ?? lecturersByCount[0];
   useEffect(() => {
     if (!catRow) return;
     get<{ results: CourseSummary[] }>(`/courses?category=${catRow.slug}&limit=10`).then((r) => setCatRowCourses(r.results)).catch(() => undefined);
@@ -241,7 +272,7 @@ export default function HomePage() {
               className="badge"
               style={{ cursor: "pointer", outline: "none" }}
             >
-              {home.categories.map((c) => (
+              {categoriesByCount.map((c) => (
                 <option key={c.slug} value={c.slug}>{c.name}</option>
               ))}
             </select>
@@ -266,7 +297,7 @@ export default function HomePage() {
               className="badge"
               style={{ cursor: "pointer", outline: "none" }}
             >
-              {home.lecturers.map((l) => (
+              {lecturersByCount.map((l) => (
                 <option key={l.slug} value={l.slug}>{l.name}</option>
               ))}
             </select>
@@ -291,13 +322,11 @@ export default function HomePage() {
               className="badge"
               style={{ cursor: "pointer", outline: "none" }}
             >
-              {home.bestOf
-                .filter((o) => o.courses.length > 0)
-                .map((o) => (
-                  <option key={o.id} value={o.id}>
-                    {o.name}
-                  </option>
-                ))}
+              {bestOfByCount.map((o) => (
+                <option key={o.id} value={o.id}>
+                  {o.name}
+                </option>
+              ))}
             </select>
             <Link href={`/organizations/${activeOrg.slug}`}>See all <ChevronRight size={14} style={{ verticalAlign: "middle" }} /></Link>
           </div>
@@ -350,11 +379,13 @@ export default function HomePage() {
       {/* Community shelves — self-fetching, and absent unless someone has built one */}
       <HomeCollections />
 
-      {/* Explore by category */}
+      {/* The complete directory, as against the curated "Explore by Category"
+          rail higher up. Both were called the same thing bar one letter's case,
+          which on one page reads as a section that rendered twice. */}
       {home.categories.length > 0 && (
         <section className="rail">
           <div className="section-head">
-            <h2>Explore by category</h2>
+            <h2>All categories</h2>
           </div>
           <div className="category-grid">
             {home.categories.map((c) => (
