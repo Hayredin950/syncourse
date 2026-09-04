@@ -1,22 +1,31 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { get } from "@/lib/api";
+import { plural } from "@/lib/format";
 import type { LearningPathRow } from "@/lib/types";
 import { MobileHeader } from "@/components/Nav";
 import { SkCards } from "@/components/Skeleton";
+import { LoadError } from "@/components/LoadError";
 
 export default function PathsPage() {
   const [paths, setPaths] = useState<LearningPathRow[]>([]);
   const [loading, setLoading] = useState(true);
+  /* A failed request used to land on the empty state below, which says the first
+     paths "are on the way" — reassuring, and wrong. */
+  const [failed, setFailed] = useState(false);
 
-  useEffect(() => {
+  const load = useCallback(() => {
+    setLoading(true);
+    setFailed(false);
     get<LearningPathRow[]>("/learning-paths")
       .then(setPaths)
-      .catch(() => undefined)
+      .catch(() => setFailed(true))
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(load, [load]);
 
   return (
     <main className="page">
@@ -26,12 +35,16 @@ export default function PathsPage() {
         Featured learning paths
       </h1>
       <p className="muted mono" style={{ fontSize: 11, margin: 0 }}>
-        {loading ? "…" : `${paths.length} paths`}
+        {loading ? "…" : failed ? "—" : plural(paths.length, "path")}
       </p>
 
       {loading ? (
         <div style={{ marginTop: 24 }}>
           <SkCards n={3} grid="path-grid" label="Loading learning paths" />
+        </div>
+      ) : failed ? (
+        <div style={{ marginTop: 24 }}>
+          <LoadError title="We couldn't load the learning paths" onRetry={load} />
         </div>
       ) : paths.length === 0 ? (
         <div className="empty-state" style={{ marginTop: 24 }}>
@@ -49,7 +62,7 @@ export default function PathsPage() {
               {p.courses.length > 0 && (
                 <div className="path-card__strip">
                   {p.courses.slice(0, 4).map((c) => (
-                    <div key={c.id} className="cover" style={{ aspectRatio: "0.8", borderRadius: 8, margin: 0 }}>
+                    <div key={c.id} className="cover" style={{ aspectRatio: "0.8", borderRadius: "var(--r-xs)", margin: 0 }}>
                       {c.thumbnailUrl ? (
                         // eslint-disable-next-line @next/next/no-img-element
                         <img src={c.thumbnailUrl} alt={c.title} loading="lazy" className="absolute inset-0 h-full w-full object-cover" style={{ zIndex: 0 }} />

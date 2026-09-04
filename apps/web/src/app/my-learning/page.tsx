@@ -1,14 +1,15 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Download, Heart, Star } from "lucide-react";
 import { get } from "@/lib/api";
 import type { LibraryData, LibraryCourse } from "@/lib/types";
 import { useAuth } from "@/lib/auth";
 import { MobileHeader } from "@/components/Nav";
 import { SkRows } from "@/components/Skeleton";
+import { LoadError } from "@/components/LoadError";
 
 /**
  * A reader's library: downloaded, saved, liked.
@@ -19,8 +20,14 @@ import { SkRows } from "@/components/Skeleton";
  *
  * The route keeps its /my-learning path so existing links and bookmarks still
  * resolve; only the label changed.
+ *
+ * `?tab=` is read on load so a tab can be linked to — /me's Saved and Liked
+ * cards point here, and both used to land on /search?scope=…, which /search has
+ * never read.
  */
 type Tab = "downloaded" | "saved" | "liked";
+
+const TABS: Tab[] = ["downloaded", "saved", "liked"];
 
 const EMPTY: Record<Tab, { title: string; body: string }> = {
   downloaded: {
@@ -32,10 +39,39 @@ const EMPTY: Record<Tab, { title: string; body: string }> = {
 };
 
 export default function MyLibraryPage() {
+  return (
+    <Suspense
+      fallback={
+        <main className="page">
+          <MobileHeader title="My Library" />
+          <SkRows n={6} label="Loading your library" />
+        </main>
+      }
+    >
+      <MyLibrary />
+    </Suspense>
+  );
+}
+
+function MyLibrary() {
   const { token, loading } = useAuth();
   const router = useRouter();
+  const params = useSearchParams();
   const [data, setData] = useState<LibraryData | null>(null);
-  const [tab, setTab] = useState<Tab>("downloaded");
+  /* `.catch(() => {})` left `data` null, and null is the skeleton branch — so a
+     dropped request shimmered here until the reader gave up and reloaded. */
+  const [failed, setFailed] = useState(false);
+  const wanted = params.get("tab");
+  const [tab, setTab] = useState<Tab>(
+    TABS.includes(wanted as Tab) ? (wanted as Tab) : "downloaded",
+  );
+
+  const load = useCallback(() => {
+    setFailed(false);
+    get<LibraryData>("/me/learning")
+      .then(setData)
+      .catch(() => setFailed(true));
+  }, []);
 
   useEffect(() => {
     if (loading) return;
@@ -43,8 +79,8 @@ export default function MyLibraryPage() {
       router.push("/auth?next=/my-learning");
       return;
     }
-    get<LibraryData>("/me/learning").then(setData).catch(() => {});
-  }, [loading, token, router]);
+    load();
+  }, [loading, token, router, load]);
 
   if (!token) return null;
   if (!data)
@@ -54,7 +90,11 @@ export default function MyLibraryPage() {
         <span className="eyebrow">Your library</span>
         <h1 className="display" style={{ fontSize: 42 }}>My Library</h1>
         <div style={{ marginTop: 18 }}>
-          <SkRows n={6} label="Loading your library" />
+          {failed ? (
+            <LoadError title="We couldn't load your library" onRetry={load} />
+          ) : (
+            <SkRows n={6} label="Loading your library" />
+          )}
         </div>
       </main>
     );
@@ -76,25 +116,30 @@ export default function MyLibraryPage() {
             ["liked", `Liked ${data.counts.liked}`],
           ] as [Tab, string][]
         ).map(([t, label]) => (
-          <button key={t} className={`badge ${tab === t ? "primary" : ""}`} onClick={() => setTab(t)}>
+          <button
+            key={t}
+            className={`badge ${tab === t ? "primary" : ""}`}
+            onClick={() => setTab(t)}
+            aria-pressed={tab === t}
+          >
             {label}
           </button>
         ))}
       </div>
 
       {rows.length === 0 ? (
-        <div className="dark-panel" style={{ padding: 40, textAlign: "center", marginTop: 30 }}>
+        <div className="dark-panel dark-panel--pad-xl" style={{ textAlign: "center", marginTop: 30 }}>
           {tab === "liked" ? <Heart size={28} className="rating" /> : tab === "saved" ? <Star size={28} className="rating" /> : <Download size={28} className="rating" />}
           <h3>{EMPTY[tab].title}</h3>
           <p className="muted">{EMPTY[tab].body}</p>
           <Link href="/browse" className="btn primary" style={{ display: "inline-block" }}>Browse courses</Link>
         </div>
       ) : (
-        <div className="dark-panel" style={{ marginTop: 28, padding: 10 }}>
+        <div className="dark-panel dark-panel--pad-xs" style={{ marginTop: 28 }}>
           {rows.map((c) => (
             <Link key={c.id} href={`/courses/${c.slug}`} className="lesson">
               <span>{c.title.charAt(0).toUpperCase()}</span>
-              <span style={{ flex: 1 }}>{c.title}</span>
+              <span style={{ flex: 1, minWidth: 0 }}>{c.title}</span>
               <span className="muted" style={{ marginRight: 12 }}>
                 {c.ratingCount > 0 && (
                   <>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useToast } from "@/lib/useToast";
 import type React from "react";
 import Link from "next/link";
@@ -12,6 +12,7 @@ import { useAuth } from "@/lib/auth";
 import { cloudinaryUrl } from "@/lib/cloudinary";
 import { MobileHeader } from "@/components/Nav";
 import { Sk } from "@/components/Skeleton";
+import { LoadError } from "@/components/LoadError";
 import { Toast } from "@/components/Toast";
 
 interface CheckoutResult {
@@ -36,6 +37,9 @@ export default function PremiumPage() {
   const router = useRouter();
   const { token } = useAuth();
   const [plans, setPlans] = useState<Plan[]>([]);
+  /* `plans.length === 0` is the skeleton branch below, so a failed request left
+     the purchase page shimmering with no prices and no way to retry. */
+  const [plansFailed, setPlansFailed] = useState(false);
   const [method, setMethod] = useState<MethodValue>("telebirr");
   const [selected, setSelected] = useState("6m");
   const [home, setHome] = useState<HomeData | null>(null);
@@ -44,10 +48,18 @@ export default function PremiumPage() {
   const { toast, setToast } = useToast();
   const [paid, setPaid] = useState(false);
 
-  useEffect(() => {
-    get<Plan[]>("/payments/plans").then(setPlans).catch(() => {});
-    get<HomeData>("/home").then(setHome).catch(() => {});
+  const loadPlans = useCallback(() => {
+    setPlansFailed(false);
+    get<Plan[]>("/payments/plans")
+      .then(setPlans)
+      .catch(() => setPlansFailed(true));
   }, []);
+
+  useEffect(() => {
+    loadPlans();
+    // The catalogue strip further down is decoration; its absence costs nothing.
+    get<HomeData>("/home").then(setHome).catch(() => undefined);
+  }, [loadPlans]);
 
   const current = plans.find((p) => p.id === selected) ?? plans[0];
 
@@ -152,7 +164,7 @@ export default function PremiumPage() {
               <span className="method-card__icon icon-badge icon-badge--amber">{m.icon}</span>
               <span className="method-card__body">
                 <strong>
-                  {m.label} {m.recommended && <span className="badge primary" style={{ fontSize: 9, marginLeft: 6 }}>Recommended</span>}
+                  {m.label} {m.recommended && <span className="badge badge--solid" style={{ fontSize: 9, marginLeft: 6 }}>Recommended</span>}
                 </strong>
                 <small>{m.sub}</small>
               </span>
@@ -178,7 +190,7 @@ export default function PremiumPage() {
                 </span>
                 <span className="plan-row__body">
                   <strong>
-                    {p.name} {p.isBestValue && <span className="badge primary" style={{ fontSize: 9, marginLeft: 8 }}>Best value</span>}
+                    {p.name} {p.isBestValue && <span className="badge badge--solid" style={{ fontSize: 9, marginLeft: 8 }}>Best value</span>}
                   </strong>
                   <small>{p.durationDays} days · access on every device · no renewal</small>
                   {p.weeklyEtb > 0 && (
@@ -190,14 +202,23 @@ export default function PremiumPage() {
                 <span className="plan-row__price">{price(p)}</span>
               </button>
             ))}
-            {plans.length === 0 && (
-              <div role="status" aria-busy="true" className="sk-stack">
-                <span className="sk-label">Loading plans…</span>
-                {[0, 1, 2].map((i) => (
-                  <Sk key={i} className="sk-plan" />
-                ))}
-              </div>
-            )}
+            {plans.length === 0 &&
+              (plansFailed ? (
+                <LoadError
+                  icon="💳"
+                  title="We couldn't load the plans"
+                  body="Prices come from our servers and that request failed. Nothing was charged — try again."
+                  onRetry={loadPlans}
+                  compact
+                />
+              ) : (
+                <div role="status" aria-busy="true" className="sk-stack">
+                  <span className="sk-label">Loading plans…</span>
+                  {[0, 1, 2].map((i) => (
+                    <Sk key={i} className="sk-plan" />
+                  ))}
+                </div>
+              ))}
           </div>
 
           {/* summary panel with the actual purchase CTA */}
@@ -210,7 +231,7 @@ export default function PremiumPage() {
                 Pay with {methodLabel} securely — {current.durationDays} days of Premium, no auto-renewal.
               </p>
               <button className="btn primary" style={{ width: "100%" }} onClick={() => startCheckout(current.id)}>
-                Continue with {methodLabel} <ArrowRight size={14} style={{ display: "inline", verticalAlign: "middle" }} />
+                Continue with {methodLabel} <ArrowRight size={14} />
               </button>
               <a href="mailto:support@syncourse.app" className="plan-summary__support">
                 <MessageCircle size={13} style={{ display: "inline", verticalAlign: "middle" }} /> Contact support — we answer fast
@@ -221,7 +242,7 @@ export default function PremiumPage() {
 
         {/* checkout flow */}
         {checkout && (
-          <div className="dark-panel" style={{ padding: 24, marginTop: 20 }}>
+          <div className="dark-panel dark-panel--pad-lg" style={{ marginTop: 20 }}>
             {paid ? (
               <div>
                 <Check className="rating" />
@@ -232,7 +253,7 @@ export default function PremiumPage() {
               <div style={{ fontSize: 13 }}>
                 <h3>{checkout.steps.step1.title}</h3>
                 <p className="muted" style={{ margin: "4px 0 12px" }}>{checkout.steps.step1.text}</p>
-                <div className="dark-panel" style={{ padding: "14px 18px", display: "flex", justifyContent: "space-between" }}>
+                <div className="dark-panel dark-panel--row" style={{ display: "flex", justifyContent: "space-between" }}>
                   <span className="muted">{checkout.steps.step1.accountName}</span>
                   <span className="mono" style={{ fontWeight: 700, color: "hsl(var(--foreground))" }}>{checkout.steps.step1.accountNumber}</span>
                 </div>
@@ -245,7 +266,7 @@ export default function PremiumPage() {
                 />
                 <p className="muted" style={{ fontSize: 11, margin: "2px 0 16px" }}>{checkout.steps.step2.hint}</p>
                 <button className="btn primary" onClick={submitReference} disabled={!reference.trim()}>
-                  I have paid · submit reference <ArrowRight size={14} style={{ display: "inline", verticalAlign: "middle" }} />
+                  I have paid · submit reference <ArrowRight size={14} />
                 </button>
               </div>
             ) : method === "crypto" ? (
@@ -254,7 +275,7 @@ export default function PremiumPage() {
                 <p className="muted">USDT, BTC, ETH and more. Premium activates once the network confirms.</p>
                 {checkout.redirectUrl && (
                   <a href={checkout.redirectUrl} target="_blank" rel="noreferrer" className="btn primary" style={{ display: "inline-block" }}>
-                    Open crypto invoice <ArrowRight size={14} style={{ display: "inline", verticalAlign: "middle" }} />
+                    Open crypto invoice <ArrowRight size={14} />
                   </a>
                 )}
               </div>
@@ -264,7 +285,7 @@ export default function PremiumPage() {
                 <p className="muted">You&apos;ll be redirected to the payment page to finish.</p>
                 {checkout.redirectUrl && (
                   <a href={checkout.redirectUrl} target="_blank" rel="noreferrer" className="btn primary" style={{ display: "inline-block" }}>
-                    Proceed to payment <ArrowRight size={14} style={{ display: "inline", verticalAlign: "middle" }} />
+                    Proceed to payment <ArrowRight size={14} />
                   </a>
                 )}
               </div>

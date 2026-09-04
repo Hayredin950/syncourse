@@ -7,6 +7,7 @@ import { del, get, post, patch } from "@/lib/api";
 import type { AdminCategoryRow } from "@/lib/types";
 import { useAdminToast } from "@/components/admin/AdminToast";
 import ConfirmButton from "@/components/admin/ConfirmButton";
+import { plural } from "@/lib/format";
 
 /**
  * The icon is a category's whole visual identity in browse, so it gets a grid
@@ -228,7 +229,7 @@ function AdminCategories() {
             <div className="admin-row__main">
               <div className="admin-row__title">{c.name}</div>
               <div className="admin-row__meta">
-                {c.courseCount === 0 ? "No courses yet" : `${c.courseCount} course${c.courseCount === 1 ? "" : "s"}`} ·{" "}
+                {c.courseCount === 0 ? "No courses yet" : plural(c.courseCount, "course")} ·{" "}
                 {c.slug}
               </div>
             </div>

@@ -84,7 +84,7 @@ export default function HomePage() {
         <MobileHeader />
         <div role="status" aria-busy="true">
           <span className="sk-label">Loading the catalogue…</span>
-          <Sk className="sk-hero" style={{ minHeight: 440, borderRadius: 22 }} />
+          <Sk className="sk-hero" style={{ minHeight: 440, borderRadius: "var(--r-2xl)" }} />
           {[0, 1].map((i) => (
             <div key={i} style={{ marginTop: 42 }}>
               <Sk className="sk-line sk-line--lg" style={{ width: 168, marginBottom: 16 }} />
@@ -133,7 +133,7 @@ export default function HomePage() {
             </div>
             <div className="actions">
               <Link href={`/courses/${featured.slug}`} className="btn primary">
-                <Play size={14} fill="currentColor" style={{ display: "inline", verticalAlign: "middle" }} /> Start learning
+                <Play size={14} fill="currentColor" /> Start learning
               </Link>
               <Link href={`/courses/${featured.slug}`} className="btn">View course</Link>
             </div>
@@ -172,8 +172,12 @@ export default function HomePage() {
           <Link href="/browse?sort=newest">See all <ChevronRight size={14} style={{ verticalAlign: "middle" }} /></Link>
         </div>
         <div className="rail-row">
+          {/* `isNew` comes from the API, which stamps it on anything published in
+              the last 30 days. Overriding it to `true` here put an "Added" badge on
+              all ten cards — including the tenth-newest, which on a quiet month is
+              a year old. The badge means something again. */}
           {home.latest.slice(0, 10).map((c) => (
-            <CourseCard key={c.id} course={{ ...c, isNew: true }} />
+            <CourseCard key={c.id} course={c} />
           ))}
         </div>
       </section>
@@ -192,7 +196,7 @@ export default function HomePage() {
             <p>Sign in, then learn and rate what you love. Syncourse learns the topics and lecturers you gravitate toward, then keeps a fresh set of picks ready.</p>
           </div>
           <Link href="/auth" className="btn primary">
-            Sign in <ArrowRight size={13} style={{ display: "inline", verticalAlign: "middle" }} />
+            Sign in <ArrowRight size={13} />
           </Link>
         </section>
       ) : (
@@ -208,7 +212,7 @@ export default function HomePage() {
             </div>
           </div>
           <Link href="/my-learning" className="btn primary">
-            Open your library <ArrowRight size={13} style={{ display: "inline", verticalAlign: "middle" }} />
+            Open your library <ArrowRight size={13} />
           </Link>
         </section>
       )}
@@ -322,7 +326,7 @@ export default function HomePage() {
                 {p.courses.length > 0 && (
                   <div className="path-card__strip">
                     {p.courses.slice(0, 4).map((c) => (
-                      <div key={c.id} className="cover" style={{ aspectRatio: "0.8", borderRadius: 8, margin: 0 }}>
+                      <div key={c.id} className="cover" style={{ aspectRatio: "0.8", borderRadius: "var(--r-xs)", margin: 0 }}>
                         {c.thumbnailUrl ? (
                           // eslint-disable-next-line @next/next/no-img-element
                           <img src={c.thumbnailUrl} alt={c.title} loading="lazy" className="absolute inset-0 h-full w-full object-cover" style={{ zIndex: 0 }} />
@@ -337,7 +341,6 @@ export default function HomePage() {
                   {p.courseCount} courses
                   {p.totalVotes > 0 && ` · ★ ${p.ratingAvg.toFixed(1)} avg · ${p.totalVotes.toLocaleString()} votes`}
                 </p>
-                <div className="path-card__bar"><i style={{ width: "38%" }} /></div>
               </Link>
             ))}
           </div>

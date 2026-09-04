@@ -9,6 +9,7 @@ import { useAdminToast } from "@/components/admin/AdminToast";
 import ConfirmButton from "@/components/admin/ConfirmButton";
 import ExpandableText from "@/components/admin/ExpandableText";
 import UploadField from "@/components/admin/UploadField";
+import { plural } from "@/lib/format";
 
 const ORG_TYPES = [
   ["publisher", "Publisher"],
@@ -243,7 +244,7 @@ function AdminPublishers() {
                 <span className="admin-row__title">{p.name}</span>
                 <span className="admin-badge admin-badge--gray">{p.orgType}</span>
                 <span className="admin-badge admin-badge--gray">
-                  {p.courseCount} course{p.courseCount === 1 ? "" : "s"}
+                  {plural(p.courseCount, "course")}
                 </span>
               </div>
               {p.description ? (

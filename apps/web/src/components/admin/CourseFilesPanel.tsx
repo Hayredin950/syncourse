@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { AlertTriangle, Download, FolderDown, Link2, RefreshCw, Send } from "lucide-react";
 import { del, get, post } from "@/lib/api";
+import { plural } from "@/lib/format";
 import type {
   AdminTelegramConsole,
   AdminTelegramImportResult,
@@ -89,7 +90,7 @@ export default function CourseFilesPanel({ slug }: { slug: string }) {
               ? "Could not load"
               : fileCount === 0
                 ? "Nothing attached"
-                : `${fileCount} file${fileCount === 1 ? "" : "s"} · ${totalMb.toFixed(1)} MB`}
+                : `${plural(fileCount, "file")} · ${totalMb.toFixed(1)} MB`}
         </span>
       </div>
 
@@ -130,7 +131,7 @@ export default function CourseFilesPanel({ slug }: { slug: string }) {
           <div className="admin-module-head">
             {m.title ?? "Ungrouped"}
             <span>
-              {m.files.length} part{m.files.length === 1 ? "" : "s"} · {m.sizeMb.toFixed(1)} MB
+              {plural(m.files.length, "part")} · {m.sizeMb.toFixed(1)} MB
             </span>
           </div>
           {m.files.map((f) => (
@@ -283,7 +284,7 @@ export default function CourseFilesPanel({ slug }: { slug: string }) {
                     );
                     return `${r.created} attached, ${r.updated} updated, ${r.skipped} skipped · ${r.totalMb.toFixed(
                       1,
-                    )} MB across ${r.modules.length} module${r.modules.length === 1 ? "" : "s"}`;
+                    )} MB across ${plural(r.modules.length, "module")}`;
                   })
                 }
               >
@@ -324,7 +325,7 @@ export default function CourseFilesPanel({ slug }: { slug: string }) {
                 onConfirm={() =>
                   run("all", async () => {
                     const r = await del<{ removed: number }>(`/admin/courses/${slug}/telegram`);
-                    return `Detached ${r.removed} file${r.removed === 1 ? "" : "s"}`;
+                    return `Detached ${plural(r.removed, "file")}`;
                   })
                 }
               />

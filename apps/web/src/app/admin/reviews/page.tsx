@@ -10,6 +10,7 @@ import { useAdminToast } from "@/components/admin/AdminToast";
 import ConfirmButton from "@/components/admin/ConfirmButton";
 import ExpandableText from "@/components/admin/ExpandableText";
 import Pagination, { clampPage } from "@/components/admin/Pagination";
+import { plural } from "@/lib/format";
 
 export default function AdminReviews() {
   const toast = useAdminToast();
@@ -145,8 +146,8 @@ export default function AdminReviews() {
               </div>
               <ExpandableText text={r.body} lines={3} className="admin-row__body" />
               <div className="admin-row__meta">
-                {relativeTime(r.createdAt)} · {r.upvoteCount} upvote{r.upvoteCount === 1 ? "" : "s"} · {r.replyCount}{" "}
-                repl{r.replyCount === 1 ? "y" : "ies"} · {r.author.email}
+                {relativeTime(r.createdAt)} · {plural(r.upvoteCount, "upvote")} ·{" "}
+                {plural(r.replyCount, "reply", "replies")} · {r.author.email}
               </div>
             </div>
             <div className="admin-row__actions">

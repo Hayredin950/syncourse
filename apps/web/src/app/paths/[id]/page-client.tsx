@@ -37,7 +37,7 @@ export default function PathDetailPage() {
     return (
       <main className="page">
         <MobileHeader title="Learning path" />
-        <div className="dark-panel" style={{ padding: 40, textAlign: "center" }}>
+        <div className="dark-panel dark-panel--pad-xl" style={{ textAlign: "center" }}>
           <h3>Learning path not found</h3>
           <p className="muted">It may have been removed.</p>
           <Link href="/paths" className="btn">All learning paths</Link>

@@ -9,6 +9,7 @@ import { useAdminToast } from "@/components/admin/AdminToast";
 import ConfirmButton from "@/components/admin/ConfirmButton";
 import ExpandableText from "@/components/admin/ExpandableText";
 import UploadField from "@/components/admin/UploadField";
+import { plural } from "@/lib/format";
 
 export default function AdminLecturersPage() {
   return (
@@ -214,7 +215,7 @@ function AdminLecturers() {
               <div className="admin-inline" style={{ gap: 7 }}>
                 <span className="admin-row__title">{l.name}</span>
                 <span className="admin-badge admin-badge--gray">
-                  {l.courseCount} course{l.courseCount === 1 ? "" : "s"}
+                  {plural(l.courseCount, "course")}
                 </span>
               </div>
               {l.bio ? (

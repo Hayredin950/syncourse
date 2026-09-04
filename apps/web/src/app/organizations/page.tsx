@@ -1,22 +1,31 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { get } from "@/lib/api";
+import { plural } from "@/lib/format";
 import type { OrganizationRow } from "@/lib/types";
 import { MobileHeader } from "@/components/Nav";
 import { PublisherCard } from "@/components/EntityCard";
 import { SkEntities } from "@/components/Skeleton";
+import { LoadError } from "@/components/LoadError";
 
 export default function OrganizationsPage() {
   const [orgs, setOrgs] = useState<OrganizationRow[]>([]);
   const [loading, setLoading] = useState(true);
+  /* Without this a dropped request rendered "No channels yet", which reads as an
+     empty catalogue rather than as a failure you can retry. */
+  const [failed, setFailed] = useState(false);
 
-  useEffect(() => {
+  const load = useCallback(() => {
+    setLoading(true);
+    setFailed(false);
     get<OrganizationRow[]>("/organizations")
       .then(setOrgs)
-      .catch(() => undefined)
+      .catch(() => setFailed(true))
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(load, [load]);
 
   return (
     <main className="page">
@@ -26,12 +35,14 @@ export default function OrganizationsPage() {
         Channels &amp; Schools
       </h1>
       <p className="muted mono" style={{ fontSize: 11, margin: 0 }}>
-        {loading ? "…" : `${orgs.length} publishers`}
+        {loading ? "…" : failed ? "—" : plural(orgs.length, "publisher")}
       </p>
 
       <div style={{ marginTop: 24 }}>
         {loading ? (
           <SkEntities n={12} label="Loading channels" />
+        ) : failed ? (
+          <LoadError title="We couldn't load the channels" onRetry={load} />
         ) : orgs.length === 0 ? (
           <div className="empty-state">
             <div className="empty-icon">🏫</div>

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { ChevronRight, Copy, Search, ShieldCheck, ShieldOff, X } from "lucide-react";
 import { get, patch } from "@/lib/api";
 import type { AdminUserRow } from "@/lib/types";
-import { formatDate } from "@/lib/format";
+import { formatDate, plural } from "@/lib/format";
 import { useAuth } from "@/lib/auth";
 import { useAdminToast } from "@/components/admin/AdminToast";
 import Pagination, { clampPage } from "@/components/admin/Pagination";
@@ -100,7 +100,7 @@ export default function AdminUsers() {
     }
     setBulkBusy(false);
     setSelected(new Set());
-    if (ok === ids.length) toast.success(`${ok} account${ok === 1 ? "" : "s"} ${isStaff ? "promoted" : "demoted"}`);
+    if (ok === ids.length) toast.success(`${plural(ok, "account")} ${isStaff ? "promoted" : "demoted"}`);
     else toast.error(`${ok} of ${ids.length} updated — the rest failed`);
   };
 
@@ -108,7 +108,7 @@ export default function AdminUsers() {
     const list = users.filter((u) => selected.has(u.id)).map((u) => u.email);
     try {
       await navigator.clipboard.writeText(list.join(", "));
-      toast.success(`${list.length} email${list.length === 1 ? "" : "s"} copied`);
+      toast.success(`${plural(list.length, "email")} copied`);
     } catch {
       toast.error("The browser blocked clipboard access");
     }

@@ -7,6 +7,7 @@ import type { AdminLegalRow } from "@/lib/types";
 import { useAdminToast } from "@/components/admin/AdminToast";
 import ConfirmButton from "@/components/admin/ConfirmButton";
 import { Markdown } from "@/components/Markdown";
+import { plural } from "@/lib/format";
 
 const DATE = { day: "numeric", month: "short", year: "numeric" } as const;
 const fmt = (iso: string) => new Date(iso).toLocaleDateString("en-US", DATE);
@@ -311,7 +312,7 @@ export default function AdminLegalPage() {
             {editing && republishing && willNotify > 0 ? (
               <ConfirmButton
                 label={`Publish and notify ${willNotify.toLocaleString("en-US")}`}
-                question={`Notify ${willNotify.toLocaleString("en-US")} ${willNotify === 1 ? "user" : "users"}?`}
+                question={`Notify ${plural(willNotify, "user")}?`}
                 confirmLabel="Yes, publish"
                 busy={saving}
                 icon={false}

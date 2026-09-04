@@ -2,8 +2,9 @@
 
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Eye, EyeOff, Lock, Mail, User, UserRound, X } from "lucide-react";
+import { Eye, EyeOff, Lock, Mail, User, UserRound } from "lucide-react";
 import { useAuth } from "@/lib/auth";
+import Modal from "@/components/Modal";
 import { apiUrl, post, setToken } from "@/lib/api";
 
 function AuthInner() {
@@ -226,7 +227,10 @@ function AuthInner() {
           sync<i />ourse
         </div>
         <div className="auth-hero-copy">
-          <h1>Your go-to place for courses.</h1>
+          {/* Marketing copy, not the page title — and this whole column is
+              `desktop-only`, so as an <h1> it left every phone with none. The
+              heading on the card is the <h1> now. */}
+          <p className="auth-hero-copy__lead">Your go-to place for courses.</p>
           <p>Trending picks, full curricula, instructor-led tracks — discover what to learn next.</p>
         </div>
       </div>
@@ -238,9 +242,9 @@ function AuthInner() {
         </div>
 
         <div className="auth-card">
-          <h2 className="display" style={{ fontSize: 24, margin: "0 0 4px" }}>
+          <h1 className="display" style={{ fontSize: 24, margin: "0 0 4px" }}>
             {verifying ? "Check your email" : mode === "login" ? "Welcome back" : "Create your account"}
-          </h2>
+          </h1>
           <p className="muted" style={{ fontSize: 12, margin: "0 0 20px" }}>
             {verifying
               ? "A 6-digit code was sent to your email. It expires in 15 minutes."
@@ -248,7 +252,13 @@ function AuthInner() {
           </p>
 
           {verifying ? (
-            <div className="space-y-3">
+            <form
+              className="space-y-3"
+              onSubmit={(e) => {
+                e.preventDefault();
+                void confirmCode();
+              }}
+            >
               <div className="muted" style={{ fontSize: 13, wordBreak: "break-all" }}>{verifyEmail}</div>
               <div className="auth-input">
                 <Mail size={15} />
@@ -257,20 +267,23 @@ function AuthInner() {
                   onChange={(e) => setVerifyCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
                   placeholder="6-digit code"
                   inputMode="numeric"
+                  autoComplete="one-time-code"
+                  aria-label="6-digit code"
                   autoFocus
                   style={{ letterSpacing: 6, fontWeight: 700 }}
                 />
               </div>
-              {verifyMsg && <div className="muted" style={{ fontSize: 12, color: "#6fe0a4" }}>{verifyMsg}</div>}
+              {verifyMsg && <div className="muted" style={{ fontSize: 12, color: "var(--success-ink)" }}>{verifyMsg}</div>}
               {error && <div className="rounded-lg border border-danger/40 bg-danger/10 px-3 py-2 text-xs text-danger">{error}</div>}
               <button
-                onClick={confirmCode}
+                type="submit"
                 disabled={busy || verifyCode.length !== 6}
                 className="w-full rounded-full bg-accent py-2.5 text-sm font-bold text-black hover:bg-accent-hover disabled:opacity-40"
               >
                 {busy ? "Checking…" : "Verify & sign in"}
               </button>
               <button
+                type="button"
                 onClick={resendCode}
                 disabled={resendBusy}
                 className="w-full text-center text-xs text-muted hover:text-text"
@@ -279,6 +292,7 @@ function AuthInner() {
                 {resendBusy ? "Sending…" : "Didn't get it? Resend the code"}
               </button>
               <button
+                type="button"
                 onClick={() => {
                   setVerifying(false);
                   setError("");
@@ -288,24 +302,52 @@ function AuthInner() {
               >
                 Back to sign in
               </button>
-            </div>
+            </form>
           ) : (
-            <div className="space-y-3">
+            /* A real <form>: Enter submits from any field, and the browser's
+               password manager will offer to save what you typed. Without it,
+               signing in needed a mouse. */
+            <form
+              className="space-y-3"
+              onSubmit={(e) => {
+                e.preventDefault();
+                void submit();
+              }}
+            >
             {mode === "register" && (
               <>
                 <div className="auth-input">
                   <User size={15} />
-                  <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Name" />
+                  <input
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    placeholder="Name"
+                    autoComplete="name"
+                    aria-label="Name"
+                  />
                 </div>
                 <div className="auth-input">
                   <UserRound size={15} />
-                  <input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="Username" />
+                  <input
+                    value={username}
+                    onChange={(e) => setUsername(e.target.value)}
+                    placeholder="Username"
+                    autoComplete="username"
+                    aria-label="Username"
+                  />
                 </div>
               </>
             )}
             <div className="auth-input">
               <Mail size={15} />
-              <input value={email} onChange={(e) => setEmail(e.target.value)} type="email" placeholder="Email" />
+              <input
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                type="email"
+                placeholder="Email"
+                autoComplete={mode === "login" ? "username" : "email"}
+                aria-label="Email"
+              />
             </div>
 
             {/* password with visibility toggle */}
@@ -316,6 +358,8 @@ function AuthInner() {
                 onChange={(e) => setPassword(e.target.value)}
                 type={showPassword ? "text" : "password"}
                 placeholder="Password (min 8 characters)"
+                autoComplete={mode === "login" ? "current-password" : "new-password"}
+                aria-label="Password"
                 style={{ paddingRight: 42 }}
               />
               <button
@@ -330,7 +374,7 @@ function AuthInner() {
 
             {mode === "login" && (
               <div style={{ textAlign: "right", marginTop: -4 }}>
-                <button onClick={openReset} className="link-btn">
+                <button type="button" onClick={openReset} className="link-btn">
                   Forgot password?
                 </button>
               </div>
@@ -339,7 +383,7 @@ function AuthInner() {
             {error && <div className="rounded-lg border border-danger/40 bg-danger/10 px-3 py-2 text-xs text-danger">{error}</div>}
 
             <button
-              onClick={submit}
+              type="submit"
               disabled={busy || !email || !password || (mode === "register" && (!name || !username))}
               className="w-full rounded-full bg-accent py-2.5 text-sm font-bold text-black hover:bg-accent-hover disabled:opacity-40"
             >
@@ -349,6 +393,7 @@ function AuthInner() {
             <div className="auth-divider">or</div>
 
             <button
+              type="button"
               onClick={startGoogle}
               disabled={googleBusy}
               className="flex w-full items-center justify-center gap-2 rounded-full border border-border py-2.5 text-sm font-medium text-text hover:bg-surface-hover disabled:opacity-40"
@@ -363,32 +408,68 @@ function AuthInner() {
             </button>
 
             <button
+              type="button"
               onClick={() => setMode(mode === "login" ? "register" : "login")}
               className="w-full text-center text-xs text-muted hover:text-text"
             >
               {mode === "login" ? "No account yet? Create one" : "Already have an account? Sign in"}
             </button>
-            </div>
+            </form>
           )}
         </div>
       </div>
 
-      {/* password recovery — email -> code -> new password, one panel per step */}
+      {/* password recovery — email -> code -> new password, one panel per step.
+          The three steps share one dialog rather than one each: the step counter in
+          the header is the only thing that has to say where you are, and closing
+          part-way through means the same thing at every step. */}
       {resetStep !== "hidden" && (
-        <div className="sheet" onClick={closeReset}>
-          <div className="sheet-panel" onClick={(e) => e.stopPropagation()}>
-            <div className="section-head">
-              <h2>
-                {resetStep === "email" ? "Reset password" : resetStep === "otp" ? "Enter your code" : "Choose a new password"}
-              </h2>
-              <button className="icon-btn" onClick={closeReset} aria-label="Close">
-                <X size={15} />
-              </button>
+        <Modal
+          open
+          onClose={closeReset}
+          title={
+            resetStep === "email" ? "Reset password" : resetStep === "otp" ? "Enter your code" : "Choose a new password"
+          }
+          subtitle={`Step ${resetStep === "email" ? 1 : resetStep === "otp" ? 2 : 3} of 3`}
+          width={420}
+          footer={
+            <div className="sheet-foot__row">
+              {resetStep === "email" && (
+                <button
+                  type="button"
+                  className="btn primary btn--grow"
+                  onClick={requestReset}
+                  disabled={resetBusy || !resetEmail}
+                >
+                  {resetBusy ? "Sending…" : "Send code"}
+                </button>
+              )}
+              {resetStep === "otp" && (
+                <button
+                  type="button"
+                  className="btn primary btn--grow"
+                  onClick={verifyResetOtp}
+                  disabled={resetBusy || resetOtp.length !== 6}
+                >
+                  {resetBusy ? "Checking…" : "Continue"}
+                </button>
+              )}
+              {resetStep === "password" && (
+                <button
+                  type="button"
+                  className="btn primary btn--grow"
+                  onClick={saveNewPassword}
+                  disabled={resetBusy || newPassword.length < 8}
+                >
+                  {resetBusy ? "Saving…" : "Save password"}
+                </button>
+              )}
             </div>
-
+          }
+        >
             {resetStep === "email" && (
               <>
-                <p className="muted" style={{ fontSize: 12, margin: "0 0 14px" }}>
+                <p className="sheet-lead" style={{ marginBottom: 14 }}>
                   Enter the email you signed up with and we&apos;ll send you a 6-digit code.
                 </p>
                 <input
@@ -398,22 +479,16 @@ function AuthInner() {
                   onKeyDown={(e) => e.key === "Enter" && resetEmail && !resetBusy && void requestReset()}
                   type="email"
                   placeholder="you@example.com"
+                  autoComplete="email"
+                  aria-label="Email address"
                   autoFocus
                 />
-                <button
-                  className="btn primary"
-                  style={{ width: "100%", marginTop: 14 }}
-                  onClick={requestReset}
-                  disabled={resetBusy || !resetEmail}
-                >
-                  {resetBusy ? "Sending…" : "Send code"}
-                </button>
               </>
             )}
 
             {resetStep === "otp" && (
               <>
-                <p className="muted" style={{ fontSize: 12, margin: "0 0 14px" }}>
+                <p className="sheet-lead" style={{ marginBottom: 14 }}>
                   We sent a 6-digit code to <b>{resetEmail}</b>. It expires in 15 minutes.
                 </p>
                 <input
@@ -425,16 +500,9 @@ function AuthInner() {
                   autoComplete="one-time-code"
                   placeholder="123456"
                   style={{ letterSpacing: 8, textAlign: "center", fontSize: 20, fontWeight: 700 }}
+                  aria-label="6-digit code"
                   autoFocus
                 />
-                <button
-                  className="btn primary"
-                  style={{ width: "100%", marginTop: 14 }}
-                  onClick={verifyResetOtp}
-                  disabled={resetBusy || resetOtp.length !== 6}
-                >
-                  {resetBusy ? "Checking…" : "Continue"}
-                </button>
                 <button className="link-btn" style={{ marginTop: 12 }} onClick={resendReset} disabled={resetBusy}>
                   {/* plain apostrophe: this is a JS string, not JSX text — &apos; would render literally */}
                   {resetBusy ? "Sending…" : "Didn't get it? Send another code"}
@@ -444,7 +512,7 @@ function AuthInner() {
 
             {resetStep === "password" && (
               <>
-                <p className="muted" style={{ fontSize: 12, margin: "0 0 14px" }}>
+                <p className="sheet-lead" style={{ marginBottom: 14 }}>
                   Code confirmed. Choose a new password — this signs you out everywhere else.
                 </p>
                 <div style={{ position: "relative" }}>
@@ -468,29 +536,20 @@ function AuthInner() {
                     {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                   </button>
                 </div>
-                <button
-                  className="btn primary"
-                  style={{ width: "100%", marginTop: 14 }}
-                  onClick={saveNewPassword}
-                  disabled={resetBusy || newPassword.length < 8}
-                >
-                  {resetBusy ? "Saving…" : "Save password"}
-                </button>
               </>
             )}
 
             {resetMsg && (
-              <div className="muted" style={{ marginTop: 12, fontSize: 12, color: "#6fe0a4" }}>
+              <p className="sheet-note" role="status">
                 {resetMsg}
-              </div>
+              </p>
             )}
             {resetErr && (
-              <div className="muted" style={{ marginTop: 12, fontSize: 12, color: "hsl(var(--destructive))" }}>
+              <p className="sheet-error" role="alert">
                 {resetErr}
-              </div>
+              </p>
             )}
-          </div>
-        </div>
+        </Modal>
       )}
     </main>
   );

@@ -3,12 +3,12 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { Plus } from "lucide-react";
 import { get } from "@/lib/api";
 import type { LecturerDetail } from "@/lib/types";
 import { cloudinaryUrl } from "@/lib/cloudinary";
 import { CourseCard } from "@/components/CourseCard";
 import { MobileHeader } from "@/components/Nav";
+import { ShareButton } from "@/components/ShareButton";
 import { SkEntityPage } from "@/components/Skeleton";
 import { TitleRow, TitleToolbar, type EntityCourse, type SortMode, type ViewMode } from "@/components/TitleList";
 
@@ -84,7 +84,7 @@ export default function LecturerPage() {
             </p>
           </div>
         </div>
-        <button className="btn"><Plus size={14} style={{ display: "inline", verticalAlign: "middle" }} /> Follow</button>
+        <ShareButton title={`${l.name} on Syncourse`} label="Share lecturer" />
       </div>
 
       {l.bio && (
@@ -105,9 +105,13 @@ export default function LecturerPage() {
       <TitleToolbar total={courses.length} sort={sort} setSort={setSort} view={view} setView={setView} onFilter={setFilterQ} />
 
       {view === "grid" ? (
-        <div className="rail-row" style={{ gridAutoColumns: "minmax(150px, 1fr)" }}>
+        /* `.grid`, not `.rail-row`: the toggle said Grid and rendered a
+           horizontal scroller, so the button that promised to show everything at
+           once showed one row you had to swipe sideways. The stray
+           `gridAutoColumns` went with it — it was a grid property on a flex box. */
+        <div className="grid">
           {courses.map((c) => (
-            <CourseCard key={c.id} course={toSummary(c)} />
+            <CourseCard key={c.id} course={toSummary(c)} fill />
           ))}
         </div>
       ) : (

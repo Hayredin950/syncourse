@@ -15,7 +15,7 @@ export default function Error({ error, reset }: { error: Error & { digest?: stri
 
   return (
     <main className="page">
-      <div className="dark-panel" style={{ padding: 48, textAlign: "center", maxWidth: 480, margin: "12vh auto" }}>
+      <div className="dark-panel dark-panel--pad-xl" style={{ textAlign: "center", maxWidth: 480, margin: "12vh auto" }}>
         <div style={{ fontSize: 40, marginBottom: 8 }}>⚠️</div>
         <h2 style={{ marginBottom: 8 }}>Something went wrong</h2>
         <p className="muted" style={{ margin: "0 0 20px" }}>

@@ -1,5 +1,7 @@
 "use client";
 
+import { plural } from "@/lib/format";
+
 export function Stars({ value, size = 14 }: { value: number; size?: number }) {
   const pct = Math.max(0, Math.min(100, (value / 5) * 100));
   return (
@@ -21,7 +23,7 @@ export function StarPicker({ value, onChange }: { value: number; onChange: (v: n
           type="button"
           onClick={() => onChange(n)}
           className={n <= value ? "text-star" : "text-dim/40"}
-          aria-label={`Rate ${n} star${n > 1 ? "s" : ""}`}
+          aria-label={`Rate ${plural(n, "star")}`}
         >
           ★
         </button>

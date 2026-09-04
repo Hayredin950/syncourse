@@ -11,6 +11,8 @@ import { useAuth } from "@/lib/auth";
 import { compact, formatDate } from "@/lib/format";
 import { MobileHeader } from "@/components/Nav";
 import { SkRows } from "@/components/Skeleton";
+import Confirm from "@/components/Confirm";
+import Modal from "@/components/Modal";
 import { CoursePickerSheet } from "@/components/CoursePickerSheet";
 import { Toast } from "@/components/Toast";
 
@@ -29,6 +31,9 @@ export default function CirclesPage() {
   const [creating, setCreating] = useState(false);
   const [editing, setEditing] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  /** The circle the confirm dialog is asking about — the sidebar can delete a
+      circle that is not the one open on screen, so it can't read `selected`. */
+  const [doomed, setDoomed] = useState<{ id: string; name: string } | null>(null);
   const [newName, setNewName] = useState("");
   const [newDesc, setNewDesc] = useState("");
 
@@ -115,8 +120,9 @@ export default function CirclesPage() {
    * circles that are not the one on screen — and a circle you regret starting
    * should not have to be opened first.
    */
-  const destroyCircle = async (c: { id: string; name: string }) => {
-    if (!confirm(`Delete “${c.name}”? Its wall and membership go with it.`)) return;
+  const destroyCircle = async () => {
+    const c = doomed;
+    if (!c) return;
     setBusyId(c.id);
     try {
       await del(`/circles/${c.id}`);
@@ -125,9 +131,8 @@ export default function CirclesPage() {
         setOpenId(null);
       }
       setCircles((prev) => prev.filter((x) => x.id !== c.id));
+      setDoomed(null);
       flash("Circle deleted");
-    } catch (e) {
-      flash((e as Error).message);
     } finally {
       setBusyId(null);
     }
@@ -169,7 +174,7 @@ export default function CirclesPage() {
             <input placeholder="Search circles…" value={q} onChange={(e) => setQ(e.target.value)} />
           </div>
           <button className="btn primary" style={{ width: "100%", margin: "10px 0 16px" }} onClick={() => setCreating(true)}>
-            <Plus size={14} style={{ display: "inline", verticalAlign: "middle" }} />{" "}
+            <Plus size={14} />{" "}
             {circles.length === 0 ? "Start your first circle" : "New circle"}
           </button>
           <div className="circle-list">
@@ -208,7 +213,7 @@ export default function CirclesPage() {
                     <button
                       className="icon-btn"
                       style={{ padding: "5px 6px" }}
-                      onClick={() => destroyCircle(c)}
+                      onClick={() => setDoomed(c)}
                       disabled={busyId === c.id}
                       aria-label={`Delete ${c.name}`}
                       title="Delete this circle"
@@ -238,7 +243,7 @@ export default function CirclesPage() {
               signedIn={!!token}
               onToggleJoin={() => toggleJoin(selected)}
               onEdit={() => setEditing(true)}
-              onDestroy={() => destroyCircle(selected)}
+              onDestroy={() => setDoomed(selected)}
               onChanged={(next) => {
                 setSelected(next);
                 loadCircles();
@@ -247,11 +252,11 @@ export default function CirclesPage() {
               onFlash={flash}
             />
           ) : openId ? (
-            <div className="dark-panel" style={{ padding: 32, textAlign: "center" }}>
+            <div className="dark-panel dark-panel--pad-xl" style={{ textAlign: "center" }}>
               <p className="muted" style={{ fontSize: 12, margin: 0 }}>Opening circle…</p>
             </div>
           ) : (
-            <div className="dark-panel" style={{ padding: 32, textAlign: "center" }}>
+            <div className="dark-panel dark-panel--pad-xl" style={{ textAlign: "center" }}>
               <div className="empty-icon" style={{ fontSize: 28 }}>🛋️</div>
               <p className="muted" style={{ fontSize: 12, margin: 0 }}>Pick a circle from the list to see who&apos;s in it and what they&apos;re learning.</p>
             </div>
@@ -259,23 +264,40 @@ export default function CirclesPage() {
         </section>
       </div>
 
-      {/* create-circle modal */}
       {creating && (
-        <div className="sheet" onClick={() => setCreating(false)}>
-          <div className="sheet-panel" onClick={(e) => e.stopPropagation()}>
-            <div className="section-head">
-              <h2>{circles.length === 0 ? "Start your first circle" : "Start a circle"}</h2>
-              <button className="icon-btn" onClick={() => setCreating(false)} aria-label="Close"><X size={15} /></button>
+        <Modal
+          open
+          onClose={() => setCreating(false)}
+          title={circles.length === 0 ? "Start your first circle" : "Start a circle"}
+          subtitle="A circle is a small room: a wall, a member list, and the courses you point each other at."
+          width={460}
+          footer={
+            <div className="sheet-foot__row">
+              <button type="button" className="btn" onClick={() => setCreating(false)}>Cancel</button>
+              <button type="button" className="btn primary btn--grow" onClick={createCircle} disabled={!newName.trim()}>
+                Create circle
+              </button>
             </div>
-            <label className="muted" style={{ fontSize: 11, display: "block", margin: "14px 0 6px" }}>NAME</label>
-            <input className="form-input" value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="e.g. Full-Stack Study Group" />
-            <label className="muted" style={{ fontSize: 11, display: "block", margin: "14px 0 6px" }}>DESCRIPTION</label>
-            <textarea className="form-input" rows={3} value={newDesc} onChange={(e) => setNewDesc(e.target.value)} placeholder="What will this circle study together?" />
-            <button className="btn primary" style={{ width: "100%", marginTop: 16 }} onClick={createCircle} disabled={!newName.trim()}>
-              Create circle
-            </button>
-          </div>
-        </div>
+          }
+        >
+          <label className="field-label" htmlFor="new-circle-name">Name</label>
+          <input
+            id="new-circle-name"
+            className="form-input"
+            value={newName}
+            onChange={(e) => setNewName(e.target.value)}
+            placeholder="e.g. Full-Stack Study Group"
+          />
+          <label className="field-label" htmlFor="new-circle-desc">Description</label>
+          <textarea
+            id="new-circle-desc"
+            className="form-input"
+            rows={3}
+            value={newDesc}
+            onChange={(e) => setNewDesc(e.target.value)}
+            placeholder="What will this circle study together?"
+          />
+        </Modal>
       )}
 
       {editing && selected && selected.id === openId && (
@@ -292,6 +314,15 @@ export default function CirclesPage() {
         />
       )}
 
+      <Confirm
+        open={!!doomed}
+        onClose={() => setDoomed(null)}
+        title={`Delete “${doomed?.name ?? "this circle"}”?`}
+        body="The wall and the membership go with it. Nobody is removed from the courses they found here."
+        confirmLabel="Delete circle"
+        onConfirm={destroyCircle}
+      />
+
       <Toast message={toast} />
     </main>
   );
@@ -300,8 +331,8 @@ export default function CirclesPage() {
 function ActivityPane({ feed, token, onGoCircles }: { feed: ActivityFeed | null; token: boolean; onGoCircles: () => void }) {
   if (!token) {
     return (
-      <div className="dark-panel" style={{ padding: 32, textAlign: "center" }}>
-        <UsersIcon />
+      <div className="dark-panel dark-panel--pad-xl" style={{ textAlign: "center" }}>
+        <Users size={30} className="rating" style={{ marginBottom: 14 }} />
         <h3>Follow people to see what they are learning.</h3>
         <p className="muted" style={{ maxWidth: 380, margin: "0 auto 18px", fontSize: 12 }}>
           Your activity feed fills in as your circle grows — the courses and reviews of the people you follow.
@@ -315,8 +346,8 @@ function ActivityPane({ feed, token, onGoCircles }: { feed: ActivityFeed | null;
   }
   if (feed.items.length === 0) {
     return (
-      <div className="dark-panel" style={{ padding: 32, textAlign: "center" }}>
-        <UsersIcon />
+      <div className="dark-panel dark-panel--pad-xl" style={{ textAlign: "center" }}>
+        <Users size={30} className="rating" style={{ marginBottom: 14 }} />
         <h3>Your feed is quiet.</h3>
         <p className="muted" style={{ maxWidth: 380, margin: "0 auto 18px", fontSize: 12 }}>
           Follow {feed.followingCount > 0 ? "more people or join" : "people or join"} a circle to see their learning activity here.
@@ -383,6 +414,8 @@ function CirclePane({
   const [attaching, setAttaching] = useState(false);
   const [posting, setPosting] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [doomedPost, setDoomedPost] = useState<CirclePost | null>(null);
+  const [doomedMember, setDoomedMember] = useState<{ id: string; name: string } | null>(null);
 
   const submit = async () => {
     const text = body.trim();
@@ -399,26 +432,31 @@ function CirclePane({
     }
   };
 
-  const removePost = async (p: CirclePost) => {
-    if (!confirm("Delete this post?")) return;
+  /* Both of these keep their own dialog rather than sharing one "are you sure":
+     the wall and the member grid are two different lists, and a single piece of
+     state would let a stale post id survive into a member removal. Neither
+     swallows a refusal — `Confirm` prints it inside the dialog that asked, which
+     the page's toast cannot do while a modal is open. */
+  const removePost = async () => {
+    const p = doomedPost;
+    if (!p) return;
     setBusyId(p.id);
     try {
       onChanged(await del<CircleDetail>(`/circles/${circle.id}/posts/${p.id}`));
-    } catch (e) {
-      onFlash((e as Error).message);
+      setDoomedPost(null);
     } finally {
       setBusyId(null);
     }
   };
 
-  const kick = async (member: { id: string; name: string }) => {
-    if (!confirm(`Remove ${member.name} from this circle?`)) return;
+  const kick = async () => {
+    const member = doomedMember;
+    if (!member) return;
     setBusyId(member.id);
     try {
       onChanged(await del<CircleDetail>(`/circles/${circle.id}/members/${member.id}`));
+      setDoomedMember(null);
       onFlash(`Removed ${member.name}`);
-    } catch (e) {
-      onFlash((e as Error).message);
     } finally {
       setBusyId(null);
     }
@@ -426,7 +464,7 @@ function CirclePane({
 
   return (
     <>
-      <div className="dark-panel" style={{ padding: 20 }}>
+      <div className="dark-panel dark-panel--pad">
         <div style={{ display: "flex", alignItems: "flex-start", gap: 14, flexWrap: "wrap" }}>
           <span className="icon-badge icon-badge--amber" style={{ width: 44, height: 44 }}><Users size={18} /></span>
           <div style={{ flex: 1, minWidth: 200 }}>
@@ -442,10 +480,10 @@ function CirclePane({
           {circle.isOwner ? (
             <div className="actions">
               <button className="btn" onClick={onEdit}>
-                <Pencil size={13} style={{ display: "inline", verticalAlign: "middle" }} /> Edit
+                <Pencil size={13} /> Edit
               </button>
-              <button className="btn" onClick={onDestroy}>
-                <Trash2 size={13} style={{ display: "inline", verticalAlign: "middle" }} /> Delete
+              <button className="btn danger" onClick={onDestroy}>
+                <Trash2 size={13} /> Delete
               </button>
             </div>
           ) : (
@@ -460,7 +498,7 @@ function CirclePane({
         <div className="section-head"><h2 style={{ fontSize: 15 }}>Wall · {compact(circle.postCount)}</h2></div>
 
         {circle.canPost ? (
-          <div className="dark-panel" style={{ padding: 14 }}>
+          <div className="dark-panel dark-panel--pad-sm">
             <textarea
               className="form-input"
               rows={3}
@@ -470,10 +508,10 @@ function CirclePane({
               onChange={(e) => setBody(e.target.value)}
             />
             {attached && (
-              <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10, padding: 8, borderRadius: 10, background: "rgba(255,255,255,.04)" }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10, padding: 8, borderRadius: "var(--r-sm)", background: "rgba(255,255,255,.04)" }}>
                 {attached.thumbnailUrl ? (
                   // eslint-disable-next-line @next/next/no-img-element
-                  <img src={attached.thumbnailUrl} alt="" style={{ width: 30, height: 44, borderRadius: 6, objectFit: "cover" }} />
+                  <img src={attached.thumbnailUrl} alt="" style={{ width: 30, height: 44, borderRadius: "var(--r-2xs)", objectFit: "cover" }} />
                 ) : (
                   <span className="icon-badge icon-badge--gray" style={{ width: 30, height: 44 }}><Star size={12} /></span>
                 )}
@@ -486,24 +524,24 @@ function CirclePane({
             )}
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10, marginTop: 10, flexWrap: "wrap" }}>
               <button className="btn ghost" onClick={() => setAttaching(true)}>
-                <Plus size={13} style={{ display: "inline", verticalAlign: "middle" }} />{" "}
+                <Plus size={13} />{" "}
                 {attached ? "Change course" : "Recommend a course"}
               </button>
               <button className="btn primary" disabled={!body.trim() || posting} onClick={submit}>
                 {posting ? (
                   <>
-                    <Loader2 size={13} className="animate-spin" style={{ display: "inline", verticalAlign: "middle" }} /> Posting…
+                    <Loader2 size={13} className="animate-spin" /> Posting…
                   </>
                 ) : (
                   <>
-                    <Send size={13} style={{ display: "inline", verticalAlign: "middle" }} /> Post
+                    <Send size={13} /> Post
                   </>
                 )}
               </button>
             </div>
           </div>
         ) : (
-          <div className="dark-panel" style={{ padding: 18, textAlign: "center" }}>
+          <div className="dark-panel dark-panel--pad" style={{ textAlign: "center" }}>
             <p className="muted" style={{ fontSize: 12, margin: 0 }}>
               {signedIn ? "Join this circle to post on its wall." : "Sign in and join this circle to post on its wall."}
             </p>
@@ -541,11 +579,11 @@ function CirclePane({
                   {p.course && (
                     <Link
                       href={`/courses/${p.course.slug}`}
-                      style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8, padding: 8, borderRadius: 10, background: "rgba(255,255,255,.04)" }}
+                      style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8, padding: 8, borderRadius: "var(--r-sm)", background: "rgba(255,255,255,.04)" }}
                     >
                       {p.course.thumbnailUrl ? (
                         // eslint-disable-next-line @next/next/no-img-element
-                        <img src={p.course.thumbnailUrl} alt="" style={{ width: 28, height: 40, borderRadius: 6, objectFit: "cover" }} />
+                        <img src={p.course.thumbnailUrl} alt="" style={{ width: 28, height: 40, borderRadius: "var(--r-2xs)", objectFit: "cover" }} />
                       ) : (
                         <span className="icon-badge icon-badge--gray" style={{ width: 28, height: 40 }}><Star size={11} /></span>
                       )}
@@ -557,7 +595,7 @@ function CirclePane({
                   )}
                 </div>
                 {p.canDelete && (
-                  <button className="icon-btn" onClick={() => removePost(p)} disabled={busyId === p.id} aria-label="Delete post" title="Delete post">
+                  <button className="icon-btn" onClick={() => setDoomedPost(p)} disabled={busyId === p.id} aria-label="Delete post" title="Delete post">
                     {busyId === p.id ? <Loader2 size={12} className="animate-spin" /> : <Trash2 size={12} />}
                   </button>
                 )}
@@ -586,7 +624,7 @@ function CirclePane({
               {circle.isOwner && m.role !== "owner" && (
                 <button
                   className="icon-btn"
-                  onClick={() => kick(m)}
+                  onClick={() => setDoomedMember(m)}
                   disabled={busyId === m.id}
                   aria-label={`Remove ${m.name}`}
                   title={`Remove ${m.name}`}
@@ -641,6 +679,24 @@ function CirclePane({
           }}
         />
       )}
+
+      <Confirm
+        open={!!doomedPost}
+        onClose={() => setDoomedPost(null)}
+        title="Delete this post?"
+        body={doomedPost ? `“${doomedPost.body.slice(0, 120)}${doomedPost.body.length > 120 ? "…" : ""}”` : undefined}
+        confirmLabel="Delete post"
+        onConfirm={removePost}
+      />
+
+      <Confirm
+        open={!!doomedMember}
+        onClose={() => setDoomedMember(null)}
+        title={`Remove ${doomedMember?.name ?? "this member"}?`}
+        body="They lose the wall and the member list. They can join again if the circle is open to them."
+        confirmLabel="Remove member"
+        onConfirm={kick}
+      />
     </>
   );
 }
@@ -672,32 +728,25 @@ function EditCircleSheet({
   };
 
   return (
-    <div className="sheet" onClick={onClose}>
-      <div className="sheet-panel" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 420 }}>
-        <div className="section-head" style={{ margin: 0 }}>
-          <h2 style={{ fontSize: 16 }}>Edit circle</h2>
-          <button className="icon-btn" onClick={onClose} aria-label="Close"><X size={15} /></button>
-        </div>
-        <label className="muted" style={{ fontSize: 11, display: "block", margin: "14px 0 6px" }}>NAME</label>
-        <input className="form-input" value={name} onChange={(e) => setName(e.target.value)} />
-        <label className="muted" style={{ fontSize: 11, display: "block", margin: "14px 0 6px" }}>DESCRIPTION</label>
-        <textarea className="form-input" rows={3} value={description} onChange={(e) => setDescription(e.target.value)} />
-        <div className="actions" style={{ marginTop: 16 }}>
-          <button className="btn" onClick={onClose}>Cancel</button>
-          <button className="btn primary" disabled={!name.trim() || busy} onClick={submit}>
+    <Modal
+      open
+      onClose={onClose}
+      title="Edit circle"
+      width={420}
+      footer={
+        <div className="sheet-foot__row">
+          <button type="button" className="btn" onClick={onClose}>Cancel</button>
+          <button type="button" className="btn primary btn--grow" disabled={!name.trim() || busy} onClick={submit}>
             {busy ? "Saving…" : "Save changes"}
           </button>
         </div>
-      </div>
-    </div>
+      }
+    >
+      <label className="field-label" htmlFor="circle-name">Name</label>
+      <input id="circle-name" className="form-input" value={name} onChange={(e) => setName(e.target.value)} />
+      <label className="field-label" htmlFor="circle-desc">Description</label>
+      <textarea id="circle-desc" className="form-input" rows={3} value={description} onChange={(e) => setDescription(e.target.value)} />
+    </Modal>
   );
 }
 
-function UsersIcon() {
-  return (
-    <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="hsl(var(--accent))" strokeWidth="1.8" style={{ marginBottom: 14 }}>
-      <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" />
-      <path d="M23 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75" />
-    </svg>
-  );
-}

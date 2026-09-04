@@ -22,15 +22,18 @@ export default function LessonPage() {
   const { token } = useAuth();
 
   const [lesson, setLesson] = useState<LessonDetail | null>(null);
+  /** Separate from `!lesson`: a failed fetch left the skeleton running forever. */
+  const [gone, setGone] = useState(false);
   const [videoUrl, setVideoUrl] = useState<string | null>(null);
   const [tab, setTab] = useState<"watch" | "notes">("watch");
   const { toast, setToast } = useToast();
   const [videoError, setVideoError] = useState(false);
+  const [sending, setSending] = useState<string | null>(null);
 
   useEffect(() => {
     get<LessonDetail>(`/lessons/${lessonId}`)
       .then(setLesson)
-      .catch(() => setToast("Lesson not found"));
+      .catch(() => setGone(true));
   }, [lessonId]);
 
   const loadVideo = async () => {
@@ -57,6 +60,34 @@ export default function LessonPage() {
     }
   };
 
+  /**
+   * "Fast download" used to call `recordDownload` and nothing else: it counted a
+   * download that never happened and the page said nothing back. These variant
+   * rows carry no URL — they are metadata about files that live on Telegram — so
+   * the only honest action is the one the bot performs. `/download-to-telegram`
+   * records the event itself, and hands back a bot deep link when the account
+   * has never opened the chat.
+   */
+  const sendToTelegram = async (label: string) => {
+    if (!token) {
+      router.push("/auth?next=" + encodeURIComponent(`/courses/${slug}/lessons/${lessonId}`));
+      return;
+    }
+    setSending(label);
+    try {
+      const r = await post<{ sent: boolean; message: string; botUrl?: string }>(
+        `/lessons/${lessonId}/download-to-telegram`,
+        {},
+      );
+      setToast(r.message);
+      if (r.botUrl) window.open(r.botUrl, "_blank", "noopener");
+    } catch (e) {
+      setToast(e instanceof Error ? e.message : "Could not reach Telegram — try again");
+    } finally {
+      setSending(null);
+    }
+  };
+
   const downloadFile = async (attachmentId: string, fileName: string) => {
     if (!token) {
       router.push("/auth?next=" + encodeURIComponent(`/courses/${slug}/lessons/${lessonId}`));
@@ -78,12 +109,34 @@ export default function LessonPage() {
     }
   };
 
-  const copyLink = async (label: string) => {
-    if (navigator.clipboard) {
-      await navigator.clipboard.writeText(window.location.href);
-      setToast(`Link copied (${label}) — paste in IDM / 1DM`);
+  /**
+   * Copies the lesson's own URL. It used to be labelled "IDM / 1DM", which
+   * promised a direct file link — there isn't one, the files are on Telegram —
+   * and it failed silently wherever `navigator.clipboard` is absent.
+   */
+  const copyLink = async () => {
+    const url = `${window.location.origin}/courses/${slug}/lessons/${lessonId}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      setToast("Lesson link copied");
+    } catch {
+      setToast("Couldn't copy — the address bar has the link");
     }
   };
+
+  if (gone) {
+    return (
+      <main className="page" style={{ maxWidth: 860 }}>
+        <div className="empty-state" style={{ marginTop: 30 }}>
+          <div className="empty-icon">🔍</div>
+          <p>This lesson isn&apos;t here — it may have been moved or unpublished.</p>
+          <Link href={`/courses/${slug}`} className="btn primary" style={{ display: "inline-block", marginTop: 14 }}>
+            Back to the course
+          </Link>
+        </div>
+      </main>
+    );
+  }
 
   if (!lesson) {
     return (
@@ -95,8 +148,14 @@ export default function LessonPage() {
 
   return (
     <main className="page" style={{ maxWidth: 860 }}>
-      <div className="dark-panel" style={{ overflow: "hidden", borderTopLeftRadius: 0, borderTopRightRadius: 0 }}>
-      <div className="sticky top-[74px] z-10 border-b border-border bg-[#141310]/95 px-4 py-2 backdrop-blur">
+      {/* No `overflow: hidden` on this wrapper: `overflow` makes the panel itself
+          the scroll container the sticky header below resolves against, and the
+          panel never scrolls — so the header stayed put and slid away with the
+          page. Nothing needs clipping either; every child sits inside `p-4`. */}
+      <div className="dark-panel" style={{ borderTopLeftRadius: 0, borderTopRightRadius: 0 }}>
+      {/* `--sticky-top` is the site's one "clears the topbar" number; the 74px
+          here was a fourth guess at it. */}
+      <div className="sticky top-[var(--sticky-top)] z-10 rounded-t-[inherit] border-b border-border bg-[#141310]/95 px-4 py-2.5 backdrop-blur">
         <div className="flex items-center gap-2 text-xs">
           <Link href={`/courses/${slug}`} className="font-medium text-accent">
             ← {lesson.course.title}
@@ -116,7 +175,8 @@ export default function LessonPage() {
           <button
             key={t}
             onClick={() => setTab(t)}
-            className={`flex-1 py-2 text-sm font-medium ${tab === t ? "border-b-2 border-accent text-text" : "text-dim"}`}
+            aria-pressed={tab === t}
+            className={`min-h-[44px] flex-1 text-sm font-medium ${tab === t ? "border-b-2 border-accent text-text" : "text-dim"}`}
           >
             {t === "watch" ? "Watch" : `Notes (${lesson.notes.length})`}
           </button>
@@ -141,16 +201,23 @@ export default function LessonPage() {
                   <div className="text-sm text-muted">Tap play to stream this lesson</div>
                 </>
               )}
-              <button
-                onClick={loadVideo}
-                className="rounded-full bg-accent px-5 py-2 text-sm font-bold text-black hover:bg-accent-hover"
-              >
-                {videoError ? "Go to course" : "Play lesson"}
-              </button>
-              {videoError && (
-                <Link href={`/courses/${slug}`} className="text-xs font-medium text-accent">
-                  Go to course →
+              {/* Was one button labelled "Go to course" that called `loadVideo`
+                  again, with a second "Go to course →" link under it saying the
+                  same thing. Locked gets the link; unlocked gets the retry. */}
+              {videoError ? (
+                <Link
+                  href={`/courses/${slug}`}
+                  className="rounded-full bg-accent px-5 py-2 text-sm font-bold text-black hover:bg-accent-hover"
+                >
+                  Go to course
                 </Link>
+              ) : (
+                <button
+                  onClick={loadVideo}
+                  className="min-h-[40px] rounded-full bg-accent px-5 py-2 text-sm font-bold text-black hover:bg-accent-hover"
+                >
+                  Play lesson
+                </button>
               )}
             </div>
           )}
@@ -171,7 +238,7 @@ export default function LessonPage() {
                     </div>
                     <button
                       onClick={() => downloadFile(a.id, a.fileName)}
-                      className="shrink-0 rounded-full bg-accent px-4 py-1.5 text-xs font-bold text-black hover:bg-accent-hover"
+                      className="min-h-[40px] shrink-0 rounded-full bg-accent px-4 py-1.5 text-xs font-bold text-black hover:bg-accent-hover"
                     >
                       ⬇ Download
                     </button>
@@ -197,23 +264,33 @@ export default function LessonPage() {
                         {f.sizeMb.toFixed(1)} MB · {f.codec ?? f.format}
                       </span>
                     </div>
-                    <div className="mt-2 flex gap-2 text-[11px]">
+                    <div className="mt-2 flex flex-wrap gap-2 text-[11px]">
                       <button
-                        onClick={() => recordDownload(f.label)}
-                        className="rounded-full bg-accent px-3 py-1 font-bold text-black"
+                        onClick={() => sendToTelegram(f.label)}
+                        disabled={sending !== null}
+                        className="min-h-[36px] rounded-full bg-accent px-3 py-1 font-bold text-black disabled:opacity-60"
                       >
-                        ⚡ Fast download
+                        {sending === f.label ? "Sending…" : "⚡ Send to Telegram"}
                       </button>
-                      <button onClick={() => copyLink(f.label)} className="rounded-full border border-border px-3 py-1 text-muted hover:text-text">
-                        Copy link · IDM / 1DM
+                      <button
+                        onClick={copyLink}
+                        className="min-h-[36px] rounded-full border border-border px-3 py-1 text-muted hover:text-text"
+                      >
+                        Copy lesson link
                       </button>
+                      {/* Built from the route params rather than `window.location`:
+                          this component is prerendered for the static export, and
+                          reading `window` during render is a build-time crash
+                          waiting for the day the early return above changes. */}
                       <a
-                        href={`https://t.me/share/url?url=${encodeURIComponent(window.location.href)}`}
+                        href={`https://t.me/share/url?url=${encodeURIComponent(
+                          `https://syncourse.pages.dev/courses/${slug}/lessons/${lessonId}`,
+                        )}`}
                         target="_blank"
                         rel="noreferrer"
-                        className="rounded-full border border-border px-3 py-1 text-muted hover:text-text"
+                        className="flex min-h-[36px] items-center rounded-full border border-border px-3 py-1 text-muted hover:text-text"
                       >
-                        Free on Telegram
+                        Share on Telegram
                       </a>
                     </div>
                   </div>
@@ -234,8 +311,13 @@ export default function LessonPage() {
                 )}
               </div>
               <div className="px-4 py-3">
+                {/* `prose-sm prose-invert` are typography-plugin classes and this
+                    app has no typography plugin, so they were doing nothing — and
+                    Tailwind's preflight sets `list-style: none`, which is why the
+                    bullets of every note were missing. The arbitrary variants
+                    below are the styling; the `ul` rules are the fix. */}
                 <div
-                  className="prose-sm prose-invert max-w-none text-sm leading-relaxed text-muted [&_h3]:mt-3 [&_h3]:text-[13px] [&_h3]:font-semibold [&_h3]:text-text [&_li]:my-1 [&_strong]:text-text"
+                  className="max-w-none text-sm leading-relaxed text-muted [&_h3]:mt-3 [&_h3]:text-[13px] [&_h3]:font-semibold [&_h3]:text-text [&_li]:my-1 [&_p]:my-2 [&_strong]:text-text [&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5"
                   dangerouslySetInnerHTML={{ __html: renderMarkdown(n.richText) }}
                 />
                 {n.imageUrls.length > 0 && (

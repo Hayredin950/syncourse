@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 import type { ResourceMediaKind, ResourceSummary } from "@/lib/types";
 import { cloudinaryUrl } from "@/lib/cloudinary";
-import { compact } from "@/lib/format";
+import { compact, plural } from "@/lib/format";
 import { hueFromString } from "@/components/CourseCard";
 
 /**
@@ -66,7 +66,7 @@ export function mediaLine(kinds: string[], count: number): string {
   const named = kinds.slice(0, 3).map((k) => mediaMeta(k).label.toLowerCase());
   const rest = kinds.length - named.length;
   const what = named.join(" · ") + (rest > 0 ? ` · +${rest} more` : "");
-  return `${count} file${count === 1 ? "" : "s"} — ${what}`;
+  return `${plural(count, "file")} — ${what}`;
 }
 
 /** A gradient stands in for a cover, seeded off the slug so it stays stable. */
@@ -148,7 +148,7 @@ export function ResourceFeature({ resource: r }: { resource: ResourceSummary }) 
         {r.summary && <span className="res-feature__excerpt">{r.summary}</span>}
         <span className="res-feature__meta mono">
           {r.readMinutes} min read
-          {r.mediaCount > 0 ? ` · ${r.mediaCount} attachment${r.mediaCount === 1 ? "" : "s"}` : ""}
+          {r.mediaCount > 0 ? ` · ${plural(r.mediaCount, "attachment")}` : ""}
           {r.viewCount > 0 ? ` · ${compact(r.viewCount)} views` : ""}
         </span>
       </span>

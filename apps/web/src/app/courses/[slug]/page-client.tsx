@@ -16,15 +16,15 @@ import {
   Play,
   Share2,
   Star,
-  X,
 } from "lucide-react";
 import { get, post } from "@/lib/api";
 import type { CourseDetail, CourseSummary, ReviewRow, TelegramFile } from "@/lib/types";
 import { useAuth } from "@/lib/auth";
 import { StarPicker } from "@/components/StarRating";
-import { formatDuration, formatSec, compact, formatDate } from "@/lib/format";
+import { formatDuration, formatSec, compact, formatDate, plural } from "@/lib/format";
 import { cloudinaryUrl } from "@/lib/cloudinary";
 import { hueFromString, CourseCard } from "@/components/CourseCard";
+import Modal from "@/components/Modal";
 import { AddToListSheet } from "@/components/AddToListSheet";
 import { MobileHeader } from "@/components/Nav";
 import { SkHero } from "@/components/Skeleton";
@@ -348,13 +348,13 @@ export function CourseDetailView({ slug }: { slug: string }) {
         <div className="actions">
           {firstLesson && (
             <Link href={`/courses/${course.slug}/lessons/${firstLesson.id}`} className="btn primary">
-              <Play size={14} fill="currentColor" style={{ display: "inline", verticalAlign: "middle" }} /> Start course
+              <Play size={14} fill="currentColor" /> Start course
             </Link>
           )}
           {/* The archive *is* the course, so downloading is the primary action
               whenever there are no lessons to open on the site. */}
           <button onClick={() => setDownloadOpen(true)} className={firstLesson ? "btn" : "btn primary"}>
-            <Download size={14} style={{ display: "inline", verticalAlign: "middle" }} /> Download materials
+            <Download size={14} /> Download materials
           </button>
           {course.previewVideoUrl && (
             <a href={course.previewVideoUrl} target="_blank" rel="noreferrer" className="btn">
@@ -469,7 +469,7 @@ export function CourseDetailView({ slug }: { slug: string }) {
           <section className="rail">
             <div className="section-head">
               <h2>
-                Curriculum · {curriculum.length} module{curriculum.length === 1 ? "" : "s"}
+                Curriculum · {plural(curriculum.length, "module")}
               </h2>
               {course.durationMin > 0 && (
                 <span className="muted mono" style={{ fontSize: 10 }}>
@@ -483,7 +483,7 @@ export function CourseDetailView({ slug }: { slug: string }) {
                   <button className="accordion-trigger" onClick={() => setOpenSection(openSection === s.id ? null : s.id)}>
                     <span>
                       <span className="eyebrow" style={{ marginRight: 10 }}>{String(i + 1).padStart(2, "0")}</span>
-                      {s.title} <span className="muted" style={{ fontSize: 11 }}>· {s.lessons.length} lesson{s.lessons.length === 1 ? "" : "s"}</span>
+                      {s.title} <span className="muted" style={{ fontSize: 11 }}>· {plural(s.lessons.length, "lesson")}</span>
                     </span>
                     {openSection === s.id ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
                   </button>
@@ -504,13 +504,19 @@ export function CourseDetailView({ slug }: { slug: string }) {
           </section>
           )}
 
-          {/* downloads analytics */}
+          {/* downloads analytics — only once there is something to count. A course
+              published this morning was rendering four zeros under a heading that
+              claims popularity, plus a sparkline that says "No recent download
+              activity" about it. Absent is better than empty here. */}
+          {course.downloads.total > 0 && (
           <section className="rail">
             <div className="section-head">
               <h2>Downloads on Syncourse</h2>
             </div>
-            <div className="dark-panel" style={{ padding: 18 }}>
-              <div style={{ display: "flex", gap: 28 }}>
+            <div className="dark-panel dark-panel--pad">
+              {/* Wraps: four numbers at 28px apart overflowed a 320px phone, and
+                  a stat strip that scrolls sideways hides the last stat. */}
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "18px 28px" }}>
                 {[
                   ["TOTAL", compact(course.downloads.total)],
                   ["LAST 30 DAYS", compact(course.downloads.last30)],
@@ -530,6 +536,7 @@ export function CourseDetailView({ slug }: { slug: string }) {
               </div>
             </div>
           </section>
+          )}
 
           {/* telegram files — the actual course content delivered via Telegram */}
           {course.telegramFiles && course.telegramFiles.length > 0 && (
@@ -557,7 +564,7 @@ export function CourseDetailView({ slug }: { slug: string }) {
                       <span className="file-module__index">{String(mi + 1).padStart(2, "0")}</span>
                       <span className="file-module__title">{m.title ?? "Course archive"}</span>
                       <span className="file-module__meta mono">
-                        {m.files.length} part{m.files.length === 1 ? "" : "s"}
+                        {plural(m.files.length, "part")}
                         {m.sizeMb > 0 ? ` · ${Math.round(m.sizeMb)} MB` : ""}
                       </span>
                       {m.files.length > 1 && (
@@ -647,11 +654,11 @@ export function CourseDetailView({ slug }: { slug: string }) {
                 <span style={{ marginLeft: 6 }}>{compact(course.ratings.count)} ratings</span>
               </span>
               <button className="btn" onClick={() => document.getElementById("review-box")?.scrollIntoView({ behavior: "smooth" })}>
-                <MessageCircle size={13} style={{ display: "inline", verticalAlign: "middle" }} /> Write
+                <MessageCircle size={13} /> Write
               </button>
             </div>
             {course.reviews.length === 0 && (
-              <div className="dark-panel" style={{ padding: 25, textAlign: "center" }}>
+              <div className="dark-panel dark-panel--pad-lg" style={{ textAlign: "center" }}>
                 <p className="muted" style={{ margin: 0, fontSize: 12 }}>No reviews yet — start the thread.</p>
               </div>
             )}
@@ -661,7 +668,7 @@ export function CourseDetailView({ slug }: { slug: string }) {
             </div>
 
           {/* review composer */}
-          <div id="review-box" className="dark-panel" style={{ padding: 18, marginTop: 22 }}>
+          <div id="review-box" className="dark-panel dark-panel--pad" style={{ marginTop: 22 }}>
             <h3 style={{ fontSize: 15 }}>Share a thought</h3>
             {token ? (
               <>
@@ -704,30 +711,35 @@ export function CourseDetailView({ slug }: { slug: string }) {
         </section>
       )}
 
-      {/* downloads sheet */}
       {downloadOpen && (
-        <div className="sheet" onClick={() => setDownloadOpen(false)}>
-          <div className="sheet-card" onClick={(e) => e.stopPropagation()}>
-            <div style={{ display: "flex", justifyContent: "space-between" }}>
-              <h3>Available downloads</h3>
-              <button className="icon-btn" onClick={() => setDownloadOpen(false)}><X size={15} /></button>
-            </div>
-            <p className="muted">Lesson files are served through short-lived signed links. <span className="rating">Premium members get full-speed delivery.</span></p>
+        /* The tallest dialog on the site — a course with eight modules is a long
+           list — so it leans on the panel's pinned header rather than scrolling
+           its own title away, and the Telegram row stays at the top where the
+           answer to "how do I get this" belongs. */
+        <Modal
+          open
+          onClose={() => setDownloadOpen(false)}
+          title="Available downloads"
+          subtitle={
+            <>
+              Lesson files are served through short-lived signed links.{" "}
+              <span className="rating">Premium members get full-speed delivery.</span>
+            </>
+          }
+          width={560}
+        >
             {/* download via Telegram bot — the bot streams the course file from its group topic */}
             <a
               href={botLink(`dl_${course.slug}`)}
               target="_blank"
               rel="noreferrer"
-              className="dark-panel"
+              className="dark-panel dark-panel--row"
               style={{
-                marginTop: 12,
-                padding: "13px 16px",
                 display: "flex",
                 alignItems: "center",
                 gap: 10,
                 border: "1px solid hsl(var(--primary) / .35)",
-                background: "hsl(var(--primary) / .08)",
-              }}
+                background: "hsl(var(--primary) / .08)" }}
             >
               <SendInline />
               <span style={{ flex: 1, fontWeight: 700, fontSize: 13 }}>
@@ -749,8 +761,8 @@ export function CourseDetailView({ slug }: { slug: string }) {
                     href={botLink(`dlf_${f.id}`)}
                     target="_blank"
                     rel="noreferrer"
-                    className="dark-panel"
-                    style={{ padding: 12, display: "flex", alignItems: "center", gap: 10, marginTop: 6 }}
+                    className="dark-panel dark-panel--pad-sm"
+                    style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 6 }}
                   >
                     <Download size={14} className="rating" />
                     <span style={{ flex: 1 }}>
@@ -768,15 +780,13 @@ export function CourseDetailView({ slug }: { slug: string }) {
               <div key={s.id} style={{ marginTop: 12 }}>
                 {/* bulk download — whole module in one click (phonofilm "Season [Download]") */}
                 <div
-                  className="dark-panel"
+                  className="dark-panel dark-panel--row"
                   style={{
-                    padding: "13px 16px",
                     display: "flex",
                     alignItems: "center",
                     gap: 10,
                     border: "1px dashed hsl(var(--primary) / .4)",
-                    background: "hsl(var(--primary) / .06)",
-                  }}
+                    background: "hsl(var(--primary) / .06)" }}
                 >
                   <Download size={15} className="rating" />
                   <span style={{ flex: 1, fontWeight: 700, fontSize: 13 }}>
@@ -802,8 +812,8 @@ export function CourseDetailView({ slug }: { slug: string }) {
                   <Link
                     key={l.id}
                     href={`/courses/${course.slug}/lessons/${l.id}`}
-                    className="dark-panel"
-                    style={{ padding: 14, display: "flex", alignItems: "center", gap: 10, marginTop: 8 }}
+                    className="dark-panel dark-panel--pad-sm"
+                    style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8 }}
                   >
                     <Download size={15} className="rating" />
                     <span style={{ flex: 1 }}>{l.title}</span>
@@ -815,8 +825,7 @@ export function CourseDetailView({ slug }: { slug: string }) {
                 ))}
               </div>
             ))}
-          </div>
-        </div>
+        </Modal>
       )}
 
       {listOpen && (
@@ -943,7 +952,7 @@ function ReviewCard({
           Reply
         </button>
         {review.replyCount > 0 && (
-          <span className="muted mono" style={{ fontSize: 10 }}>{review.replyCount} repl{review.replyCount === 1 ? "y" : "ies"}</span>
+          <span className="muted mono" style={{ fontSize: 10 }}>{plural(review.replyCount, "reply", "replies")}</span>
         )}
       </div>
 

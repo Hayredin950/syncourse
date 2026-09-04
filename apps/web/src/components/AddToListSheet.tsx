@@ -1,8 +1,10 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { Check, Loader2, Lock, Plus, Users, X } from "lucide-react";
+import { Check, Loader2, Lock, Plus, Users } from "lucide-react";
+import Modal from "./Modal";
 import { ApiError, del, get, post } from "@/lib/api";
+import { plural } from "@/lib/format";
 import type { CollectionMembership } from "@/lib/types";
 import { SkList } from "@/components/Skeleton";
 
@@ -95,56 +97,16 @@ export function AddToListSheet({
   };
 
   return (
-    <div className="sheet" onClick={onClose}>
-      <div className="sheet-panel" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 420 }}>
-        <div className="section-head" style={{ margin: 0 }}>
-          <h2 style={{ fontSize: 16 }}>Add to list</h2>
-          <button className="icon-btn" onClick={onClose} aria-label="Close">
-            <X size={15} />
-          </button>
-        </div>
-        <p className="muted" style={{ fontSize: 11, margin: "4px 0 14px" }}>
-          {courseTitle}
-        </p>
-
-        {lists === null ? (
-          <SkList n={3} label="Loading your collections" />
-        ) : lists.length === 0 ? (
-          <p className="muted" style={{ fontSize: 12 }}>
-            {error ?? "You have no lists yet. Name one below and this course goes straight into it."}
-          </p>
-        ) : (
-          <div className="dark-panel" style={{ padding: 6, maxHeight: 280, overflowY: "auto" }}>
-            {lists.map((l) => (
-              <button
-                key={l.id}
-                className="lesson"
-                style={{ width: "100%", textAlign: "left" }}
-                onClick={() => toggle(l)}
-                disabled={busy === l.id}
-                aria-pressed={l.contains}
-              >
-                <span
-                  className={l.contains ? "icon-badge icon-badge--amber" : "icon-badge icon-badge--gray"}
-                  style={{ width: 26, height: 26 }}
-                >
-                  {busy === l.id ? <Loader2 size={12} className="animate-spin" /> : l.contains ? <Check size={12} /> : <Plus size={12} />}
-                </span>
-                <span style={{ flex: 1, minWidth: 0 }}>
-                  <strong style={{ display: "block", fontSize: 12 }}>{l.name}</strong>
-                  <small className="muted" style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-                    {l.visibility === "public" ? <Users size={9} /> : <Lock size={9} />}
-                    {l.itemCount} {l.itemCount === 1 ? "course" : "courses"}
-                  </small>
-                </span>
-              </button>
-            ))}
-          </div>
-        )}
-
-        {/* Nothing loaded, nothing to create into — a new list would fail the same way. */}
-        {error ? null : creating ? (
-          <div style={{ marginTop: 14 }}>
+    <Modal
+      open
+      onClose={onClose}
+      title="Add to list"
+      subtitle={courseTitle}
+      width={420}
+      /* Nothing loaded, nothing to create into — a new list would fail the same way. */
+      footer={
+        error ? undefined : creating ? (
+          <div>
             <input
               className="form-input"
               autoFocus
@@ -153,19 +115,56 @@ export function AddToListSheet({
               onChange={(e) => setNewName(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && createAndAdd()}
             />
-            <div className="actions" style={{ marginTop: 10 }}>
-              <button className="btn" onClick={() => setCreating(false)}>Cancel</button>
-              <button className="btn primary" disabled={!newName.trim() || busy === "new"} onClick={createAndAdd}>
+            <div className="sheet-foot__row" style={{ marginTop: 10 }}>
+              <button type="button" className="btn" onClick={() => setCreating(false)}>Cancel</button>
+              <button type="button" className="btn primary btn--grow" disabled={!newName.trim() || busy === "new"} onClick={createAndAdd}>
                 {busy === "new" ? "Creating…" : "Create & add"}
               </button>
             </div>
           </div>
         ) : (
-          <button className="btn" style={{ width: "100%", marginTop: 14 }} onClick={() => setCreating(true)}>
-            <Plus size={13} style={{ display: "inline", verticalAlign: "middle" }} /> New list
+          <button type="button" className="btn" style={{ width: "100%" }} onClick={() => setCreating(true)}>
+            <Plus size={13} /> New list
           </button>
-        )}
-      </div>
-    </div>
+        )
+      }
+    >
+      {lists === null ? (
+        <SkList n={3} label="Loading your collections" />
+      ) : lists.length === 0 ? (
+        <p className="muted" style={{ fontSize: 12, margin: 0 }}>
+          {error ?? "You have no lists yet. Name one below and this course goes straight into it."}
+        </p>
+      ) : (
+        /* No inner scroller: the dialog's own body scrolls now, and a 280px box
+           inside it meant two nested scroll areas fighting over one wheel. */
+        <div className="dark-panel dark-panel--pad-xs">
+          {lists.map((l) => (
+            <button
+              key={l.id}
+              className="lesson"
+              style={{ width: "100%", textAlign: "left" }}
+              onClick={() => toggle(l)}
+              disabled={busy === l.id}
+              aria-pressed={l.contains}
+            >
+              <span
+                className={l.contains ? "icon-badge icon-badge--amber" : "icon-badge icon-badge--gray"}
+                style={{ width: 26, height: 26 }}
+              >
+                {busy === l.id ? <Loader2 size={12} className="animate-spin" /> : l.contains ? <Check size={12} /> : <Plus size={12} />}
+              </span>
+              <span style={{ flex: 1, minWidth: 0 }}>
+                <strong style={{ display: "block", fontSize: 12 }}>{l.name}</strong>
+                <small className="muted" style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                  {l.visibility === "public" ? <Users size={9} /> : <Lock size={9} />}
+                  {plural(l.itemCount, "course")}
+                </small>
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+    </Modal>
   );
 }

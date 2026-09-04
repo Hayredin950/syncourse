@@ -7,12 +7,13 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft, Bookmark, Check, Layers, Lock, Pencil, Plus, Trash2, Users, X } from "lucide-react";
 import { del, get, post } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
-import { formatDate } from "@/lib/format";
+import { formatDate, plural } from "@/lib/format";
 import { cloudinaryUrl } from "@/lib/cloudinary";
 import { CourseCard } from "@/components/CourseCard";
 import { MobileHeader } from "@/components/Nav";
 import { SkCards, SkHero } from "@/components/Skeleton";
 import { CoursePickerSheet } from "@/components/CoursePickerSheet";
+import Confirm from "@/components/Confirm";
 import { EditListSheet } from "@/components/EditListSheet";
 import type { CollectionDetail, CollectionItemRow, CourseSummary } from "@/lib/types";
 import { Toast } from "@/components/Toast";
@@ -80,6 +81,7 @@ function ListDetail() {
   const [picking, setPicking] = useState(false);
   const [editing, setEditing] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [doomed, setDoomed] = useState(false);
   const { toast, setToast } = useToast();
 
   const flash = useCallback(
@@ -141,13 +143,8 @@ function ListDetail() {
   };
 
   const destroy = async () => {
-    if (!confirm("Delete this list? The courses stay in the catalogue.")) return;
-    try {
-      await del(`/lists/${id}`);
-      router.push("/lists");
-    } catch (e) {
-      flash((e as Error).message);
-    }
+    await del(`/lists/${id}`);
+    router.push("/lists");
   };
 
   // Up to four covers fan out behind the title. Fewer than four is fine — they
@@ -225,11 +222,11 @@ function ListDetail() {
             </span>
             <span className="col-chip">
               <Layers size={11} />
-              {list.itemCount} {list.itemCount === 1 ? "course" : "courses"}
+              {plural(list.itemCount, "course")}
             </span>
             <span className="col-chip">
               <Bookmark size={11} />
-              {list.savesCount} {list.savesCount === 1 ? "save" : "saves"}
+              {plural(list.savesCount, "save")}
             </span>
             <span className="col-chip">Edited {formatDate(list.updatedAt)}</span>
           </div>
@@ -238,24 +235,24 @@ function ListDetail() {
             {list.isOwner ? (
               <>
                 <button className="btn primary" onClick={() => setPicking(true)}>
-                  <Plus size={14} style={{ display: "inline", verticalAlign: "middle" }} /> Add courses
+                  <Plus size={14} /> Add courses
                 </button>
                 <button className="btn" onClick={() => setEditing(true)}>
-                  <Pencil size={13} style={{ display: "inline", verticalAlign: "middle" }} /> Edit
+                  <Pencil size={13} /> Edit
                 </button>
-                <button className="btn" onClick={destroy}>
-                  <Trash2 size={13} style={{ display: "inline", verticalAlign: "middle" }} /> Delete
+                <button className="btn danger" onClick={() => setDoomed(true)}>
+                  <Trash2 size={13} /> Delete
                 </button>
               </>
             ) : (
               <button className={`btn ${list.saved ? "" : "primary"}`} onClick={save}>
                 {list.saved ? (
                   <>
-                    <Check size={14} style={{ display: "inline", verticalAlign: "middle" }} /> Saved
+                    <Check size={14} /> Saved
                   </>
                 ) : (
                   <>
-                    <Bookmark size={14} style={{ display: "inline", verticalAlign: "middle" }} /> Save collection
+                    <Bookmark size={14} /> Save collection
                   </>
                 )}
               </button>
@@ -284,7 +281,7 @@ function ListDetail() {
             </p>
             {list.isOwner && (
               <button className="btn primary" style={{ marginTop: 14 }} onClick={() => setPicking(true)}>
-                <Plus size={14} style={{ display: "inline", verticalAlign: "middle" }} /> Add your first course
+                <Plus size={14} /> Add your first course
               </button>
             )}
           </div>
@@ -330,6 +327,15 @@ function ListDetail() {
           onError={flash}
         />
       )}
+
+      <Confirm
+        open={doomed}
+        onClose={() => setDoomed(false)}
+        title={`Delete “${list.name}”?`}
+        body={`The list and its ordering go. All ${plural(list.items.length, "course")} in it stay in the catalogue.`}
+        confirmLabel="Delete list"
+        onConfirm={destroy}
+      />
 
       <Toast message={toast} />
     </main>

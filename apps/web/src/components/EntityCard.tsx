@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { cloudinaryUrl } from "@/lib/cloudinary";
-import { compact } from "@/lib/format";
+import { compact, plural } from "@/lib/format";
 
 /**
  * Lecturer and publisher cards.
@@ -59,7 +59,7 @@ export function LecturerCard({
       name={lecturer.name}
       imageUrl={lecturer.photoUrl}
       role={lecturer.credentials?.trim() || "Lecturer"}
-      meta={`${lecturer.courseCount} ${lecturer.courseCount === 1 ? "course" : "courses"}`}
+      meta={plural(lecturer.courseCount, "course")}
     />
   );
 }
@@ -78,8 +78,8 @@ export function PublisherCard({
       role="Publisher"
       meta={
         org.subscribers > 0
-          ? `${compact(org.subscribers)} learners · ${org.courseCount} ${org.courseCount === 1 ? "course" : "courses"}`
-          : `${org.courseCount} ${org.courseCount === 1 ? "course" : "courses"}`
+          ? `${compact(org.subscribers)} learners · ${plural(org.courseCount, "course")}`
+          : plural(org.courseCount, "course")
       }
     />
   );

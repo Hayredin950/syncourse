@@ -22,7 +22,7 @@ import { Markdown, markdownHeadings } from "@/components/Markdown";
 import { MobileHeader } from "@/components/Nav";
 import { SkHero } from "@/components/Skeleton";
 import { attachmentUrl, cloudinaryUrl } from "@/lib/cloudinary";
-import { compact, formatDate } from "@/lib/format";
+import { compact, formatDate, plural } from "@/lib/format";
 import { ResourceCard, mediaMeta, resourceTint, typeMeta } from "@/components/ResourceCard";
 import { useToast } from "@/lib/useToast";
 import { Toast } from "@/components/Toast";
@@ -64,6 +64,19 @@ export function ResourceDetailView({ slug }: { slug: string }) {
   const audio = useMemo(() => media.filter((m) => m.kind === "audio" && m.url), [media]);
   const pdfs = useMemo(() => media.filter((m) => m.kind === "pdf" && m.url), [media]);
   const links = useMemo(() => media.filter((m) => m.kind === "link" && m.url), [media]);
+
+  /* The lightbox is a `role="dialog" aria-modal` overlay, and Escape is how one
+     of those closes. Arrows too, since it already has prev/next buttons. */
+  useEffect(() => {
+    if (shot === null) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setShot(null);
+      else if (e.key === "ArrowLeft") setShot((i) => (i === null ? i : (i - 1 + images.length) % images.length));
+      else if (e.key === "ArrowRight") setShot((i) => (i === null ? i : (i + 1) % images.length));
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [shot, images.length]);
   // Files with no viewer above come first: the panel is the only place they
   // appear, where an image or a PDF has already been shown in full.
   const keepable = useMemo(() => {
@@ -174,7 +187,7 @@ export function ResourceDetailView({ slug }: { slug: string }) {
             </span>
             {media.length > 0 && (
               <span>
-                <Paperclip size={12} /> {media.length} file{media.length === 1 ? "" : "s"}
+                <Paperclip size={12} /> {plural(media.length, "file")}
               </span>
             )}
             <span>
@@ -299,7 +312,7 @@ export function ResourceDetailView({ slug }: { slug: string }) {
               <div className="res-block__head">
                 <h2>Files</h2>
                 <span className="muted mono res-block__hint">
-                  {keepable.length} item{keepable.length === 1 ? "" : "s"}
+                  {plural(keepable.length, "item")}
                 </span>
               </div>
               <div className="files-panel">
@@ -390,7 +403,7 @@ export function ResourceDetailView({ slug }: { slug: string }) {
               {media.length > 0 && (
                 <>
                   <dt>Attached</dt>
-                  <dd>{media.length} file{media.length === 1 ? "" : "s"}</dd>
+                  <dd>{plural(media.length, "file")}</dd>
                 </>
               )}
             </dl>
@@ -442,7 +455,9 @@ export function ResourceDetailView({ slug }: { slug: string }) {
 
       {shot !== null && images[shot] && (
         <div className="res-lightbox" onClick={() => setShot(null)} role="dialog" aria-modal="true">
-          <button type="button" className="res-lightbox__close" aria-label="Close">
+          {/* Had no handler at all: it closed only because the click bubbled to
+              the backdrop, which is luck rather than a control. */}
+          <button type="button" className="res-lightbox__close" aria-label="Close" onClick={() => setShot(null)}>
             <X size={18} />
           </button>
           {images.length > 1 && (

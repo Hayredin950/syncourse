@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import { del, get } from "@/lib/api";
 import type { AdminCourseDetail, AdminCourseRow, AdminReviewRow } from "@/lib/types";
-import { formatDate } from "@/lib/format";
+import { formatDate, plural } from "@/lib/format";
 import { relativeTime } from "@/lib/metrics";
 import { useAdminToast } from "@/components/admin/AdminToast";
 import ConfirmButton from "@/components/admin/ConfirmButton";
@@ -173,7 +173,7 @@ function CourseDetail() {
           <strong>{lessons.toLocaleString("en-US")}</strong>
           <span>
             <Layers size={10} style={{ verticalAlign: -1, marginRight: 4 }} />
-            Lessons in {course.sections.length} section{course.sections.length === 1 ? "" : "s"}
+            Lessons in {plural(course.sections.length, "section")}
           </span>
         </div>
       </div>
@@ -190,8 +190,7 @@ function CourseDetail() {
             <div className="admin-card__head">
               <h3>Curriculum</h3>
               <span className="admin-section-head__hint">
-                {course.sections.length} section{course.sections.length === 1 ? "" : "s"} · {lessons} lesson
-                {lessons === 1 ? "" : "s"}
+                {plural(course.sections.length, "section")} · {plural(lessons, "lesson")}
               </span>
             </div>
             {course.sections.length === 0 ? (
@@ -212,7 +211,7 @@ function CourseDetail() {
                     </div>
                     <div className="admin-row__actions">
                       <span className="admin-badge admin-badge--gray">
-                        {s.lessons.length} lesson{s.lessons.length === 1 ? "" : "s"}
+                        {plural(s.lessons.length, "lesson")}
                       </span>
                     </div>
                   </div>

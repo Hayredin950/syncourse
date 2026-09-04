@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Search } from "lucide-react";
 import { get } from "@/lib/api";
 import type { AdminCourseRow, AdminPaymentRow, AdminReviewRow, AdminUserRow } from "@/lib/types";
-import { formatDate } from "@/lib/format";
+import { formatDate, plural } from "@/lib/format";
 import { relativeTime } from "@/lib/metrics";
 
 /**
@@ -200,7 +200,7 @@ export default function AdminActivity() {
             <div className="admin-section-head">
               <h2>{dayLabel(group.day)}</h2>
               <span className="admin-section-head__hint">
-                {group.items.length} event{group.items.length === 1 ? "" : "s"}
+                {plural(group.items.length, "event")}
               </span>
             </div>
             <div className="admin-card">

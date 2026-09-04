@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { ArrowRight } from "lucide-react";
+import Modal from "./Modal";
 import { get, post } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import type { LegalStatus, PendingLegalDoc } from "@/lib/types";
@@ -85,64 +87,61 @@ export default function LegalConsent() {
   const isUpdate = changed.length > 0;
 
   return (
-    <div className="sheet" role="dialog" aria-modal="true" aria-labelledby="legal-consent-title">
-      <div className="sheet-panel">
-        <span className="eyebrow">{isUpdate ? "Updated" : "Before you continue"}</span>
-        <h2 id="legal-consent-title" style={{ margin: "6px 0 8px", fontSize: 21 }}>
-          {isUpdate
-            ? `We've updated our ${joinTitles(changed)}`
-            : `Please accept our ${joinTitles(pending)}`}
-        </h2>
-        <p className="muted" style={{ fontSize: 12.5, margin: "0 0 14px" }}>
-          {isUpdate
-            ? "Your account is still active — we just need your agreement to the new wording."
-            : "A quick one-time confirmation so you know where you stand with us."}
-        </p>
-
-        <div className="dark-panel" style={{ display: "grid", gap: 12, padding: 14 }}>
-          {pending.map((d) => (
-            <div key={d.type}>
-              <div style={{ fontSize: 13, fontWeight: 700 }}>
-                {d.title}{" "}
-                <span className="muted" style={{ fontWeight: 500, fontSize: 11 }}>
-                  v{d.version}
-                  {d.previousVersion ? ` · you accepted v${d.previousVersion}` : ""}
-                </span>
-              </div>
-              {d.changeSummary && (
-                <p className="muted" style={{ fontSize: 12, margin: "3px 0 0" }}>
-                  {d.changeSummary}
-                </p>
-              )}
-              <Link
-                href={`/legal/${d.type}`}
-                style={{ fontSize: 12, textDecoration: "underline" }}
-                onClick={later}
-              >
-                Read it
-              </Link>
-            </div>
-          ))}
-        </div>
-
-        {error && (
-          <div
-            className="rounded-lg border border-danger/40 bg-danger/10 px-3 py-2 text-xs text-danger"
-            style={{ marginTop: 12 }}
-          >
-            {error}
-          </div>
-        )}
-
-        <div style={{ display: "flex", gap: 8, marginTop: 16 }}>
-          <button className="btn primary" style={{ flex: 1 }} onClick={accept} disabled={busy}>
-            {busy ? "Saving…" : pending.length === 1 ? "Accept" : pending.length === 2 ? "Accept both" : "Accept all"}
-          </button>
-          <button className="btn ghost" onClick={later} disabled={busy}>
+    <Modal
+      open
+      onClose={later}
+      title={isUpdate ? "Your agreement has changed" : "Before you continue"}
+      subtitle={
+        isUpdate
+          ? "Your account is still active — we just need your agreement to the new wording."
+          : "A quick one-time confirmation so you know where you stand with us."
+      }
+      width={460}
+      footer={
+        <div className="sheet-foot__row">
+          <button type="button" className="btn ghost" onClick={later} disabled={busy}>
             Later
           </button>
+          <button type="button" className="btn primary btn--grow" onClick={accept} disabled={busy}>
+            {busy ? "Saving…" : pending.length === 1 ? "Accept" : pending.length === 2 ? "Accept both" : "Accept all"}
+          </button>
         </div>
+      }
+    >
+      <p className="sheet-lead">
+        {isUpdate
+          ? `We've updated our ${joinTitles(changed)}.`
+          : `Please accept our ${joinTitles(pending)} to carry on.`}
+      </p>
+
+      <div className="legal-docs">
+        {pending.map((d) => (
+          <div key={d.type} className="legal-doc">
+            <div className="legal-doc__title">
+              {d.title}{" "}
+              <span className="muted" style={{ fontWeight: 500, fontSize: 11 }}>
+                v{d.version}
+                {d.previousVersion ? ` · you accepted v${d.previousVersion}` : ""}
+              </span>
+            </div>
+            {d.changeSummary && (
+              <p className="muted" style={{ fontSize: 12, margin: "3px 0 0", lineHeight: 1.5 }}>
+                {d.changeSummary}
+              </p>
+            )}
+            {/* Was a 12px underlined sentence, which is 12px of click target. */}
+            <Link href={`/legal/${d.type}`} className="btn ghost btn--sm" onClick={later}>
+              Read it <ArrowRight size={12} />
+            </Link>
+          </div>
+        ))}
       </div>
-    </div>
+
+      {error && (
+        <p className="sheet-error" role="alert">
+          {error}
+        </p>
+      )}
+    </Modal>
   );
 }

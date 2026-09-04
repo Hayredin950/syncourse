@@ -170,7 +170,7 @@ export function SkCards({ n = 6, grid = "lists-grid", label }: { n?: number; gri
     <div className={grid} role="status" aria-busy="true">
       <Label>{label}</Label>
       {Array.from({ length: n }, (_, i) => (
-        <div className="dark-panel" key={i} style={{ padding: 14 }}>
+        <div className="dark-panel dark-panel--pad-sm" key={i}>
           <Sk className="sk-wide" style={{ aspectRatio: "16 / 9" }} />
           <Sk className="sk-line sk-line--lg" w={75} style={{ marginTop: 14 }} />
           <Sk className="sk-line sk-line--sm" w={45} style={{ marginTop: 9 }} />

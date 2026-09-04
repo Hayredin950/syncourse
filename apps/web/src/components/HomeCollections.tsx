@@ -48,7 +48,7 @@ export function HomeCollections() {
           </p>
         </div>
         <Link href="/lists" className="btn primary home-col__cta">
-          All collections <ArrowRight size={13} style={{ display: "inline", verticalAlign: "middle" }} />
+          All collections <ArrowRight size={13} />
         </Link>
       </div>
 

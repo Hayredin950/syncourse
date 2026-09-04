@@ -5,7 +5,7 @@ import Link from "next/link";
 import { ArrowRight, Clock3, Eye, LayoutGrid, Paperclip } from "lucide-react";
 import { get } from "@/lib/api";
 import type { ResourceList, ResourceSummary } from "@/lib/types";
-import { compact } from "@/lib/format";
+import { compact, plural } from "@/lib/format";
 import { cloudinaryUrl } from "@/lib/cloudinary";
 import { ResourceCard, ResourceFeature, resourceTint, typeMeta } from "@/components/ResourceCard";
 
@@ -69,7 +69,7 @@ export function HomeResources() {
           </p>
         </div>
         <Link href="/resources" className="btn primary home-res__cta">
-          Open the library <ArrowRight size={13} style={{ display: "inline", verticalAlign: "middle" }} />
+          Open the library <ArrowRight size={13} />
         </Link>
       </div>
 
@@ -155,7 +155,7 @@ function Spotlight({ resource: r }: { resource: ResourceSummary }) {
           </span>
           {r.mediaCount > 0 && (
             <span>
-              <Paperclip size={10} /> {r.mediaCount} file{r.mediaCount === 1 ? "" : "s"}
+              <Paperclip size={10} /> {plural(r.mediaCount, "file")}
             </span>
           )}
           <span>

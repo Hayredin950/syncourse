@@ -3,10 +3,10 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { Bookmark, Check, Download, Eye, LayoutGrid, List, Play } from "lucide-react";
+import { Bookmark, Check, Download, LayoutGrid, List, Play } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import { cloudinaryUrl } from "@/lib/cloudinary";
-import { compact, formatDuration } from "@/lib/format";
+import { compact, formatDuration, plural } from "@/lib/format";
 import { hueFromString } from "@/components/CourseCard";
 
 export type EntityCourse = {
@@ -115,9 +115,6 @@ export function TitleRow({ course, index }: { course: EntityCourse; index: numbe
         >
           <Download size={13} />
         </button>
-        <button className="icon-btn" title="Preview page">
-          <Eye size={13} />
-        </button>
         <button className="icon-btn" title={saved ? "Saved" : "Save"} onClick={toggleSave}>
           {saved ? <Check size={13} className="rating" /> : <Bookmark size={13} />}
         </button>
@@ -148,7 +145,7 @@ export function TitleToolbar({
   return (
     <div className="titles-toolbar">
       <h2>
-        Titles <span className="muted">{total} {total === 1 ? "title" : "titles"}</span>
+        Titles <span className="muted">{plural(total, "title")}</span>
       </h2>
       <div style={{ display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap" }}>
         <input

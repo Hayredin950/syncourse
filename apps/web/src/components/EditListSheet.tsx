@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import { Lock, Users, X } from "lucide-react";
+import { Lock, Users } from "lucide-react";
+import Modal from "./Modal";
 import { patch } from "@/lib/api";
 import type { CollectionDetail } from "@/lib/types";
 
@@ -41,34 +42,35 @@ export function EditListSheet({
   };
 
   return (
-    <div className="sheet" onClick={onClose}>
-      <div className="sheet-panel" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 420 }}>
-        <div className="section-head" style={{ margin: 0 }}>
-          <h2 style={{ fontSize: 16 }}>Edit list</h2>
-          <button className="icon-btn" onClick={onClose} aria-label="Close"><X size={15} /></button>
-        </div>
-        <label className="muted" style={{ fontSize: 11, display: "block", margin: "14px 0 6px" }}>NAME</label>
-        <input className="form-input" value={name} onChange={(e) => setName(e.target.value)} />
-        <label className="muted" style={{ fontSize: 11, display: "block", margin: "14px 0 6px" }}>DESCRIPTION</label>
-        <textarea className="form-input" rows={3} value={description} onChange={(e) => setDescription(e.target.value)} />
-        <div className="pills" style={{ margin: "14px 0 4px" }}>
-          <button className={`badge ${visibility === "private" ? "primary" : ""}`} onClick={() => setVisibility("private")}>
-            <Lock size={11} style={{ display: "inline", verticalAlign: "middle" }} /> Private
-          </button>
-          <button className={`badge ${visibility === "public" ? "primary" : ""}`} onClick={() => setVisibility("public")}>
-            <Users size={11} style={{ display: "inline", verticalAlign: "middle" }} /> Public
-          </button>
-        </div>
-        <p className="muted" style={{ fontSize: 11 }}>
-          {visibility === "private" ? "Only you can open this list." : "Anyone with the link can open this list."}
-        </p>
-        <div className="actions" style={{ marginTop: 16 }}>
-          <button className="btn" onClick={onClose}>Cancel</button>
-          <button className="btn primary" disabled={!name.trim() || busy} onClick={submit}>
+    <Modal
+      open
+      onClose={onClose}
+      title="Edit list"
+      width={420}
+      footer={
+        <div className="sheet-foot__row">
+          <button type="button" className="btn" onClick={onClose}>Cancel</button>
+          <button type="button" className="btn primary btn--grow" disabled={!name.trim() || busy} onClick={submit}>
             {busy ? "Saving…" : "Save changes"}
           </button>
         </div>
+      }
+    >
+      <label className="field-label" htmlFor="list-name">Name</label>
+      <input id="list-name" className="form-input" value={name} onChange={(e) => setName(e.target.value)} />
+      <label className="field-label" htmlFor="list-desc">Description</label>
+      <textarea id="list-desc" className="form-input" rows={3} value={description} onChange={(e) => setDescription(e.target.value)} />
+      <div className="pills" style={{ margin: "14px 0 4px" }}>
+        <button type="button" className={`badge ${visibility === "private" ? "primary" : ""}`} onClick={() => setVisibility("private")} aria-pressed={visibility === "private"}>
+          <Lock size={11} /> Private
+        </button>
+        <button type="button" className={`badge ${visibility === "public" ? "primary" : ""}`} onClick={() => setVisibility("public")} aria-pressed={visibility === "public"}>
+          <Users size={11} /> Public
+        </button>
       </div>
-    </div>
+      <p className="muted" style={{ fontSize: 11 }}>
+        {visibility === "private" ? "Only you can open this list." : "Anyone with the link can open this list."}
+      </p>
+    </Modal>
   );
 }

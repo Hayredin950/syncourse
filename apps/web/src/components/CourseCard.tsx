@@ -40,7 +40,6 @@ export function CoverArt({
         {
           "--cover-a": `hsl(${hue} 42% 18%)`,
           "--cover-b": `hsl(${(hue + 55) % 360} 50% 9%)`,
-          ...(large ? { aspectRatio: "1.2" } : {}),
         } as React.CSSProperties
       }
     >

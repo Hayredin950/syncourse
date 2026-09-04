@@ -1,22 +1,31 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { get } from "@/lib/api";
+import { plural } from "@/lib/format";
 import type { LecturerRow } from "@/lib/types";
 import { MobileHeader } from "@/components/Nav";
 import { LecturerCard } from "@/components/EntityCard";
 import { SkEntities } from "@/components/Skeleton";
+import { LoadError } from "@/components/LoadError";
 
 export default function LecturersPage() {
   const [lecturers, setLecturers] = useState<LecturerRow[]>([]);
   const [loading, setLoading] = useState(true);
+  /* A dropped request used to render "No lecturers yet", which is a claim about
+     the catalogue rather than about the connection. */
+  const [failed, setFailed] = useState(false);
 
-  useEffect(() => {
+  const load = useCallback(() => {
+    setLoading(true);
+    setFailed(false);
     get<LecturerRow[]>("/lecturers")
       .then(setLecturers)
-      .catch(() => undefined)
+      .catch(() => setFailed(true))
       .finally(() => setLoading(false));
   }, []);
+
+  useEffect(load, [load]);
 
   return (
     <main className="page">
@@ -26,12 +35,14 @@ export default function LecturersPage() {
         Lecturers
       </h1>
       <p className="muted mono" style={{ fontSize: 11, margin: 0 }}>
-        {loading ? "…" : `${lecturers.length} instructors`}
+        {loading ? "…" : failed ? "—" : plural(lecturers.length, "instructor")}
       </p>
 
       <div style={{ marginTop: 24 }}>
         {loading ? (
           <SkEntities n={12} label="Loading lecturers" />
+        ) : failed ? (
+          <LoadError title="We couldn't load the lecturers" onRetry={load} />
         ) : lecturers.length === 0 ? (
           <div className="empty-state">
             <div className="empty-icon">🧑‍🏫</div>

@@ -7,6 +7,7 @@ import { useAuth } from "@/lib/auth";
 import { MobileHeader } from "@/components/Nav";
 import { Markdown } from "@/components/Markdown";
 import { SkText } from "@/components/Skeleton";
+import { LoadError } from "@/components/LoadError";
 import type { AcceptedLegalDoc, LegalDoc, LegalStatus, PendingLegalDoc } from "@/lib/types";
 
 const TITLES: Record<string, string> = {
@@ -27,13 +28,21 @@ export default function LegalPage() {
   const [accepted, setAccepted] = useState<AcceptedLegalDoc | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /* Distinct from `doc === null`, which means "no such document is published".
+     A dropped request used to render "Document coming soon." under the Accept
+     button — a reader being asked to agree to terms they were never shown. */
+  const [failed, setFailed] = useState(false);
 
-  useEffect(() => {
+  const loadDoc = useCallback(() => {
+    setLoading(true);
+    setFailed(false);
     get<LegalDoc[]>(`/legal?type=${type}`)
       .then((docs) => setDoc(docs.find((d) => d.type === type) ?? null))
-      .catch(() => {})
+      .catch(() => setFailed(true))
       .finally(() => setLoading(false));
   }, [type]);
+
+  useEffect(loadDoc, [loadDoc]);
 
   // Where this reader stands with this document. Only meaningful signed in —
   // the text itself is public.
@@ -83,7 +92,7 @@ export default function LegalPage() {
       )}
 
       {pending && (
-        <div className="dark-panel" style={{ padding: 14, marginTop: 14 }}>
+        <div className="dark-panel dark-panel--pad-sm" style={{ marginTop: 14 }}>
           <div style={{ fontSize: 13, fontWeight: 700 }}>
             {pending.previousVersion
               ? `Updated since you accepted v${pending.previousVersion}`
@@ -100,8 +109,14 @@ export default function LegalPage() {
               {error}
             </div>
           )}
-          <button className="btn primary" style={{ marginTop: 12 }} onClick={accept} disabled={busy}>
-            {busy ? "Saving…" : `Accept version ${pending.version}`}
+          {/* Nothing to agree to until the text is on the page. */}
+          <button
+            className="btn primary"
+            style={{ marginTop: 12 }}
+            onClick={accept}
+            disabled={busy || loading || failed || !doc}
+          >
+            {busy ? "Saving…" : failed || (!loading && !doc) ? "Document unavailable" : `Accept version ${pending.version}`}
           </button>
         </div>
       )}
@@ -114,6 +129,13 @@ export default function LegalPage() {
 
       {loading ? (
         <SkText lines={9} label="Loading the document" />
+      ) : failed ? (
+        <LoadError
+          icon="📄"
+          title="We couldn't load this document"
+          body="The text is there — the request for it failed. Try again, or reach us at legal@syncourse.app."
+          onRetry={loadDoc}
+        />
       ) : (
         <Markdown text={doc?.bodyMd || "Document coming soon."} className="md--doc" />
       )}

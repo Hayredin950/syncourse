@@ -9,6 +9,7 @@ import type { CourseSummary } from "@/lib/types";
 import { CourseRow } from "@/components/CourseCard";
 import { MobileHeader } from "@/components/Nav";
 import { SkRows } from "@/components/Skeleton";
+import { LoadError } from "@/components/LoadError";
 import { cloudinaryUrl } from "@/lib/cloudinary";
 
 interface SearchData {
@@ -73,6 +74,12 @@ function SearchInner() {
   const [q, setQ] = useState(params.get("q") ?? "");
   const [data, setData] = useState<SearchData | null>(null);
   const [busy, setBusy] = useState(false);
+  /* A failed search used to leave the previous query's hits on screen under the
+     new text — the worst of the three outcomes, because it looks like an answer. */
+  const [failed, setFailed] = useState(false);
+  /* Retry has to change something the effect depends on. Re-setting `q` to its
+     own value would not: React bails out of an identical state update. */
+  const [retry, setRetry] = useState(0);
   const [trending, setTrending] = useState<string[]>([]);
   const [listening, setListening] = useState(false);
   const [voiceUnsupported, setVoiceUnsupported] = useState(false);
@@ -117,6 +124,7 @@ function SearchInner() {
 
   useEffect(() => {
     clearTimeout(debounce.current);
+    setFailed(false);
     if (!q.trim()) {
       setData(null);
       setBusy(false);
@@ -128,12 +136,18 @@ function SearchInner() {
     setBusy(true);
     debounce.current = setTimeout(() => {
       get<SearchData>(`/search?q=${encodeURIComponent(q)}`)
-        .then(setData)
-        .catch(() => undefined)
+        .then((d) => {
+          setData(d);
+          setFailed(false);
+        })
+        .catch(() => {
+          setData(null);
+          setFailed(true);
+        })
         .finally(() => setBusy(false));
     }, 250);
     return () => clearTimeout(debounce.current);
-  }, [q]);
+  }, [q, retry]);
 
   const empty =
     !!data && data.courses.length === 0 && data.lecturers.length === 0 && data.organizations.length === 0;
@@ -194,6 +208,13 @@ function SearchInner() {
         </section>
       ) : busy && !data ? (
         <SkRows n={5} label="Searching" />
+      ) : failed ? (
+        <LoadError
+          title="The search didn't come back"
+          body="Nothing to do with your query — the request to our servers failed. Try it again."
+          onRetry={() => setRetry((n) => n + 1)}
+          compact
+        />
       ) : empty ? (
         <div className="empty-state s-empty">
           <div className="empty-icon">🔍</div>

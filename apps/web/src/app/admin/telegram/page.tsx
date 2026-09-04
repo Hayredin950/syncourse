@@ -14,6 +14,7 @@ import type { AdminTelegramConsole } from "@/lib/types";
 import { relativeTime } from "@/lib/metrics";
 import { useAdminToast } from "@/components/admin/AdminToast";
 import ConfirmButton from "@/components/admin/ConfirmButton";
+import { plural } from "@/lib/format";
 
 /**
  * Telegram bot console — health, account pairing, and the commands that make
@@ -169,7 +170,7 @@ export default function AdminTelegramPage() {
             />
             <div className="admin-form-actions" style={{ marginTop: 10 }}>
               <ConfirmButton
-                label={`Send to ${data.pairedUsers} account${data.pairedUsers === 1 ? "" : "s"}`}
+                label={`Send to ${plural(data.pairedUsers, "account")}`}
                 question="Send this announcement?"
                 confirmLabel="Send now"
                 className="admin-btn admin-btn--primary"

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useToast } from "@/lib/useToast";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -24,15 +24,16 @@ import {
   Save,
   Settings,
   Share2,
-  X,
   Zap,
 } from "lucide-react";
 import { get, patch, post } from "@/lib/api";
 import type { UserProfile, UserStats } from "@/lib/types";
 import { useAuth } from "@/lib/auth";
 import { formatDate } from "@/lib/format";
+import Modal from "@/components/Modal";
 import { MobileHeader } from "@/components/Nav";
 import { SkCards, SkEntityPage } from "@/components/Skeleton";
+import { LoadError } from "@/components/LoadError";
 import { Toast } from "@/components/Toast";
 
 type Tab = "library" | "stats" | "subscription" | "settings";
@@ -119,6 +120,9 @@ export default function MePage() {
   const router = useRouter();
   const [tab, setTab] = useState<Tab>("library");
   const [stats, setStats] = useState<UserStats | null>(null);
+  /* The Stats tab renders its skeleton whenever `stats` is null, so a failed
+     request used to shimmer there for as long as the tab stayed open. */
+  const [statsFailed, setStatsFailed] = useState(false);
   const [telegram, setTelegram] = useState("");
   const { toast, setToast } = useToast();
   const [saving, setSaving] = useState(false);
@@ -141,11 +145,16 @@ export default function MePage() {
     if (!loading && !token) router.push("/auth?next=/me");
   }, [loading, token, router]);
 
+  const loadStats = useCallback(() => {
+    setStatsFailed(false);
+    get<UserStats>("/users/me/stats")
+      .then(setStats)
+      .catch(() => setStatsFailed(true));
+  }, []);
+
   useEffect(() => {
-    if (token && tab === "stats" && !stats) {
-      get<UserStats>("/users/me/stats").then(setStats).catch(() => undefined);
-    }
-  }, [token, tab, stats]);
+    if (token && tab === "stats" && !stats && !statsFailed) loadStats();
+  }, [token, tab, stats, statsFailed, loadStats]);
 
   if (loading) {
     return (
@@ -325,10 +334,10 @@ export default function MePage() {
           </div>
           <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
             <button className="btn" onClick={openEdit}>
-              <Settings size={14} style={{ display: "inline", verticalAlign: "middle" }} /> Edit profile
+              <Settings size={14} /> Edit profile
             </button>
             <button className="btn" onClick={onShareProfile}>
-              <Share2 size={14} style={{ display: "inline", verticalAlign: "middle" }} /> Share
+              <Share2 size={14} /> Share
             </button>
             {/* Mobile only, and here rather than in the page header: the top bar
                 carries the Me menu with Sign out on a desktop but is hidden on a
@@ -344,7 +353,7 @@ export default function MePage() {
                 router.push("/");
               }}
             >
-              <LogOut size={14} style={{ display: "inline", verticalAlign: "middle" }} /> Sign out
+              <LogOut size={14} /> Sign out
             </button>
           </div>
         </div>
@@ -380,7 +389,7 @@ export default function MePage() {
         <>
           <div className="rail">
             <div className="section-head"><h2>Your library</h2></div>
-            <div className="dark-panel">
+            <div className="dark-panel dark-panel--rows">
               <Link href="/my-learning" className="lesson">
                 <span className="icon-badge icon-badge--amber"><BookOpen size={15} /></span>
                 <span>My Library</span>
@@ -398,7 +407,9 @@ export default function MePage() {
           <div className="rail">
             <div className="section-head"><h2>Activity</h2></div>
             <div className="activity-row">
-              <Link href="/search?scope=watchlist" className="activity-card">
+              {/* Was /search?scope=watchlist — /search has never read `scope`, so both
+                  of these landed on an empty search box. */}
+              <Link href="/my-learning?tab=saved" className="activity-card">
                 <span className="activity-icon"><Bookmark size={16} /></span>
                 <span>
                   <strong>{user.stats.saved}</strong>
@@ -406,7 +417,7 @@ export default function MePage() {
                 </span>
                 <ChevronRight size={15} style={{ marginLeft: "auto", color: "hsl(var(--muted-foreground))" }} />
               </Link>
-              <Link href="/my-learning" className="activity-card">
+              <Link href="/my-learning?tab=downloaded" className="activity-card">
                 <span className="activity-icon"><Download size={16} /></span>
                 <span>
                   <strong>{user.stats.downloaded}</strong>
@@ -414,7 +425,7 @@ export default function MePage() {
                 </span>
                 <ChevronRight size={15} style={{ marginLeft: "auto", color: "hsl(var(--muted-foreground))" }} />
               </Link>
-              <Link href="/search?scope=liked" className="activity-card">
+              <Link href="/my-learning?tab=liked" className="activity-card">
                 <span className="activity-icon"><Heart size={16} /></span>
                 <span>
                   <strong>{user.stats.liked}</strong>
@@ -428,7 +439,7 @@ export default function MePage() {
           {/* created — my lists */}
           <div className="rail">
             <div className="section-head"><h2>Created</h2></div>
-            <div className="dark-panel">
+            <div className="dark-panel dark-panel--rows">
               <Link href="/lists" className="lesson">
                 <span className="icon-badge icon-badge--blue"><Layers size={15} /></span>
                 <span>My Lists</span>
@@ -441,7 +452,7 @@ export default function MePage() {
           <div className="rail">
             <div className="section-head"><h2>Saved learning paths</h2></div>
             {stats && stats.pathProgress.length > 0 ? (
-              <div className="dark-panel" style={{ padding: 8 }}>
+              <div className="dark-panel dark-panel--pad-xs">
                 {stats.pathProgress.map((p) => (
                   <div className="lesson" key={p.id}>
                     <span>🛤️</span>
@@ -467,7 +478,9 @@ export default function MePage() {
       {/* ============ STATS ============ */}
       {tab === "stats" && (
         <>
-          {!stats ? (
+          {statsFailed ? (
+            <LoadError title="We couldn't load your stats" onRetry={loadStats} />
+          ) : !stats ? (
             <SkCards n={4} label="Loading your stats" />
           ) : (
             <>
@@ -587,7 +600,7 @@ export default function MePage() {
           {/* plan status */}
           <div className="rail">
             <div className="section-head"><h2>Subscription</h2></div>
-            <div className="dark-panel" style={{ padding: 18 }}>
+            <div className="dark-panel dark-panel--pad">
               <p style={{ margin: 0, fontSize: 13 }}>
                 {isPremium
                   ? <>You're on <strong className="rating">Premium</strong>{user.planExpiresAt ? ` until ${formatDate(user.planExpiresAt)}.` : "."} Browsing, lists, tracking, full-speed downloads and ad-free learning are all yours.</> 
@@ -604,7 +617,7 @@ export default function MePage() {
                 <span className="muted">We're confirming your payment of {user.pendingPayment.amount} ETB. It usually takes a few minutes.</span>
               </div>
               <Link href="/premium" className="btn primary" style={{ whiteSpace: "nowrap" }}>
-                Finish your payment <ArrowRight size={13} style={{ display: "inline", verticalAlign: "middle" }} />
+                Finish your payment <ArrowRight size={13} />
               </Link>
             </div>
           )}
@@ -637,7 +650,7 @@ export default function MePage() {
             </div>
             {!isPremium && (
               <Link href="/premium" className="btn primary" style={{ width: "100%", marginTop: 14 }}>
-                Go Premium <ArrowRight size={13} style={{ display: "inline", verticalAlign: "middle" }} />
+                Go Premium <ArrowRight size={13} />
               </Link>
             )}
           </div>
@@ -650,8 +663,8 @@ export default function MePage() {
           {/* contact support */}
           <div className="rail">
             <div className="section-head"><h2>Support</h2></div>
-            <div className="dark-panel" style={{ padding: 18, display: "flex", alignItems: "center", gap: 14 }}>
-              <span className="activity-icon" style={{ width: 38, height: 38, borderRadius: 10, display: "grid", placeItems: "center", background: "hsl(var(--accent) / .12)", color: "hsl(var(--accent))" }}>
+            <div className="dark-panel dark-panel--pad" style={{ display: "flex", alignItems: "center", gap: 14 }}>
+              <span className="activity-icon" style={{ width: 38, height: 38, borderRadius: "var(--r-sm)", display: "grid", placeItems: "center", background: "hsl(var(--accent) / .12)", color: "hsl(var(--accent))" }}>
                 <MessageCircle size={16} />
               </span>
               <div style={{ flex: 1 }}>
@@ -665,7 +678,7 @@ export default function MePage() {
           {/* email block */}
           <div className="rail">
             <div className="section-head"><h2>Account</h2></div>
-            <div className="dark-panel" style={{ padding: 8 }}>
+            <div className="dark-panel dark-panel--pad-xs">
               <div className="setting-row">
                 <div className="setting-info">
                   <Mail size={13} style={{ display: "inline", verticalAlign: "middle", marginRight: 6, color: "hsl(var(--muted-foreground))" }} />
@@ -688,7 +701,7 @@ export default function MePage() {
           {/* sign-in methods */}
           <div className="rail">
             <div className="section-head"><h2>Sign-in methods</h2></div>
-            <div className="dark-panel" style={{ padding: 8 }}>
+            <div className="dark-panel dark-panel--pad-xs">
               <div className="setting-row">
                 <div className="setting-info">
                   Google
@@ -713,7 +726,7 @@ export default function MePage() {
           {/* telegram */}
           <div className="rail">
             <div className="section-head"><h2>Telegram delivery</h2></div>
-            <div className="dark-panel" style={{ padding: 18 }}>
+            <div className="dark-panel dark-panel--pad">
               <p className="muted" style={{ fontSize: 12, margin: "0 0 10px" }}>Link your Telegram to track your bot downloads here.</p>
               <div className="actions">
                 <input
@@ -728,7 +741,7 @@ export default function MePage() {
                 </button>
               </div>
               {user.telegramUsername && (
-                <div style={{ marginTop: 10, fontSize: 12, color: "#6fe0a4" }}>✓ Linked to @{user.telegramUsername}</div>
+                <div style={{ marginTop: 10, fontSize: 12, color: "var(--success-ink)" }}>✓ Linked to @{user.telegramUsername}</div>
               )}
             </div>
           </div>
@@ -736,7 +749,7 @@ export default function MePage() {
           {/* autoplay toggle */}
           <div className="rail">
             <div className="section-head"><h2>Playback</h2></div>
-            <div className="dark-panel" style={{ padding: 8 }}>
+            <div className="dark-panel dark-panel--pad-xs">
               <div className="setting-row">
                 <div className="setting-info">
                   Autoplay next lesson
@@ -767,7 +780,7 @@ export default function MePage() {
           {/* privacy */}
           <div className="rail">
             <div className="section-head"><h2>What can others see</h2></div>
-            <div className="dark-panel" style={{ padding: 8 }}>
+            <div className="dark-panel dark-panel--pad-xs">
               {privacyDefaults.map((p) => (
                 <div className="setting-row" key={p.key}>
                   <div className="setting-info">
@@ -794,7 +807,7 @@ export default function MePage() {
                 </button>
               )}
             </div>
-            <div className="dark-panel" style={{ padding: 8 }}>
+            <div className="dark-panel dark-panel--pad-xs">
               {user.sessions.map((s) => (
                 <div className="lesson" key={s.id}>
                   <Check size={15} className="rating" />
@@ -811,7 +824,7 @@ export default function MePage() {
           {user.isStaff && (
             <div className="rail">
               <div className="section-head"><h2>Staff</h2></div>
-              <div className="dark-panel">
+              <div className="dark-panel dark-panel--rows">
                 <Link href="/admin" className="lesson">
                   <span>🛠️</span>
                   <span>Admin CMS</span>
@@ -830,40 +843,50 @@ export default function MePage() {
                 router.push("/");
               }}
             >
-              <LogOut size={14} style={{ display: "inline", verticalAlign: "middle" }} /> Log out
+              <LogOut size={14} /> Log out
             </button>
           </div>
         </>
       )}
 
-      {/* edit-profile modal */}
       {editing && (
-        <div className="sheet" onClick={() => setEditing(false)}>
-          <div className="sheet-panel" onClick={(e) => e.stopPropagation()}>
-            <div className="section-head">
-              <h2>Edit Profile</h2>
-              <button className="icon-btn" onClick={() => setEditing(false)} aria-label="Close">
-                <X size={15} />
+        <Modal
+          open
+          onClose={() => setEditing(false)}
+          title="Edit profile"
+          subtitle="Your name and handle are what other members see."
+          width={480}
+          footer={
+            <div className="sheet-foot__row">
+              <button type="button" className="btn" onClick={() => setEditing(false)}>
+                Cancel
+              </button>
+              <button type="button" className="btn primary btn--grow" onClick={saveProfile} disabled={saving || uploading}>
+                <Save size={14} /> {saving ? "Saving…" : "Save"}
               </button>
             </div>
-            <label className="muted" style={{ fontSize: 11, display: "block", margin: "14px 0 6px" }}>DISPLAY NAME</label>
-            <input className="form-input" value={editName} onChange={(e) => setEditName(e.target.value)} placeholder="Your name" />
+          }
+        >
+            <label className="field-label" htmlFor="me-name">Display name</label>
+            <input id="me-name" className="form-input" value={editName} onChange={(e) => setEditName(e.target.value)} placeholder="Your name" />
 
-            <label className="muted" style={{ fontSize: 11, display: "block", margin: "14px 0 6px" }}>USERNAME</label>
+            <label className="field-label" htmlFor="me-username">Username</label>
             <div className="input-prefix">
               <span className="input-prefix__at">@</span>
               <input
+                id="me-username"
                 className="form-input"
                 value={editUsername}
                 onChange={(e) => setEditUsername(e.target.value.replace(/[^a-zA-Z0-9_@]/g, ""))}
                 placeholder="your-handle"
+                autoComplete="username"
               />
             </div>
             <p className="muted" style={{ fontSize: 11, margin: "4px 0 0" }}>
               Your profile URL will be /@{editUsername.replace(/^@/, "") || "your-handle"}
             </p>
 
-            <label className="muted" style={{ fontSize: 11, display: "block", margin: "14px 0 6px" }}>PROFILE IMAGE</label>
+            <label className="field-label">Profile image</label>
             <div className="avatar-upload-row">
               <div className="nav-me__avatar" style={{ width: 48, height: 48 }}>
                 {editAvatar ? (
@@ -891,7 +914,7 @@ export default function MePage() {
               </div>
             </div>
 
-            <label className="muted" style={{ fontSize: 11, display: "block", margin: "14px 0 6px" }}>GENDER</label>
+            <label className="field-label">Gender</label>
             <div className="segmented">
               {["", "Male", "Female", "Non-binary"].map((g) => (
                 <button
@@ -904,46 +927,67 @@ export default function MePage() {
               ))}
             </div>
 
-            <div className="actions" style={{ marginTop: 20 }}>
-              <button className="btn" style={{ flex: 1 }} onClick={() => setEditing(false)}>
-                Cancel
-              </button>
-              <button className="btn primary" style={{ flex: 1.4 }} onClick={saveProfile} disabled={saving || uploading}>
-                <Save size={14} style={{ display: "inline", verticalAlign: "middle" }} /> {saving ? "Saving…" : "Save"}
-              </button>
-            </div>
-          </div>
-        </div>
+        </Modal>
       )}
 
-      {/* change-password modal */}
       {pwOpen && (
-        <div className="sheet" onClick={() => setPwOpen(false)}>
-          <div className="sheet-panel" onClick={(e) => e.stopPropagation()}>
-            <div className="section-head">
-              <h2>{user.hasPassword ? "Change password" : "Set a password"}</h2>
-              <button className="icon-btn" onClick={() => setPwOpen(false)} aria-label="Close">
-                <X size={15} />
-              </button>
-            </div>
-            {user.hasPassword && (
-              <>
-                <label className="muted" style={{ fontSize: 11, display: "block", margin: "14px 0 6px" }}>CURRENT PASSWORD</label>
-                <input className="form-input" type="password" value={pwCurrent} onChange={(e) => setPwCurrent(e.target.value)} placeholder="Current password" />
-              </>
-            )}
-            <label className="muted" style={{ fontSize: 11, display: "block", margin: "14px 0 6px" }}>NEW PASSWORD</label>
-            <input className="form-input" type="password" value={pwNew} onChange={(e) => setPwNew(e.target.value)} placeholder="Min 8 characters" />
-            <button
-              className="btn primary"
-              style={{ width: "100%", marginTop: 18 }}
-              onClick={changePassword}
-              disabled={!pwNew || pwNew.length < 8 || (user.hasPassword && !pwCurrent)}
+        /* A real <form>, so the browser offers to save the new password and Enter
+           submits it. Google-only accounts get "Set a password" and no current
+           field — there is nothing to confirm against. */
+        <Modal
+          open
+          onClose={() => setPwOpen(false)}
+          title={user.hasPassword ? "Change password" : "Set a password"}
+          subtitle={
+            user.hasPassword
+              ? "You stay signed in on this device."
+              : "You signed in with Google. A password lets you in without it."
+          }
+          width={420}
+        >
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                void changePassword();
+              }}
             >
-              Save password
-            </button>
-          </div>
-        </div>
+              {/* Password managers key on the username field to know which login
+                  they are updating; hidden, because /me already knows who you are. */}
+              <input type="hidden" name="username" autoComplete="username" value={user.username ?? user.email} />
+              {user.hasPassword && (
+                <>
+                  <label className="field-label" htmlFor="pw-current">Current password</label>
+                  <input
+                    id="pw-current"
+                    className="form-input"
+                    type="password"
+                    autoComplete="current-password"
+                    value={pwCurrent}
+                    onChange={(e) => setPwCurrent(e.target.value)}
+                    placeholder="Current password"
+                  />
+                </>
+              )}
+              <label className="field-label" htmlFor="pw-new">New password</label>
+              <input
+                id="pw-new"
+                className="form-input"
+                type="password"
+                autoComplete="new-password"
+                value={pwNew}
+                onChange={(e) => setPwNew(e.target.value)}
+                placeholder="Min 8 characters"
+              />
+              <button
+                type="submit"
+                className="btn primary"
+                style={{ width: "100%", marginTop: 18 }}
+                disabled={!pwNew || pwNew.length < 8 || (user.hasPassword && !pwCurrent)}
+              >
+                Save password
+              </button>
+            </form>
+        </Modal>
       )}
 
       <Toast message={toast} />
