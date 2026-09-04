@@ -15,6 +15,10 @@ import { BookOpen, FileText } from "lucide-react";
  * Two routes rather than one page with a state variable: both are prerendered by
  * the static export, both keep their own filters in the URL, and a link to a
  * filtered resource view stays a link to a filtered resource view.
+ *
+ * The strip hides itself above the phone breakpoint. It deliberately does not use
+ * `.mobile-only`: that class sets `display: block` inside the phone media query,
+ * which would override the grid that makes the two tabs equal halves.
  */
 const TABS = [
   { href: "/browse", label: "Courses", icon: BookOpen },
@@ -24,7 +28,7 @@ const TABS = [
 export function BrowseTabs() {
   const pathname = usePathname();
   return (
-    <div className="browse-tabs mobile-only" role="tablist" aria-label="Browse">
+    <div className="browse-tabs" role="tablist" aria-label="Browse">
       {TABS.map((t) => {
         const on = pathname.startsWith(t.href);
         return (

@@ -222,6 +222,12 @@ a, button, [role="button"], label, summary { -webkit-tap-highlight-color: transp
 .display { letter-spacing: -.055em; }
 .desktop-only { display: block; }
 .mobile-only { display: none; }
+/* The per-page phone header. Deliberately not `.mobile-only` + an inline flex:
+   that is what it was, and an inline `display` beats the stylesheet, so it never
+   hid on desktop. Its own class instead — hidden here, `display: flex` in the
+   phone block — which also keeps it clear of `.mobile-only`'s `display: block`
+   override further down. */
+.mobile-head { display: none; align-items: center; justify-content: space-between; margin-bottom: 23px; }
 
 /* ---------- shell ---------- */
 .site-shell { min-height: 100dvh; background: radial-gradient(circle at 78% -20%, rgba(250,140,38,.10), transparent 31rem), hsl(var(--background)); }
@@ -498,9 +504,20 @@ p { text-wrap: pretty; }
 /* Two halves of one surface, so this is a segmented control and not a pill row:
    the tabs split the width evenly and the selected one is a filled slab, which
    reads as "you are in this half" rather than "this filter is on". */
-.browse-tabs { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 4px; padding: 4px; margin: 0 0 18px; border: 1px solid var(--hairline); border-radius: var(--r-full); background: rgba(255,255,255,.04); }
-.browse-tab { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 40px; border-radius: var(--r-full); font-size: 12px; font-weight: 700; color: hsl(var(--muted-foreground)); text-decoration: none; transition: color var(--t-fast) var(--ease), background var(--t-fast) var(--ease); }
-.browse-tab.active { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+/* Courses | Resources, a two-up segmented control. Phone-only — the desktop top
+   bar lists both destinations, so up there this strip would be a duplicate. It
+   hides itself rather than borrowing `.mobile-only`, whose `display: block` lives
+   inside the phone breakpoint further down this file and would land *after* this
+   rule and flatten the grid: the two tabs then flowed inline at content width,
+   left-aligned in a bar twice their size, and the selected pill — which had no
+   horizontal padding to hold it off its own text — butted straight into the
+   label beside it. */
+.browse-tabs { display: none; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 4px; padding: 4px; margin: 0 0 18px; border: 1px solid var(--hairline); border-radius: var(--r-full); background: rgba(255,255,255,.04); }
+.browse-tab { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 40px; padding: 0 14px; border-radius: var(--r-full); font-size: 12px; font-weight: 700; color: hsl(var(--muted-foreground)); text-decoration: none; white-space: nowrap; transition: color var(--t-fast) var(--ease), background var(--t-fast) var(--ease); }
+.browse-tab svg { flex: none; }
+/* The selected half is lifted, not just filled — on a dark bar a flat colour
+   swap alone reads as a highlight rather than a raised control. */
+.browse-tab.active { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); box-shadow: 0 1px 3px rgba(0,0,0,.4); }
 .browse-tab:not(.active):active { background: rgba(255,255,255,.07); }
 
 /* ============ circles: two-pane study groups ============ */
@@ -771,6 +788,10 @@ p { text-wrap: pretty; }
 .quick-action:hover { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); transform: translateY(-2px); }
 .card-title { font-size: 12px; line-height: 1.25; margin: 9px 0 4px; font-weight: 700; color: hsl(var(--foreground)); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; overflow-wrap: anywhere; min-height: 2.5em; }
 .card-meta { color: hsl(var(--muted-foreground)); font-size: 10px; display: flex; gap: 8px; align-items: center; }
+/* "★ 4.0" on one line. Preflight blockifies every svg, so the rating item was
+   two lines tall on every rated card in the app — the rails, the browse grid,
+   the collections — and the star sat above its own number. */
+.card-meta > span { display: inline-flex; align-items: center; gap: 4px; }
 .rating { color: hsl(var(--accent)); }
 
 /* ---------- pills / badges / panels ---------- */
@@ -857,12 +878,37 @@ select option { background: var(--s-3); color: var(--ink-1); }
 .stat span { text-transform: uppercase; font: 10px var(--app-font-mono); color: hsl(var(--muted-foreground)); letter-spacing: .1em; }
 
 /* ---------- course detail ---------- */
-.detail-hero { min-height: 430px; border-radius: var(--r-xl); overflow: hidden; display: flex; align-items: flex-end; padding: 44px; position: relative; background: linear-gradient(90deg, rgba(7,6,5,.98) 9%, rgba(7,6,5,.74) 48%, rgba(7,6,5,.06)), linear-gradient(135deg, #182c36, #bd5e24 47%, #201712); }
+.detail-hero { min-height: 430px; border-radius: var(--r-xl); overflow: hidden; display: flex; align-items: flex-end; padding: 44px; position: relative; background: linear-gradient(135deg, #182c36, #bd5e24 47%, #201712); }
+/* The banner reads through a scrim, not through an opacity dial. It used to be
+   painted at 35% *above* the hero's dark gradients, which is the wrong order:
+   nothing sat over the picture, so the copy's legibility had to be bought out of
+   the picture's own strength — and 35% of a photograph over near-black is nothing
+   at all on a 390px hero. Now it renders at full strength and this layer carries
+   the contrast: left-to-right on a wide hero, where the copy is a column down one
+   side. The phone block turns it bottom-up, where the copy is a block at the
+   foot. */
+.detail-hero__img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.detail-hero::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(90deg, rgba(7, 6, 5, 0.96) 6%, rgba(7, 6, 5, 0.72) 46%, rgba(7, 6, 5, 0.16));
+}
 .detail-actions { display: flex; align-items: center; justify-content: space-between; gap: 16px; flex-wrap: wrap; margin: 20px 0 0; }
 .detail-actions .actions { display: flex; gap: 10px; flex-wrap: wrap; }
 .detail-actions .icon-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .detail-hero .hero-content { max-width: 650px; }
-.detail-meta { display: flex; gap: 9px; flex-wrap: wrap; margin: 16px 0; color: var(--ink-1); font-size: 12px; }
+.detail-meta { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; margin: 16px 0; color: var(--ink-1); font-size: 12px; }
+/* Each item is "icon + words", and the icon has to stay on the words' line:
+   Tailwind's preflight sets `display: block` on every svg, so the rating star
+   rendered *above* "Not yet rated" — and the container's default
+   `align-items: stretch` then top-aligned every other item against that
+   two-line-tall neighbour, which is why "English" floated off the baseline. */
+.detail-meta > span { display: inline-flex; align-items: center; gap: 5px; }
+/* Separated, not merely spaced: three facts 9px apart read as one run-on
+   phrase ("Not yet rated English"). */
+.detail-meta > span + span::before { content: "·"; margin-right: 4px; color: var(--ink-4); }
 .detail-columns { display: grid; grid-template-columns: 1.5fr .8fr; gap: 38px; margin-top: 30px; }
 .info-table { display: grid; grid-template-columns: 125px 1fr; gap: 15px 18px; font-size: 12px; border-top: 1px solid hsl(var(--border)); padding-top: 20px; }
 .info-table b { font: 10px var(--app-font-mono); letter-spacing: .12em; color: #c79b62; font-weight: 500; }
@@ -1032,6 +1078,8 @@ select option { background: var(--s-3); color: var(--ink-1); }
 @media (max-width: 760px) {
   .desktop-only { display: none !important; }
   .mobile-only { display: block; }
+  .mobile-head { display: flex; }
+  .browse-tabs { display: grid; }
   .topbar { height: 62px; padding: 0 18px; gap: 14px; }
   .topbar .top-search, .topbar .nav-links { display: none; }
   .brand { font-size: 23px; }
@@ -1062,6 +1110,10 @@ select option { background: var(--s-3); color: var(--ink-1); }
   .stat strong { font-size: 19px; }
   .stat span { font-size: 8px; }
   .detail-hero { min-height: 340px; padding: 24px 18px; border-radius: 0; margin: 0 -16px; }
+  /* Bottom-up here: the copy is a full-width block at the foot of the hero, so a
+     left-to-right scrim would darken the half of the banner with nothing on it and
+     leave the title sitting on open picture. */
+  .detail-hero::after { background: linear-gradient(180deg, rgba(7, 6, 5, 0.22) 0%, rgba(7, 6, 5, 0.58) 30%, rgba(7, 6, 5, 0.86) 62%, rgba(7, 6, 5, 0.96) 100%); }
   .detail-actions { margin: 16px 0 0; }
   .detail-actions .actions { width: 100%; }
   .detail-actions .icon-actions { width: 100%; }
@@ -1199,7 +1251,13 @@ select option { background: var(--s-3); color: var(--ink-1); }
 .res-card { display: flex; flex-direction: column; border: 1px solid hsl(var(--border)); border-radius: var(--r-lg); overflow: hidden; background: linear-gradient(180deg, hsl(30 8% 11%), #100f0d); transition: transform var(--t) var(--ease), border-color var(--t) var(--ease), box-shadow var(--t) var(--ease); }
 .res-card:hover { transform: translateY(-3px); border-color: hsl(var(--primary) / .5); box-shadow: var(--e-3); }
 .res-card__cover { position: relative; display: grid; place-items: center; aspect-ratio: 16 / 10; overflow: hidden; border-bottom: 1px solid hsl(var(--border)); }
-.res-card__cover img { width: 100%; height: 100%; object-fit: cover; }
+/* Absolute, so the type glyph stays in the grid cell *behind* it. A cover that
+   has not arrived — slow connection, blocked host, a public id that no longer
+   resolves — then leaves the tinted placeholder on show instead of a void. The
+   card used to paint the glyph only when `coverUrl` was empty, which meant the
+   one case where something is genuinely wrong was the one case with nothing to
+   look at. */
+.res-card__cover img, .res-feature__art img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .res-card__glyph { color: rgba(255,255,255,.42); }
 .res-card__type { position: absolute; top: 9px; left: 9px; display: inline-flex; align-items: center; gap: 5px; padding: 4px 9px; border-radius: var(--r-full); background: rgba(8,7,6,.78); backdrop-filter: blur(6px); color: var(--ink-1); font-size: 10px; font-weight: 700; letter-spacing: .01em; }
 .res-card__premium { position: absolute; top: 9px; right: 9px; padding: 4px 9px; border-radius: var(--r-full); background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); font-size: 10px; font-weight: 800; }
@@ -1224,7 +1282,6 @@ select option { background: var(--s-3); color: var(--ink-1); }
 .res-feature { display: grid; grid-template-columns: 150px minmax(0, 1fr); border: 1px solid hsl(var(--border)); border-radius: var(--r-xl); overflow: hidden; background: linear-gradient(120deg, hsl(30 9% 12%), #100f0d 70%); transition: border-color var(--t) var(--ease), box-shadow var(--t) var(--ease); }
 .res-feature:hover { border-color: hsl(var(--primary) / .55); box-shadow: var(--e-3); }
 .res-feature__art { position: relative; display: grid; place-items: center; overflow: hidden; border-right: 1px solid hsl(var(--border)); }
-.res-feature__art img { width: 100%; height: 100%; object-fit: cover; }
 .res-feature__body { display: flex; flex-direction: column; gap: 8px; padding: 18px 20px; min-width: 0; }
 .res-feature__kicker { display: inline-flex; align-items: center; gap: 6px; font-size: 10px; font-weight: 700; letter-spacing: .09em; text-transform: uppercase; color: hsl(var(--primary)); }
 .res-feature__dot { opacity: .65; }
@@ -1368,7 +1425,7 @@ select option { background: var(--s-3); color: var(--ink-1); }
 .home-res__grid--tall .home-res__lead { grid-row: span 2; }
 .home-res__lead:hover { transform: translateY(-2px); border-color: hsl(var(--primary) / .55); box-shadow: var(--e-3); }
 .home-res__art { position: relative; display: grid; place-items: center; aspect-ratio: 16 / 8.2; overflow: hidden; border-bottom: 1px solid hsl(var(--border)); }
-.home-res__art img { width: 100%; height: 100%; object-fit: cover; }
+.home-res__art img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .home-res__kicker { position: absolute; left: 12px; top: 12px; display: inline-flex; align-items: center; gap: 6px; padding: 5px 10px; border-radius: var(--r-full); background: rgba(10,9,8,.74); backdrop-filter: blur(6px); font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; color: hsl(var(--primary)); }
 .home-res__leadbody { display: flex; flex-direction: column; gap: 9px; padding: 17px 20px 19px; min-width: 0; }
 .home-res__leadtitle { font-size: 19px; font-weight: 800; line-height: 1.28; letter-spacing: -.017em; color: #fff; }

@@ -379,15 +379,15 @@ export function CourseDetailView({ slug }: { slug: string }) {
       <div
         className="detail-hero"
         style={{
-          background: `linear-gradient(90deg,rgba(7,6,5,.98) 9%,rgba(7,6,5,.74) 48%,rgba(7,6,5,.06)), linear-gradient(135deg, hsl(${(hue + 40) % 360} 42% 16%), hsl(${hue} 50% 9%) 47%, #201712)`,
+          background: `linear-gradient(135deg, hsl(${(hue + 40) % 360} 42% 16%), hsl(${hue} 50% 9%) 47%, #201712)`,
         }}
       >
         {course.bannerUrl || course.thumbnailUrl ? (
           // eslint-disable-next-line @next/next/no-img-element
           <img
+            className="detail-hero__img"
             src={cloudinaryUrl(course.bannerUrl || course.thumbnailUrl, { width: 840, height: 472 }) ?? undefined}
             alt={course.title}
-            style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover", opacity: 0.35 }}
           />
         ) : null}
         <div className="hero-content">

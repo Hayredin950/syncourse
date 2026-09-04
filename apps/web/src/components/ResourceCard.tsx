@@ -83,12 +83,14 @@ export function ResourceCard({ resource: r }: { resource: ResourceSummary }) {
   const Glyph = meta.icon;
   return (
     <Link href={`/resources/${r.slug}`} className="res-card">
-      <span className="res-card__cover" style={r.coverUrl ? undefined : resourceTint(r.slug)}>
-        {r.coverUrl ? (
+      <span className="res-card__cover" style={resourceTint(r.slug)}>
+        {/* Tint and glyph always render; the cover, when there is one, sits on top
+            of them. So a card whose image is still in flight — or never arrives —
+            shows the placeholder rather than a hole. */}
+        <Glyph className="res-card__glyph" size={38} strokeWidth={1.4} />
+        {r.coverUrl && (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={cloudinaryUrl(r.coverUrl, { width: 520, height: 320 }) ?? undefined} alt="" />
-        ) : (
-          <Glyph className="res-card__glyph" size={38} strokeWidth={1.4} />
+          <img src={cloudinaryUrl(r.coverUrl, { width: 520, height: 320, gravity: "north" }) ?? undefined} alt="" loading="lazy" decoding="async" />
         )}
         <span className="res-card__type">
           <Glyph size={11} /> {meta.label}
@@ -130,12 +132,11 @@ export function ResourceFeature({ resource: r }: { resource: ResourceSummary }) 
   const Glyph = meta.icon;
   return (
     <Link href={`/resources/${r.slug}`} className="res-feature">
-      <span className="res-feature__art" style={r.coverUrl ? undefined : resourceTint(r.slug)}>
-        {r.coverUrl ? (
+      <span className="res-feature__art" style={resourceTint(r.slug)}>
+        <Glyph className="res-card__glyph" size={46} strokeWidth={1.3} />
+        {r.coverUrl && (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={cloudinaryUrl(r.coverUrl, { width: 640, height: 640 }) ?? undefined} alt="" />
-        ) : (
-          <Glyph className="res-card__glyph" size={46} strokeWidth={1.3} />
+          <img src={cloudinaryUrl(r.coverUrl, { width: 640, height: 640, gravity: "north" }) ?? undefined} alt="" decoding="async" />
         )}
       </span>
       <span className="res-feature__body">

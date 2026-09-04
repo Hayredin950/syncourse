@@ -20,10 +20,15 @@ const UPLOAD = /^(https:\/\/res\.cloudinary\.com\/[^/]+\/image\/upload\/)(.*)$/;
  * `c_fill` only when both dimensions are given — that is a cover, and cropping to
  * the box is the point. With a width alone the caller wants the same picture,
  * smaller, so `c_limit` keeps the aspect ratio and never upscales.
+ *
+ * `gravity` says which part of the picture survives a crop. It matters for the
+ * documents: a cheat-sheet cover is a screenshot of a page, and the default
+ * centre crop takes a 16:10 slice out of its middle, which is a band of text cut
+ * off mid-sentence at both ends. `north` keeps the top, where the heading is.
  */
 export function cloudinaryUrl(
   url: string | null | undefined,
-  opts: { width?: number; height?: number } = {},
+  opts: { width?: number; height?: number; gravity?: "north" | "auto" | "face" } = {},
 ): string | null {
   if (!url) return null;
 
@@ -32,6 +37,7 @@ export function cloudinaryUrl(
   if (opts.height) parts.push(`h_${opts.height}`);
   if (opts.width && opts.height) parts.push("c_fill");
   else if (opts.width || opts.height) parts.push("c_limit");
+  if (opts.gravity && opts.width && opts.height) parts.push(`g_${opts.gravity}`);
   const t = parts.join(",");
 
   const own = UPLOAD.exec(url);

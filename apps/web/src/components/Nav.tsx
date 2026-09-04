@@ -158,9 +158,16 @@ export function TopNav() {
 }
 
 /* ---------- MobileHeader — per-page title (mobile only) ---------- */
+/**
+ * Phone-only, and the styling has to live in a class for that to hold: this used
+ * to carry `style={{ display: "flex" }}` beside `.mobile-only`, and an inline
+ * style outranks any stylesheet rule — so `.mobile-only { display: none }` never
+ * applied and all 34 call sites rendered a second brand link and search button on
+ * desktop, stacked under the real top bar.
+ */
 export function MobileHeader({ title = "Syncourse" }: { title?: string }) {
   return (
-    <div className="mobile-only" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 23 }}>
+    <div className="mobile-head">
       <Link href="/" className="brand">
         {title}
       </Link>

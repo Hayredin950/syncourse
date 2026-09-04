@@ -134,12 +134,15 @@ function Spotlight({ resource: r }: { resource: ResourceSummary }) {
   const Glyph = meta.icon;
   return (
     <Link href={`/resources/${r.slug}`} className="home-res__lead">
-      <span className="home-res__art" style={r.coverUrl ? undefined : resourceTint(r.slug)}>
-        {r.coverUrl ? (
+      <span className="home-res__art" style={resourceTint(r.slug)}>
+        {/* Placeholder underneath rather than instead of: a cover that is slow,
+            blocked or gone then leaves the tint and the glyph on show. This tile
+            is the widest crop of the lot — 16:8.2 out of a portrait page — so it
+            also takes the top of the document, where the heading is. */}
+        <Glyph className="res-card__glyph" size={52} strokeWidth={1.3} />
+        {r.coverUrl && (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={cloudinaryUrl(r.coverUrl, { width: 900, height: 560 }) ?? undefined} alt="" />
-        ) : (
-          <Glyph className="res-card__glyph" size={52} strokeWidth={1.3} />
+          <img src={cloudinaryUrl(r.coverUrl, { width: 900, height: 560, gravity: "north" }) ?? undefined} alt="" />
         )}
         <span className="home-res__kicker">
           <Glyph size={11} /> {meta.label}
