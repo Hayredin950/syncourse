@@ -1,5 +1,6 @@
 import React from "react";
-import { Image, Linking, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Image, Linking, ScrollView, StyleSheet, View } from "react-native";
+import { Text } from "./Type";
 import { colors, radius } from "../lib/tokens";
 
 /**

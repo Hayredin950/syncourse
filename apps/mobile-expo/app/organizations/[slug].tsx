@@ -1,41 +1,46 @@
+import { Ionicons } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
-import { Link, useLocalSearchParams } from "expo-router";
+import { Link, Stack, useLocalSearchParams } from "expo-router";
 import React from "react";
-import { ActivityIndicator, Image, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Image, RefreshControl, ScrollView, StyleSheet, View } from "react-native";
 import * as api from "../../lib/api";
-import { colors } from "../../lib/tokens";
+import { colors, radius } from "../../lib/tokens";
 import { formatDuration, type OrganizationDetail } from "../../lib/types";
 import { cloudinaryUrl } from "../../lib/cloudinary";
+import { Failed } from "../../components/Empty";
+import { Press } from "../../components/Press";
+import { SkProfile } from "../../components/Skeleton";
 import { Stars } from "../../components/StarRating";
+import { Text } from "../../components/Type";
 
 export default function OrganizationScreen() {
   const { slug } = useLocalSearchParams<{ slug: string }>();
-  const { data, isLoading, error } = useQuery({
+  const { data, isLoading, error, refetch, isRefetching } = useQuery({
     queryKey: ["organization", slug],
     queryFn: () => api.organizationDetail(slug!),
   });
 
-  if (isLoading || !data) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator color={colors.accent} size="large" />
-      </View>
-    );
-  }
-  if (error) {
-    return (
-      <View style={styles.center}>
-        <Text style={styles.muted}>Could not load this organization</Text>
-      </View>
-    );
-  }
+  // Error first: with `isLoading || !data` ahead of it this branch was dead, so
+  // a dead slug spun forever.
+  if (error) return <Failed title="Could not load this channel" onRetry={() => refetch()} />;
+  if (isLoading || !data) return <SkProfile />;
 
   const o: OrganizationDetail = data;
-  const typeLabel =
-    (o as any).orgType === "university" ? "UNIVERSITY" : (o as any).orgType === "company" ? "COMPANY" : "PUBLISHER";
+  const orgType = (o as { orgType?: string }).orgType;
+  const typeLabel = orgType === "university" ? "UNIVERSITY" : orgType === "company" ? "COMPANY" : "PUBLISHER";
+  const n = o.courses.length;
+  const courseCount = n === 1 ? "1 course" : `${n} courses`;
+  const subs = o.subscribers ?? 0;
 
   return (
-    <ScrollView style={styles.screen} contentContainerStyle={styles.content}>
+    <ScrollView
+      style={styles.screen}
+      contentContainerStyle={styles.content}
+      refreshControl={
+        <RefreshControl refreshing={isRefetching} onRefresh={() => refetch()} tintColor={colors.accent} />
+      }
+    >
+      <Stack.Screen options={{ title: o.name }} />
       <View style={styles.header}>
         {o.logoUrl ? (
           <Image source={{ uri: cloudinaryUrl(o.logoUrl, { width: 160, height: 160 }) ?? undefined }} style={styles.logo} resizeMode="contain" />
@@ -49,30 +54,39 @@ export default function OrganizationScreen() {
           <Text style={styles.typeText}>{typeLabel}</Text>
         </View>
         {o.description ? <Text style={styles.bio}>{o.description}</Text> : null}
-        <Text style={styles.muted}>
-          {o.subscribers?.toLocaleString() ?? 0} subscribers · {o.courses.length} courses
+        {/* A brand-new channel has no subscribers and printing "0 subscribers"
+            under its name is a worse first impression than saying nothing. */}
+        <Text style={styles.metaLine}>
+          {[subs > 0 ? `${subs.toLocaleString()} subscriber${subs === 1 ? "" : "s"}` : null, courseCount]
+            .filter(Boolean)
+            .join(" · ")}
         </Text>
       </View>
 
-      <Text style={styles.heading}>Catalog · {o.courses.length} courses</Text>
+      <Text style={styles.heading}>Catalogue · {courseCount}</Text>
       {o.courses.map((c) => (
-        <Link key={c.id} href={`/courses/${c.slug}`} style={styles.row}>
-          {c.thumbnailUrl ? (
-            <Image source={{ uri: cloudinaryUrl(c.thumbnailUrl, { width: 96, height: 72 }) ?? undefined }} style={styles.thumb} resizeMode="cover" />
-          ) : (
-            <View style={[styles.thumb, styles.thumbFallback]}>
-              <Text style={{ color: colors.dim }}>▶</Text>
+        // asChild: <Link> renders a <Text> by default, which flattened each of
+        // these rows into inline text instead of a thumbnail beside a title.
+        <Link key={c.id} href={`/courses/${c.slug}`} asChild>
+          <Press style={styles.row} accessibilityLabel={c.title}>
+            {c.thumbnailUrl ? (
+              <Image source={{ uri: cloudinaryUrl(c.thumbnailUrl, { width: 192, height: 144 }) ?? undefined }} style={styles.thumb} resizeMode="cover" />
+            ) : (
+              <View style={[styles.thumb, styles.thumbFallback]}>
+                <Ionicons name="play" size={15} color={colors.dim} />
+              </View>
+            )}
+            <View style={styles.rowBody}>
+              <Text numberOfLines={1} style={styles.rowTitle}>
+                {c.title}
+              </Text>
+              <Text style={styles.muted}>
+                {[c.level, formatDuration(c.durationMin)].filter(Boolean).join(" · ")}
+              </Text>
             </View>
-          )}
-          <View style={styles.rowBody}>
-            <Text numberOfLines={1} style={styles.rowTitle}>
-              {c.title}
-            </Text>
-            <Text style={styles.muted}>
-              {c.level} · {formatDuration(c.durationMin)}
-            </Text>
-          </View>
-          <Stars value={c.ratingAvg} />
+            {c.ratingCount > 0 ? <Stars value={c.ratingAvg} /> : null}
+            <Ionicons name="chevron-forward" size={15} color={colors.dim} />
+          </Press>
         </Link>
       ))}
     </ScrollView>
@@ -82,40 +96,35 @@ export default function OrganizationScreen() {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   content: { padding: 16, paddingBottom: 40 },
-  center: { flex: 1, backgroundColor: colors.bg, alignItems: "center", justifyContent: "center" },
-  muted: { color: colors.muted, fontSize: 12 },
-  header: { alignItems: "center", marginBottom: 20 },
-  logo: { width: 80, height: 80, borderRadius: 16, backgroundColor: colors.surface, marginBottom: 12 },
+  muted: { color: colors.muted, fontSize: 12, marginTop: 2 },
+  metaLine: { color: colors.muted, fontSize: 12, marginTop: 10 },
+  header: { alignItems: "center", marginBottom: 22 },
+  logo: { width: 80, height: 80, borderRadius: radius.lg, backgroundColor: colors.surface, marginBottom: 12 },
   logoFallback: { alignItems: "center", justifyContent: "center" },
   logoText: { color: colors.text, fontSize: 34, fontWeight: "800" },
-  name: { color: colors.text, fontSize: 22, fontWeight: "800" },
+  name: { color: colors.text, fontSize: 22, fontWeight: "800", textAlign: "center" },
   typeBadge: {
     borderWidth: 1,
     borderColor: colors.accent,
-    borderRadius: 999,
+    borderRadius: radius.pill,
     paddingHorizontal: 12,
     paddingVertical: 3,
-    marginTop: 6,
+    marginTop: 8,
     backgroundColor: colors.accentSoft,
   },
   typeText: { color: colors.accent, fontSize: 9, fontWeight: "800", letterSpacing: 1 },
-  bio: { color: colors.muted, fontSize: 13, lineHeight: 19, textAlign: "center", marginTop: 8 },
+  bio: { color: colors.muted, fontSize: 13, lineHeight: 20, textAlign: "center", marginTop: 10 },
   heading: { color: colors.text, fontSize: 17, fontWeight: "700", marginBottom: 12 },
   row: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
-    paddingVertical: 8,
+    paddingVertical: 10,
     borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: colors.border,
   },
-  thumb: {
-    width: 64,
-    height: 48,
-    borderRadius: 8,
-    backgroundColor: colors.surface,
-  },
+  thumb: { width: 64, height: 48, borderRadius: radius.sm, backgroundColor: colors.surface },
   thumbFallback: { alignItems: "center", justifyContent: "center" },
-  rowBody: { flex: 1 },
+  rowBody: { flex: 1, minWidth: 0 },
   rowTitle: { color: colors.text, fontSize: 14, fontWeight: "600" },
 });

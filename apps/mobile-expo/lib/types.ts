@@ -606,3 +606,14 @@ export function formatDurationSec(seconds: number): string {
   const m = Math.floor((seconds % 3600) / 60);
   return h > 0 ? `${h}h ${m}m` : `${m}m`;
 }
+
+/**
+ * "1 course", "2 courses", "1,204 votes".
+ *
+ * Thirty-odd call sites wrote `${n} courses` by hand, so every single-item row in
+ * the app read "1 courses". English plurals are irregular often enough that the
+ * caller can pass the plural when -s is wrong.
+ */
+export function plural(n: number, one: string, many?: string): string {
+  return `${n.toLocaleString()} ${n === 1 ? one : (many ?? `${one}s`)}`;
+}

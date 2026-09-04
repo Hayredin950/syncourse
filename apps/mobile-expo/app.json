@@ -15,7 +15,8 @@
     "newArchEnabled": false,
     "plugins": [
       "expo-router",
-      "expo-web-browser"
+      "expo-web-browser",
+      "expo-splash-screen"
     ],
     "updates": {
       "url": "https://u.expo.dev/d47a1209-7356-4518-bb9c-1fa06648345e",

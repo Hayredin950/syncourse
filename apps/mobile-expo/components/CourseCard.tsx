@@ -1,8 +1,10 @@
 import { useRouter } from "expo-router";
 import React, { useCallback } from "react";
-import { Image, StyleSheet, Text, View, Pressable } from "react-native";
+import { Image, StyleSheet, View } from "react-native";
+import { Press } from "./Press";
+import { Text } from "./Type";
 import { colors, radius } from "../lib/tokens";
-import { formatDuration, type CourseSummary } from "../lib/types";
+import { formatDuration, plural, type CourseSummary } from "../lib/types";
 import { cloudinaryUrl } from "../lib/cloudinary";
 import { Stars } from "./StarRating";
 
@@ -12,38 +14,23 @@ export function hueFromString(s: string): number {
   return h;
 }
 
-const TYPE_ICONS: Record<string, string> = {
-  course: "🎓",
-  "mini-course": "⚡",
-  "cheat-sheet": "📄",
-  roadmap: "🗺️",
-};
-
 export function CourseCard({ course, width = 132 }: { course: CourseSummary; width?: number }) {
   const meta = [course.level, formatDuration(course.durationMin)].filter(Boolean).join(" · ");
   const coverH = Math.round(width * 1.14);
   const hue = hueFromString(course.slug || course.id);
-  const hueB = (hue + 55) % 360;
   const words = (course.title || "Course")
     .replace(/[—–\-:]/g, " ")
     .split(/\s+/)
     .filter(Boolean)
     .slice(0, 2)
     .map((w) => w.toUpperCase());
-  const code =
-    course.contentType === "mini-course"
-      ? "MINI"
-      : course.contentType === "cheat-sheet"
-        ? "SHEET"
-        : course.contentType === "roadmap"
-          ? "MAP"
-          : "CRS";
 
   const router = useRouter();
-  const go = useCallback(() => router.push(`/courses/${course.slug}`), [course.slug]);
+  const go = useCallback(() => router.push(`/courses/${course.slug}`), [router, course.slug]);
+  const rated = course.ratingCount > 0;
 
   return (
-    <Pressable style={{ width }} onPress={go}>
+    <Press style={{ width }} onPress={go} accessibilityLabel={course.title}>
       {course.thumbnailUrl ? (
         <Image
           source={{
@@ -66,11 +53,13 @@ export function CourseCard({ course, width = 132 }: { course: CourseSummary; wid
               </Text>
             ))}
           </View>
-          {course.isPremium && (
-            <View style={styles.premium}>
-              <Text style={styles.premiumText}>Premium</Text>
-            </View>
-          )}
+        </View>
+      )}
+      {/* Both badges used to live inside the fallback branch, so a premium course
+          with a real cover advertised nothing. */}
+      {course.isPremium && (
+        <View style={styles.premium}>
+          <Text style={styles.premiumText}>Premium</Text>
         </View>
       )}
       {course.isNew && (
@@ -86,11 +75,21 @@ export function CourseCard({ course, width = 132 }: { course: CourseSummary; wid
           {meta}
         </Text>
       )}
-      <Stars value={course.ratingAvg} />
-      <Text style={styles.votes} numberOfLines={1}>
-        {course.ratingCount.toLocaleString()} votes
-      </Text>
-    </Pressable>
+      {/* Unrated courses drew five empty stars over "0 votes", which reads as a
+          course everybody hated rather than one nobody has rated. */}
+      {rated ? (
+        <>
+          <Stars value={course.ratingAvg} />
+          <Text style={styles.votes} numberOfLines={1}>
+            {plural(course.ratingCount, "vote")}
+          </Text>
+        </>
+      ) : (
+        <Text style={styles.votes} numberOfLines={1}>
+          Not yet rated
+        </Text>
+      )}
+    </Press>
   );
 }
 
@@ -117,14 +116,14 @@ const styles = StyleSheet.create({
   },
   premium: {
     position: "absolute",
-    bottom: 10,
-    left: 10,
+    top: 8,
+    left: 8,
     backgroundColor: colors.accent,
     borderRadius: 6,
     paddingHorizontal: 7,
     paddingVertical: 3,
   },
-  premiumText: { color: "#211308", fontSize: 9, fontWeight: "800" },
+  premiumText: { color: colors.onAccent, fontSize: 9, fontWeight: "800" },
   added: {
     position: "absolute",
     top: 8,
@@ -134,7 +133,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 6,
     paddingVertical: 3,
   },
-  addedText: { color: "#10231a", fontSize: 9, fontWeight: "800" },
+  addedText: { color: colors.onSuccess, fontSize: 9, fontWeight: "800" },
   title: {
     color: colors.text,
     fontSize: 13,

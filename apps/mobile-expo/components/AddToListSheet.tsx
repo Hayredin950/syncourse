@@ -1,18 +1,17 @@
+import { Ionicons } from "@expo/vector-icons";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
-import {
-  ActivityIndicator,
-  Modal,
-  Pressable,
-  ScrollView,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { StyleSheet, View } from "react-native";
+import { Empty } from "./Empty";
+import { Note } from "./Note";
+import { Press } from "./Press";
+import { Sheet } from "./Sheet";
+import { SkRows } from "./Skeleton";
+import { Text, TextInput } from "./Type";
 import * as api from "../lib/api";
 import { colors, radius } from "../lib/tokens";
-import type { CollectionMembership } from "../lib/types";
+import { plural, type CollectionMembership } from "../lib/types";
 
 /**
  * "Add to list" from anywhere a course is shown. The API answers with your lists
@@ -21,6 +20,10 @@ import type { CollectionMembership } from "../lib/types";
  *
  * It also creates a list inline: being sent to the Lists tab to make one and then
  * finding your way back to the course is the reason nobody ever filled a list.
+ *
+ * The panel is the shared `Sheet`, which scrolls its own body — this used to be a
+ * `maxHeight: 320` ScrollView nested inside a fixed panel, so on a short screen
+ * the create button sat below the fold with no way to reach it.
  */
 export function AddToListSheet({
   visible,
@@ -33,6 +36,7 @@ export function AddToListSheet({
   courseTitle: string;
   onClose: () => void;
 }) {
+  const router = useRouter();
   const queryClient = useQueryClient();
   const key = ["lists-for-course", courseId];
   const { data, isLoading, error } = useQuery({
@@ -41,8 +45,7 @@ export function AddToListSheet({
     enabled: visible,
   });
   const [busy, setBusy] = useState<string | null>(null);
-  const [note, setNote] = useState<string | null>(null);
-  const [failed, setFailed] = useState(false);
+  const [note, setNote] = useState<{ text: string; bad?: boolean } | null>(null);
   const [creating, setCreating] = useState(false);
   const [newName, setNewName] = useState("");
 
@@ -56,10 +59,10 @@ export function AddToListSheet({
     }
   }, [visible]);
 
-  const say = (message: string, bad = false) => {
-    setFailed(bad);
-    setNote(message);
-  };
+  /* No timer on this one, unlike the screen-level `useToast`: the note lives
+     inside the sheet the reader is still looking at, and the next tap replaces
+     it. Closing the sheet is what clears it. */
+  const say = (text: string, bad = false) => setNote({ text, bad });
 
   const toggle = async (l: CollectionMembership) => {
     setBusy(l.id);
@@ -104,143 +107,160 @@ export function AddToListSheet({
   };
 
   const lists = data ?? [];
+  const status = (error as api.ApiError | null)?.status;
   // A 401 is not a failure worth reporting as one — it just means no account yet.
-  const problem = !error
-    ? null
-    : (error as api.ApiError).status === 401
-      ? "Sign in to keep lists of your own."
-      : (error as Error).message || "Could not load your lists.";
+  const signedOut = !!error && status === 401;
+  const problem = !error ? null : signedOut ? "signed-out" : "failed";
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose}>
-        <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
-          <View style={styles.header}>
-            <Text style={styles.title}>Add to list</Text>
-            <Pressable onPress={onClose} hitSlop={10}>
-              <Text style={styles.done}>Close</Text>
-            </Pressable>
+    <Sheet
+      visible={visible}
+      onClose={onClose}
+      title="Add to list"
+      subtitle={courseTitle}
+      /* Nothing loaded, nothing to create into — a new list would fail the same way. */
+      footer={
+        problem ? undefined : creating ? (
+          <View>
+            <TextInput
+              style={styles.input}
+              value={newName}
+              onChangeText={setNewName}
+              placeholder="New list name"
+              placeholderTextColor={colors.dim}
+              autoFocus
+              returnKeyType="done"
+              onSubmitEditing={createAndAdd}
+            />
+            <View style={styles.actions}>
+              <Press style={styles.ghostBtn} onPress={() => setCreating(false)} accessibilityLabel="Cancel">
+                <Text style={styles.ghostLabel}>Cancel</Text>
+              </Press>
+              <Press
+                style={styles.primaryBtn}
+                disabled={!newName.trim() || busy === "new"}
+                onPress={createAndAdd}
+                haptic="success"
+                accessibilityLabel="Create the list and add this course to it"
+              >
+                <Text style={styles.primaryLabel}>{busy === "new" ? "Creating…" : "Create & add"}</Text>
+              </Press>
+            </View>
           </View>
-          <Text style={styles.muted} numberOfLines={2}>
-            {courseTitle}
-          </Text>
-          {note ? <Text style={[styles.note, failed && { color: colors.danger }]}>{note}</Text> : null}
+        ) : (
+          <Press style={styles.newBtn} onPress={() => setCreating(true)} accessibilityLabel="New list">
+            <Ionicons name="add" size={17} color={colors.text} />
+            <Text style={styles.ghostLabel}>New list</Text>
+          </Press>
+        )
+      }
+    >
+      {!!note && <Note text={note.text} bad={note.bad} style={styles.noteGap} />}
 
-          {isLoading ? (
-            <View style={styles.center}>
-              <ActivityIndicator color={colors.accent} />
-            </View>
-          ) : problem ? (
-            <View style={styles.center}>
-              <Text style={styles.centered}>{problem}</Text>
-            </View>
-          ) : lists.length === 0 ? (
-            <View style={styles.center}>
-              <Text style={styles.centered}>No lists yet — name one below and this course goes straight into it.</Text>
-            </View>
-          ) : (
-            <ScrollView style={styles.list} keyboardShouldPersistTaps="handled">
-              {lists.map((l) => (
-                <Pressable key={l.id} style={styles.row} onPress={() => toggle(l)} disabled={busy === l.id}>
-                  <View style={[styles.tick, l.contains && styles.tickOn]}>
-                    {busy === l.id ? (
-                      <ActivityIndicator color={colors.accent} size="small" />
-                    ) : (
-                      <Text style={[styles.tickLabel, l.contains && styles.tickLabelOn]}>
-                        {l.contains ? "✓" : "＋"}
-                      </Text>
-                    )}
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={styles.rowTitle}>{l.name}</Text>
-                    <Text style={styles.muted}>
-                      {l.visibility === "public" ? "🌐" : "🔒"} {l.itemCount}{" "}
-                      {l.itemCount === 1 ? "course" : "courses"}
-                    </Text>
-                  </View>
-                </Pressable>
-              ))}
-            </ScrollView>
-          )}
-          {/* Nothing loaded, nothing to create into — a new list would fail the same way. */}
-          {problem ? null : creating ? (
-            <View style={{ marginTop: 14 }}>
-              <TextInput
-                style={styles.input}
-                value={newName}
-                onChangeText={setNewName}
-                placeholder="New list name"
-                placeholderTextColor={colors.dim}
-                autoFocus
-                onSubmitEditing={createAndAdd}
-              />
-              <View style={styles.actions}>
-                <Pressable style={styles.ghostBtn} onPress={() => setCreating(false)}>
-                  <Text style={styles.ghostLabel}>Cancel</Text>
-                </Pressable>
-                <Pressable
-                  style={[
-                    styles.primaryBtn,
-                    { flex: 1, marginTop: 0 },
-                    (!newName.trim() || busy === "new") && { opacity: 0.4 },
-                  ]}
-                  disabled={!newName.trim() || busy === "new"}
-                  onPress={createAndAdd}
-                >
-                  <Text style={styles.primaryLabel}>{busy === "new" ? "Creating…" : "Create & add"}</Text>
-                </Pressable>
+      {isLoading ? (
+        <SkRows n={4} thumb={32} />
+      ) : problem === "signed-out" ? (
+        // The old copy said "Sign in to keep lists of your own" and gave the
+        // reader no way to do it.
+        <Empty
+          icon="person-circle-outline"
+          title="Lists need an account"
+          body="Sign in and this course goes into a list of your own."
+          action={{
+            label: "Sign in",
+            onPress: () => {
+              onClose();
+              router.push("/auth");
+            },
+          }}
+        />
+      ) : problem ? (
+        <Empty
+          icon="cloud-offline-outline"
+          title="Could not load your lists"
+          body={(error as Error).message || "Check your connection and try again."}
+        />
+      ) : lists.length === 0 ? (
+        <Empty
+          icon="albums-outline"
+          title="No lists yet"
+          body="Name one below and this course goes straight into it."
+        />
+      ) : (
+        <View style={styles.rows}>
+          {lists.map((l) => (
+            <Press
+              key={l.id}
+              style={styles.row}
+              onPress={() => toggle(l)}
+              disabled={busy === l.id}
+              haptic
+              accessibilityLabel={`${l.contains ? "Remove from" : "Add to"} ${l.name}`}
+              accessibilityState={{ selected: l.contains }}
+            >
+              {/* Mid-request the tick shows an ellipsis rather than a spinner: the
+                  glyph swaps inside the same 32px circle, so the row holds still. */}
+              <View style={[styles.tick, l.contains && styles.tickOn]}>
+                <Ionicons
+                  name={busy === l.id ? "ellipsis-horizontal" : l.contains ? "checkmark" : "add"}
+                  size={18}
+                  color={busy === l.id ? colors.accent : l.contains ? colors.accent : colors.dim}
+                />
               </View>
-            </View>
-          ) : (
-            <Pressable style={styles.newBtn} onPress={() => setCreating(true)}>
-              <Text style={styles.ghostLabel}>＋ New list</Text>
-            </Pressable>
-          )}
-        </Pressable>
-      </Pressable>
-    </Modal>
+              <View style={styles.rowBody}>
+                <Text style={styles.rowTitle} numberOfLines={1}>
+                  {l.name}
+                </Text>
+                <View style={styles.rowMetaRow}>
+                  {/* Was a 🌐/🔒 emoji, which renders at a different size and
+                      baseline on every OS and can't take the muted colour. */}
+                  <Ionicons
+                    name={l.visibility === "public" ? "globe-outline" : "lock-closed-outline"}
+                    size={11}
+                    color={colors.dim}
+                  />
+                  <Text style={styles.muted}>{plural(l.itemCount, "course")}</Text>
+                </View>
+              </View>
+            </Press>
+          ))}
+        </View>
+      )}
+    </Sheet>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "flex-end" },
-  sheet: {
-    backgroundColor: colors.surface,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    padding: 20,
-    paddingBottom: 34,
-    maxHeight: "82%",
-  },
-  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 6 },
-  title: { color: colors.text, fontSize: 18, fontWeight: "800" },
-  done: { color: colors.accent, fontSize: 14, fontWeight: "700" },
-  muted: { color: colors.muted, fontSize: 12 },
-  centered: { color: colors.muted, fontSize: 12, textAlign: "center" },
-  note: { color: colors.accent, fontSize: 12, fontWeight: "700", marginTop: 8 },
-  center: { padding: 26, alignItems: "center" },
-  list: { marginTop: 12, maxHeight: 320 },
+  /* Was a local copy of the success/failure note — a bare amber sentence for both
+     outcomes at first, so "Could not update that list" looked exactly like "Added
+     to Weekend reading". Both are `components/Note` now. */
+  noteGap: { marginBottom: 12 },
+  rows: { gap: 8 },
   row: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
+    minHeight: 58,
     backgroundColor: colors.bg,
     borderRadius: radius.md,
-    padding: 12,
-    marginBottom: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
   },
-  rowTitle: { color: colors.text, fontSize: 13, fontWeight: "700" },
+  rowBody: { flex: 1, minWidth: 0, gap: 3 },
+  rowTitle: { color: colors.text, fontSize: 13.5, fontWeight: "700" },
+  rowMetaRow: { flexDirection: "row", alignItems: "center", gap: 5 },
+  muted: { color: colors.muted, fontSize: 11.5 },
   tick: {
-    width: 30,
-    height: 30,
-    borderRadius: 15,
+    width: 32,
+    height: 32,
+    borderRadius: 16,
     backgroundColor: colors.surfaceRaised,
     alignItems: "center",
     justifyContent: "center",
   },
   tickOn: { backgroundColor: colors.accentSoft },
-  tickLabel: { color: colors.dim, fontSize: 14, fontWeight: "800" },
-  tickLabelOn: { color: colors.accent },
   input: {
     backgroundColor: colors.bg,
     borderRadius: radius.sm,
@@ -248,32 +268,36 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
     color: colors.text,
     paddingHorizontal: 12,
-    paddingVertical: 10,
+    paddingVertical: 11,
     fontSize: 14,
   },
   actions: { flexDirection: "row", alignItems: "center", gap: 10, marginTop: 10 },
   primaryBtn: {
+    flex: 1,
+    minHeight: 44,
+    alignItems: "center",
+    justifyContent: "center",
     backgroundColor: colors.accent,
     borderRadius: radius.pill,
-    paddingVertical: 11,
-    alignItems: "center",
   },
-  primaryLabel: { color: "#000", fontWeight: "800" },
+  primaryLabel: { color: colors.onAccent, fontSize: 13.5, fontWeight: "800" },
   ghostBtn: {
+    minHeight: 44,
+    justifyContent: "center",
+    paddingHorizontal: 18,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius.pill,
-    paddingVertical: 10,
-    paddingHorizontal: 18,
-    alignItems: "center",
   },
   ghostLabel: { color: colors.text, fontSize: 13, fontWeight: "700" },
   newBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 7,
+    minHeight: 46,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius.pill,
-    paddingVertical: 11,
-    alignItems: "center",
-    marginTop: 14,
   },
 });

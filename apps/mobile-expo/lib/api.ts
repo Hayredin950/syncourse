@@ -42,9 +42,20 @@ const TOKEN_KEY = "syncourse_token";
 
 export class ApiError extends Error {
   status: number;
-  constructor(status: number, message: string) {
+  /**
+   * The native failure text, kept off `message` on purpose.
+   *
+   * The transport error used to be concatenated into the message as
+   * `… Check your connection. [java.net.UnknownHostException: …]`, and the home
+   * screen printed both that and `error.cause` straight onto the page — a reader
+   * got a stack trace where a sentence belonged. Screens show `message`; this is
+   * for the log.
+   */
+  detail?: string;
+  constructor(status: number, message: string, detail?: string) {
     super(message);
     this.status = status;
+    this.detail = detail;
   }
 }
 
@@ -115,7 +126,8 @@ async function request<T>(
       0,
       aborted
         ? "The server is waking up — please retry."
-        : `Cannot reach the server. Check your connection.${native ? ` [${native}]` : ""}`,
+        : "Cannot reach the server. Check your connection.",
+      native || undefined,
     );
   }
   const text = await res.text();
@@ -191,6 +203,8 @@ export const browse = (params: {
   lecturer?: string;
   organization?: string;
   limit?: number;
+  /** Rows to skip. The Browse tab pages with this; the rails ask for one page. */
+  offset?: number;
 }) => {
   const qs = new URLSearchParams();
   if (params.sort) qs.set("sort", params.sort);
@@ -201,6 +215,7 @@ export const browse = (params: {
   if (params.lecturer) qs.set("lecturer", params.lecturer);
   if (params.organization) qs.set("organization", params.organization);
   qs.set("limit", String(params.limit ?? 60));
+  if (params.offset) qs.set("offset", String(params.offset));
   return get<{ total: number; results: CourseSummary[] }>(
     `/courses?${qs.toString()}`
   );
@@ -218,8 +233,10 @@ export const fileUrl = (lessonId: string, attachmentId: string) =>
 // --- library ---
 // No enrol and no lesson progress: a course is delivered whole through the
 // Telegram bot, so the only real signals are saved, liked and downloaded.
-export const toggleSave = (slug: string) => post(`/courses/${slug}/save`);
-export const toggleLike = (slug: string) => post(`/courses/${slug}/like`);
+// Both toggles answer with the state they left behind, so a screen can show the
+// truth after one tap without waiting for /me/learning to come back.
+export const toggleSave = (slug: string) => post<{ saved: boolean }>(`/courses/${slug}/save`);
+export const toggleLike = (slug: string) => post<{ liked: boolean }>(`/courses/${slug}/like`);
 export const myLibrary = () => get<LibraryData>("/me/learning");
 
 // --- search ---

@@ -6,18 +6,12 @@ import { useLocalSearchParams, useRouter } from "expo-router";
 import { useVideoPlayer, VideoView } from "expo-video";
 import * as WebBrowser from "expo-web-browser";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import {
-  ActivityIndicator,
-  Image,
-  Modal,
-  Pressable,
-  ScrollView,
-  Share,
-  StyleSheet,
-  Text,
-  useWindowDimensions,
-  View,
-} from "react-native";
+import { Image, Modal, RefreshControl, ScrollView, Share, StyleSheet, useWindowDimensions, View } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Failed } from "../../components/Empty";
+import { Press } from "../../components/Press";
+import { Sk, SkText } from "../../components/Skeleton";
+import { Text } from "../../components/Type";
 import { Markdown } from "../../components/Markdown";
 import {
   compact,
@@ -30,7 +24,7 @@ import {
 import * as api from "../../lib/api";
 import { attachmentUrl, cloudinaryUrl } from "../../lib/cloudinary";
 import { colors, radius } from "../../lib/tokens";
-import type { ResourceMedia } from "../../lib/types";
+import { plural, type ResourceMedia } from "../../lib/types";
 
 /**
  * A resource, shown whole.
@@ -50,6 +44,9 @@ const stamp = (iso: string) =>
 export default function ResourceScreen() {
   const { slug } = useLocalSearchParams<{ slug: string }>();
   const router = useRouter();
+  const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
+  const gutter = Math.max(16, Math.round((width - 720) / 2));
   const scrollRef = useRef<ScrollView>(null);
   const filesY = useRef(0);
   const toastTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -61,7 +58,7 @@ export default function ResourceScreen() {
     if (toastTimer.current) clearTimeout(toastTimer.current);
   }, []);
 
-  const { data: r, isLoading, error } = useQuery({
+  const { data: r, isLoading, error, refetch, isRefetching } = useQuery({
     queryKey: ["resource", slug],
     queryFn: () => api.resourceDetail(slug!),
     enabled: !!slug,
@@ -153,24 +150,41 @@ export default function ResourceScreen() {
   // the other order leaves a permanent spinner on a dead slug.
   if (error) {
     return (
-      <View style={styles.center}>
-        <Ionicons name="alert-circle-outline" size={26} color={colors.dim} />
-        <Text style={styles.muted}>This resource could not be loaded.</Text>
-        <Text style={styles.mutedSmall}>
-          {error instanceof Error ? error.message : "It may have been unpublished."}
-        </Text>
+      <View style={styles.dead}>
+        <Failed
+          title="This resource would not open"
+          body={
+            (error as api.ApiError | null)?.status === 404
+              ? "It may have been unpublished since you last saw it."
+              : "Check your connection and try again."
+          }
+          onRetry={() => refetch()}
+        />
         {/* `replace`, not `push`: going Back to a resource that failed to load is
             a dead end, so this screen gives up its place in the stack. */}
-        <Pressable style={styles.ghostBtn} onPress={() => router.replace("/resources" as never)}>
+        <Press
+          style={styles.ghostBtn}
+          onPress={() => router.replace("/resources" as never)}
+          accessibilityLabel="Go to all resources"
+        >
+          <Ionicons name="albums-outline" size={14} color={colors.text} />
           <Text style={styles.ghostLabel}>All resources</Text>
-        </Pressable>
+        </Press>
       </View>
     );
   }
   if (isLoading || !r) {
+    /* Was a centred spinner on an empty screen. This holds the page's own shape —
+       hero, meta line, action row, body — so nothing jumps when the data lands. */
     return (
-      <View style={styles.center}>
-        <ActivityIndicator color={colors.accent} />
+      <View style={[styles.screen, { paddingHorizontal: gutter, paddingTop: 16 }]}>
+        <Sk style={styles.heroSk} />
+        <Sk style={styles.lineSk} />
+        <View style={styles.actionsSk}>
+          <Sk style={styles.btnSk} />
+          <Sk style={styles.iconSk} />
+        </View>
+        <SkText lines={7} />
       </View>
     );
   }
@@ -195,7 +209,13 @@ export default function ResourceScreen() {
 
   return (
     <View style={styles.screen}>
-      <ScrollView ref={scrollRef} contentContainerStyle={styles.content}>
+      <ScrollView
+        ref={scrollRef}
+        contentContainerStyle={[styles.content, { paddingHorizontal: gutter }]}
+        refreshControl={
+          <RefreshControl refreshing={isRefetching} onRefresh={() => refetch()} tintColor={colors.accent} />
+        }
+      >
         {/* hero */}
         <View style={styles.hero}>
           {r.coverUrl ? (
@@ -215,9 +235,13 @@ export default function ResourceScreen() {
               <Ionicons name={meta.icon} size={12} color={colors.accent} />
               <Text style={styles.kickerText}>{meta.label.toUpperCase()}</Text>
               {!!r.category && (
-                <Pressable onPress={() => router.push(`/resources?category=${r.category!.slug}` as never)}>
+                <Press
+                  hitSlop={10}
+                  onPress={() => router.push(`/resources?category=${r.category!.slug}` as never)}
+                  accessibilityLabel={`See every resource in ${r.category.name}`}
+                >
                   <Text style={styles.kickerLink}>· {r.category.name}</Text>
-                </Pressable>
+                </Press>
               )}
               {r.isPremium && <Text style={styles.kickerBadge}>PREMIUM</Text>}
             </View>
@@ -243,20 +267,29 @@ export default function ResourceScreen() {
 
         <View style={styles.actions}>
           {keepable.length > 0 && (
-            <Pressable style={styles.primaryBtn} onPress={toFiles}>
-              <Ionicons name="download-outline" size={14} color="#211308" />
+            <Press
+              style={styles.primaryBtn}
+              onPress={toFiles}
+              haptic
+              accessibilityLabel={`Jump to the ${plural(keepable.length, "file")} attached to this resource`}
+            >
+              <Ionicons name="download-outline" size={14} color={colors.onAccent} />
               <Text style={styles.primaryLabel}>Get the files ({keepable.length})</Text>
-            </Pressable>
+            </Press>
           )}
           {!!r.sourceUrl && (
-            <Pressable style={styles.ghostBtn} onPress={() => openExternally(r.sourceUrl!)}>
+            <Press
+              style={styles.ghostBtn}
+              onPress={() => openExternally(r.sourceUrl!)}
+              accessibilityLabel="Open the original, outside the app"
+            >
               <Ionicons name="open-outline" size={14} color={colors.text} />
               <Text style={styles.ghostLabel}>Original</Text>
-            </Pressable>
+            </Press>
           )}
-          <Pressable style={styles.iconBtn} onPress={share} hitSlop={6}>
+          <Press style={styles.iconBtn} onPress={share} accessibilityLabel="Share this resource">
             <Ionicons name="share-social-outline" size={16} color={colors.text} />
-          </Pressable>
+          </Press>
         </View>
 
         {!hasBody && media.length === 0 && (
@@ -273,10 +306,15 @@ export default function ResourceScreen() {
             <Text style={styles.blockHead}>Gallery</Text>
             <View style={styles.gallery}>
               {images.map((m, i) => (
-                <Pressable
+                <Press
                   key={m.id}
                   style={[styles.shot, images.length === 1 && styles.shotWide]}
                   onPress={() => setShot(i)}
+                  accessibilityLabel={
+                    m.caption
+                      ? `View ${m.caption} full size`
+                      : `View image ${i + 1} of ${images.length} full size`
+                  }
                 >
                   <Image
                     source={{ uri: cloudinaryUrl(m.url, { width: 800 }) ?? undefined }}
@@ -291,7 +329,7 @@ export default function ResourceScreen() {
                       {m.caption}
                     </Text>
                   )}
-                </Pressable>
+                </Press>
               ))}
             </View>
           </View>
@@ -311,27 +349,37 @@ export default function ResourceScreen() {
             <Text style={styles.blockHead}>Listen</Text>
             {tracks.map((m) => {
               const active = audioId === m.id;
+              const name = m.caption || m.fileName || "Audio";
               return (
                 <View key={m.id} style={styles.audioRow}>
-                  <Pressable style={styles.playBtn} onPress={() => playTrack(m)} hitSlop={6}>
+                  <Press
+                    style={styles.playBtn}
+                    onPress={() => playTrack(m)}
+                    haptic
+                    accessibilityLabel={`${active && isPlaying ? "Pause" : "Play"} ${name}`}
+                  >
                     <Ionicons
                       name={active && isPlaying ? "pause" : "play"}
                       size={15}
                       color={colors.accent}
                     />
-                  </Pressable>
-                  <View style={{ flex: 1 }}>
+                  </Press>
+                  <View style={styles.rowText}>
                     <Text numberOfLines={1} style={styles.rowName}>
-                      {m.caption || m.fileName || "Audio"}
+                      {name}
                     </Text>
                     <Text style={styles.rowSub}>
                       {active ? (isPlaying ? "Playing" : "Paused") : "Audio"}
                       {m.fileSizeMb ? ` · ${m.fileSizeMb} MB` : ""}
                     </Text>
                   </View>
-                  <Pressable style={styles.rowBtn} onPress={() => save(m)} hitSlop={6}>
+                  <Press
+                    style={styles.rowBtn}
+                    onPress={() => save(m)}
+                    accessibilityLabel={`Save ${name}`}
+                  >
                     <Ionicons name="download-outline" size={14} color={colors.text} />
-                  </Pressable>
+                  </Press>
                 </View>
               );
             })}
@@ -352,23 +400,34 @@ export default function ResourceScreen() {
           <View style={styles.block}>
             <Text style={styles.blockHead}>Documents</Text>
             <Text style={styles.blockHint}>PDFs open in your browser. Save keeps a copy.</Text>
-            {pdfs.map((m) => (
-              <View key={m.id} style={styles.fileRow}>
-                <Ionicons name="document-outline" size={16} color={colors.accent} />
-                <View style={{ flex: 1 }}>
-                  <Text numberOfLines={1} style={styles.rowName}>
-                    {m.caption || m.fileName || "Document.pdf"}
-                  </Text>
-                  <Text style={styles.rowSub}>PDF{m.fileSizeMb ? ` · ${m.fileSizeMb} MB` : ""}</Text>
+            {pdfs.map((m) => {
+              const name = m.caption || m.fileName || "Document.pdf";
+              return (
+                <View key={m.id} style={styles.fileRow}>
+                  <Ionicons name="document-outline" size={16} color={colors.accent} />
+                  <View style={styles.rowText}>
+                    <Text numberOfLines={1} style={styles.rowName}>
+                      {name}
+                    </Text>
+                    <Text style={styles.rowSub}>PDF{m.fileSizeMb ? ` · ${m.fileSizeMb} MB` : ""}</Text>
+                  </View>
+                  <Press
+                    style={styles.rowBtn}
+                    onPress={() => openExternally(m.url!)}
+                    accessibilityLabel={`Open ${name} in your browser`}
+                  >
+                    <Text style={styles.rowBtnLabel}>Open</Text>
+                  </Press>
+                  <Press
+                    style={styles.rowBtn}
+                    onPress={() => save(m)}
+                    accessibilityLabel={`Save ${name}`}
+                  >
+                    <Ionicons name="download-outline" size={14} color={colors.text} />
+                  </Press>
                 </View>
-                <Pressable style={styles.rowBtn} onPress={() => openExternally(m.url!)} hitSlop={6}>
-                  <Text style={styles.rowBtnLabel}>Open</Text>
-                </Pressable>
-                <Pressable style={styles.rowBtn} onPress={() => save(m)} hitSlop={6}>
-                  <Ionicons name="download-outline" size={14} color={colors.text} />
-                </Pressable>
-              </View>
-            ))}
+              );
+            })}
           </View>
         )}
 
@@ -385,12 +444,18 @@ export default function ResourceScreen() {
             </Text>
             {keepable.map((m) => {
               const km = mediaMeta(m.kind);
+              const name = m.fileName || m.caption || km.label;
               return (
-                <Pressable key={m.id} style={styles.fileRow} onPress={() => save(m)}>
+                <Press
+                  key={m.id}
+                  style={styles.fileRow}
+                  onPress={() => save(m)}
+                  accessibilityLabel={`Save ${name}, ${km.label}${m.fileSizeMb ? `, ${m.fileSizeMb} megabytes` : ""}`}
+                >
                   <Ionicons name={km.icon} size={16} color={colors.accent} />
-                  <View style={{ flex: 1 }}>
+                  <View style={styles.rowText}>
                     <Text numberOfLines={1} style={styles.rowName}>
-                      {m.fileName || m.caption || km.label}
+                      {name}
                     </Text>
                     <Text style={styles.rowSub}>
                       {km.label}
@@ -398,7 +463,7 @@ export default function ResourceScreen() {
                     </Text>
                   </View>
                   <Ionicons name="download-outline" size={16} color={colors.muted} />
-                </Pressable>
+                </Press>
               );
             })}
           </View>
@@ -408,9 +473,14 @@ export default function ResourceScreen() {
           <View style={styles.block}>
             <Text style={styles.blockHead}>Links</Text>
             {links.map((m) => (
-              <Pressable key={m.id} style={styles.fileRow} onPress={() => openExternally(m.url!)}>
+              <Press
+                key={m.id}
+                style={styles.fileRow}
+                onPress={() => openExternally(m.url!)}
+                accessibilityLabel={`Open ${m.caption || m.fileName || m.url}, outside the app`}
+              >
                 <Ionicons name="link-outline" size={16} color={colors.accent} />
-                <View style={{ flex: 1 }}>
+                <View style={styles.rowText}>
                   <Text numberOfLines={1} style={styles.rowName}>
                     {m.caption || m.fileName || m.url}
                   </Text>
@@ -419,7 +489,7 @@ export default function ResourceScreen() {
                   </Text>
                 </View>
                 <Ionicons name="open-outline" size={15} color={colors.muted} />
-              </Pressable>
+              </Press>
             ))}
           </View>
         )}
@@ -439,13 +509,14 @@ export default function ResourceScreen() {
         {r.tags.length > 0 && (
           <View style={styles.tags}>
             {r.tags.map((t) => (
-              <Pressable
+              <Press
                 key={t}
                 style={styles.tag}
                 onPress={() => router.push(`/resources?tag=${encodeURIComponent(t)}` as never)}
+                accessibilityLabel={`See everything tagged ${t}`}
               >
                 <Text style={styles.tagText}>#{t}</Text>
-              </Pressable>
+              </Press>
             ))}
           </View>
         )}
@@ -466,8 +537,14 @@ export default function ResourceScreen() {
         )}
       </ScrollView>
 
+      {/* Was pinned 26px off the raw bottom edge, which on a phone with a gesture
+          bar puts it under the bar. */}
       {!!toast && (
-        <View style={styles.toast}>
+        <View
+          style={[styles.toast, { bottom: Math.max(20, insets.bottom + 14) }]}
+          pointerEvents="none"
+          accessibilityLiveRegion="polite"
+        >
           <Text style={styles.toastText}>{toast}</Text>
         </View>
       )}
@@ -526,6 +603,7 @@ function Lightbox({
   onSave: (item: ResourceMedia) => void;
 }) {
   const width = useWindowDimensions().width;
+  const insets = useSafeAreaInsets();
   const pager = useRef<ScrollView>(null);
   const [page, setPage] = useState(index ?? 0);
   const open = index !== null;
@@ -541,8 +619,15 @@ function Lightbox({
   }, [index, width]);
 
   return (
-    <Modal visible={open} transparent={false} animationType="fade" onRequestClose={onClose}>
-      <View style={styles.lightbox}>
+    <Modal
+      visible={open}
+      transparent={false}
+      animationType="fade"
+      onRequestClose={onClose}
+      statusBarTranslucent
+      navigationBarTranslucent
+    >
+      <View style={styles.lightbox} accessibilityViewIsModal>
         <ScrollView
           ref={pager}
           horizontal
@@ -564,18 +649,37 @@ function Lightbox({
             />
           ))}
         </ScrollView>
-        <Pressable style={styles.lbClose} onPress={onClose} hitSlop={10}>
+        {/* Was fixed at top: 44 — under the camera cutout on a tall phone and
+            floating in the middle of the bezel on a short one. */}
+        <Press
+          style={[styles.lbClose, { top: insets.top + 12, right: Math.max(16, insets.right + 12) }]}
+          onPress={onClose}
+          accessibilityLabel="Close the image viewer"
+        >
           <Ionicons name="close" size={20} color={colors.text} />
-        </Pressable>
-        <View style={styles.lbFoot}>
+        </Press>
+        <View
+          style={[
+            styles.lbFoot,
+            {
+              bottom: Math.max(24, insets.bottom + 16),
+              left: Math.max(16, insets.left + 12),
+              right: Math.max(16, insets.right + 12),
+            },
+          ]}
+        >
           <Text numberOfLines={1} style={styles.lbCap}>
             {current?.caption || current?.fileName || `${page + 1} of ${images.length}`}
           </Text>
           {!!current && (
-            <Pressable style={styles.rowBtn} onPress={() => onSave(current)} hitSlop={6}>
+            <Press
+              style={styles.rowBtn}
+              onPress={() => onSave(current)}
+              accessibilityLabel={`Save ${current.caption || current.fileName || "this image"}`}
+            >
               <Ionicons name="download-outline" size={14} color={colors.text} />
               <Text style={styles.rowBtnLabel}>Save</Text>
-            </Pressable>
+            </Press>
           )}
         </View>
       </View>
@@ -585,17 +689,21 @@ function Lightbox({
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
-  content: { padding: 16, paddingBottom: 48, gap: 14 },
-  center: {
+  content: { paddingVertical: 16, paddingBottom: 48, gap: 14 },
+  dead: {
     flex: 1,
     alignItems: "center",
     justifyContent: "center",
-    gap: 8,
     backgroundColor: colors.bg,
     padding: 24,
   },
   muted: { color: colors.muted, fontSize: 13, textAlign: "center" },
-  mutedSmall: { color: colors.dim, fontSize: 11, textAlign: "center" },
+
+  heroSk: { height: 208, borderRadius: radius.lg },
+  lineSk: { width: "58%", height: 11, marginTop: 14 },
+  actionsSk: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 14 },
+  btnSk: { flex: 1, height: 44, borderRadius: radius.pill },
+  iconSk: { width: 44, height: 44, borderRadius: radius.pill },
 
   hero: {
     height: 208,
@@ -626,7 +734,7 @@ const styles = StyleSheet.create({
   kickerText: { color: colors.accent, fontSize: 10, fontWeight: "800", letterSpacing: 1 },
   kickerLink: { color: colors.text, fontSize: 10, fontWeight: "700", letterSpacing: 0.5 },
   kickerBadge: {
-    color: "#211308",
+    color: colors.onAccent,
     backgroundColor: colors.accent,
     fontSize: 9,
     fontWeight: "800",
@@ -639,33 +747,41 @@ const styles = StyleSheet.create({
   heroLede: { color: colors.muted, fontSize: 13, lineHeight: 18 },
   metaRow: { color: colors.dim, fontSize: 11, fontVariant: ["tabular-nums"] },
 
-  actions: { flexDirection: "row", alignItems: "center", gap: 8 },
+  /* Wraps: on a 360px phone "Get the files (7)" plus "Original" plus the share
+     button does not fit on one line, and the share button was being squeezed
+     down to a sliver rather than moving. */
+  actions: { flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" },
   primaryBtn: {
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
     gap: 6,
+    minHeight: 44,
     backgroundColor: colors.accent,
     borderRadius: radius.pill,
-    paddingHorizontal: 15,
-    paddingVertical: 9,
+    paddingHorizontal: 16,
   },
-  primaryLabel: { color: "#211308", fontSize: 12, fontWeight: "800" },
+  primaryLabel: { color: colors.onAccent, fontSize: 12, fontWeight: "800" },
   ghostBtn: {
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
     gap: 6,
+    minHeight: 44,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius.pill,
-    paddingHorizontal: 14,
-    paddingVertical: 8,
+    paddingHorizontal: 15,
   },
   ghostLabel: { color: colors.text, fontSize: 12, fontWeight: "700" },
   iconBtn: {
+    width: 44,
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius.pill,
-    padding: 9,
     marginLeft: "auto",
   },
 
@@ -722,9 +838,9 @@ const styles = StyleSheet.create({
     padding: 10,
   },
   playBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     alignItems: "center",
     justifyContent: "center",
     backgroundColor: colors.accentSoft,
@@ -736,6 +852,7 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 10,
+    minHeight: 58,
     backgroundColor: colors.surface,
     borderWidth: 1,
     borderColor: colors.border,
@@ -743,17 +860,21 @@ const styles = StyleSheet.create({
     paddingHorizontal: 11,
     paddingVertical: 10,
   },
+  /* Was an inline {flex: 1} on the middle column of four different rows. */
+  rowText: { flex: 1, minWidth: 0 },
   rowName: { color: colors.text, fontSize: 13, fontWeight: "600" },
   rowSub: { color: colors.dim, fontSize: 11, marginTop: 1 },
   rowBtn: {
     flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
     gap: 5,
+    minHeight: 38,
+    minWidth: 38,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius.pill,
     paddingHorizontal: 11,
-    paddingVertical: 6,
   },
   rowBtnLabel: { color: colors.text, fontSize: 11, fontWeight: "700" },
 
@@ -763,11 +884,12 @@ const styles = StyleSheet.create({
 
   tags: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
   tag: {
+    justifyContent: "center",
+    minHeight: 34,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius.pill,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+    paddingHorizontal: 12,
   },
   tagText: { color: colors.muted, fontSize: 11 },
   relatedRow: { gap: 10, paddingRight: 4 },
@@ -776,7 +898,6 @@ const styles = StyleSheet.create({
     position: "absolute",
     left: 20,
     right: 20,
-    bottom: 26,
     backgroundColor: colors.surfaceRaised,
     borderWidth: 1,
     borderColor: colors.border,
@@ -789,17 +910,15 @@ const styles = StyleSheet.create({
   lightbox: { flex: 1, backgroundColor: "#000" },
   lbClose: {
     position: "absolute",
-    top: 44,
-    right: 18,
+    width: 40,
+    height: 40,
+    alignItems: "center",
+    justifyContent: "center",
     backgroundColor: "rgba(23,21,18,0.9)",
     borderRadius: radius.pill,
-    padding: 8,
   },
   lbFoot: {
     position: "absolute",
-    left: 16,
-    right: 16,
-    bottom: 30,
     flexDirection: "row",
     alignItems: "center",
     gap: 10,

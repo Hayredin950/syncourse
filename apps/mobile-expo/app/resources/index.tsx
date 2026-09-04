@@ -1,16 +1,12 @@
 import { useInfiniteQuery } from "@tanstack/react-query";
 import { Ionicons } from "@expo/vector-icons";
-import { useLocalSearchParams, useRouter } from "expo-router";
+import { useLocalSearchParams } from "expo-router";
 import React, { useEffect, useMemo, useState } from "react";
-import {
-  ActivityIndicator,
-  FlatList,
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { FlatList, RefreshControl, StyleSheet, useWindowDimensions, View } from "react-native";
+import { Empty, Failed } from "../../components/Empty";
+import { Press } from "../../components/Press";
+import { Sk } from "../../components/Skeleton";
+import { Text, TextInput } from "../../components/Type";
 import { ResourceCard, ResourceFeature, typeMeta } from "../../components/ResourceCard";
 import * as api from "../../lib/api";
 import { colors, radius } from "../../lib/tokens";
@@ -34,13 +30,17 @@ const SORTS = [
  */
 export default function ResourcesScreen() {
   const params = useLocalSearchParams<{ type?: string; category?: string; tag?: string }>();
-  const router = useRouter();
   const [type, setType] = useState<string>(params.type ?? "");
   const [category, setCategory] = useState<string>(params.category ?? "");
   const [tag, setTag] = useState<string>(params.tag ?? "");
   const [sort, setSort] = useState<string>("newest");
   const [q, setQ] = useState("");
   const [dq, setDq] = useState("");
+  const { width } = useWindowDimensions();
+  const gutter = Math.max(16, Math.round((width - 900) / 2));
+  /* A landscape card wants roughly 380px to hold a title, a lede and a stat row,
+     so a tablet gets two of them and a phone stays single-column. */
+  const cols = width >= 820 ? 2 : 1;
 
   // Typing shouldn't fire a request per keystroke; an empty box resets at once.
   useEffect(() => {
@@ -140,49 +140,61 @@ export default function ResourcesScreen() {
           returnKeyType="search"
         />
         {!!q && (
-          <Pressable onPress={() => setQ("")} hitSlop={8}>
+          <Press onPress={() => setQ("")} hitSlop={12} accessibilityLabel="Clear the search box">
             <Ionicons name="close-circle" size={16} color={colors.dim} />
-          </Pressable>
+          </Press>
         )}
       </View>
 
       <View style={styles.sortRow}>
-        {SORTS.map((s) => (
-          <Pressable key={s.id} onPress={() => setSort(s.id)} hitSlop={6}>
-            <Text style={[styles.sortOption, sort === s.id && styles.sortActive]}>{s.label}</Text>
-          </Pressable>
-        ))}
+        {SORTS.map((s) => {
+          const on = sort === s.id;
+          return (
+            /* Were bare Text nodes with a 6px slop: about 20px of target, and
+               nothing telling a screen reader they were controls. */
+            <Press
+              key={s.id}
+              style={[styles.sortPill, on && styles.sortPillOn]}
+              onPress={() => setSort(s.id)}
+              accessibilityLabel={`Sort by ${s.label}`}
+              accessibilityState={{ selected: on }}
+            >
+              <Text style={[styles.sortOption, on && styles.sortActive]}>{s.label}</Text>
+            </Press>
+          );
+        })}
         {narrowed && (
-          <Pressable onPress={reset} hitSlop={6} style={styles.clearAll}>
+          <Press onPress={reset} style={styles.clearAll} accessibilityLabel="Clear every filter">
             <Ionicons name="close" size={11} color={colors.muted} />
             <Text style={styles.clearAllText}>Clear</Text>
-          </Pressable>
+          </Press>
         )}
       </View>
 
       {!!tag && (
-        <Pressable style={styles.tagChip} onPress={() => setTag("")}>
+        <Press style={styles.tagChip} onPress={() => setTag("")} accessibilityLabel={`Stop filtering by ${tag}`}>
           <Text style={styles.tagChipText}>#{tag}</Text>
-          <Ionicons name="close" size={11} color="#211308" />
-        </Pressable>
+          <Ionicons name="close" size={11} color={colors.onAccent} />
+        </Press>
       )}
 
       {cats.length > 0 && (
         <View style={styles.pills}>
-          {cats.map((c) => (
-            <Pressable
-              key={c.slug}
-              style={[styles.pill, category === c.slug && styles.pillActive]}
-              onPress={() => setCategory(category === c.slug ? "" : c.slug)}
-            >
-              <Text style={[styles.pillLabel, category === c.slug && styles.pillLabelActive]}>
-                {c.name}
-              </Text>
-              <Text style={[styles.pillCount, category === c.slug && styles.pillLabelActive]}>
-                {c.count}
-              </Text>
-            </Pressable>
-          ))}
+          {cats.map((c) => {
+            const on = category === c.slug;
+            return (
+              <Press
+                key={c.slug}
+                style={[styles.pill, on && styles.pillActive]}
+                onPress={() => setCategory(on ? "" : c.slug)}
+                accessibilityLabel={`${c.name}, ${c.count}`}
+                accessibilityState={{ selected: on }}
+              >
+                <Text style={[styles.pillLabel, on && styles.pillLabelActive]}>{c.name}</Text>
+                <Text style={[styles.pillCount, on && styles.pillLabelActive]}>{c.count}</Text>
+              </Press>
+            );
+          })}
         </View>
       )}
 
@@ -197,54 +209,69 @@ export default function ResourcesScreen() {
     </View>
   );
 
+  /* Three hand-rolled states — a lone spinner, an error card with its own retry
+     pill, and a bare tray icon — where the rest of the app has one of each. */
   const empty = query.isLoading ? (
-    <View style={styles.center}>
-      <ActivityIndicator color={colors.accent} />
+    <View style={styles.skeletons}>
+      {[0, 1, 2, 3].map((i) => (
+        <Sk key={i} style={styles.cardSk} />
+      ))}
     </View>
   ) : query.error ? (
-    <View style={styles.center}>
-      <Text style={styles.muted}>Could not load resources.</Text>
-      <Text style={styles.mutedSmall}>
-        {query.error instanceof Error ? query.error.message : "Try again in a moment."}
-      </Text>
-      <Pressable style={styles.retry} onPress={() => query.refetch()}>
-        <Text style={styles.retryText}>Retry</Text>
-      </Pressable>
-    </View>
+    <Failed title="Could not load the resources" onRetry={() => query.refetch()} />
+  ) : narrowed ? (
+    <Empty
+      icon="funnel-outline"
+      title="Nothing matches that yet"
+      body="No cheat-sheet, roadmap or note fits every filter you have on at once."
+      action={{ label: "Clear filters", onPress: reset }}
+    />
   ) : (
-    <View style={styles.center}>
-      <Ionicons name="file-tray-outline" size={26} color={colors.dim} />
-      <Text style={styles.muted}>
-        {narrowed ? "Nothing matches that yet." : "No resources published yet."}
-      </Text>
-      {narrowed ? (
-        <Pressable style={styles.retry} onPress={reset}>
-          <Text style={styles.retryText}>Clear filters</Text>
-        </Pressable>
-      ) : (
-        <Pressable style={styles.retry} onPress={() => router.push("/browse" as never)}>
-          <Text style={styles.retryText}>Browse courses</Text>
-        </Pressable>
-      )}
-    </View>
+    <Empty
+      icon="file-tray-outline"
+      title="No resources published yet"
+      body="Cheat-sheets, roadmaps and notes land here as they are written. The courses are ready now."
+      action={{ label: "Browse courses", href: "/browse" }}
+    />
   );
 
   return (
     <FlatList<ResourceSummary>
       style={styles.screen}
       data={grid}
+      /* numColumns cannot change on a mounted list, so the count is the key. */
+      key={cols}
+      numColumns={cols}
+      columnWrapperStyle={cols > 1 ? styles.row : undefined}
       keyExtractor={(r) => r.id}
-      renderItem={({ item }) => <ResourceCard resource={item} />}
+      renderItem={({ item }) =>
+        cols > 1 ? (
+          <View style={styles.cell}>
+            <ResourceCard resource={item} />
+          </View>
+        ) : (
+          <ResourceCard resource={item} />
+        )
+      }
       ListHeaderComponent={header}
       ListEmptyComponent={empty}
-      contentContainerStyle={styles.content}
+      contentContainerStyle={[styles.content, { paddingHorizontal: gutter }]}
+      refreshControl={
+        <RefreshControl
+          refreshing={query.isRefetching && !query.isFetchingNextPage}
+          onRefresh={() => query.refetch()}
+          tintColor={colors.accent}
+        />
+      }
       onEndReachedThreshold={0.5}
       onEndReached={() => {
         if (query.hasNextPage && !query.isFetchingNextPage) void query.fetchNextPage();
       }}
       ListFooterComponent={
         query.isFetchingNextPage ? (
-          <ActivityIndicator color={colors.accent} style={{ marginVertical: 18 }} />
+          /* A skeleton card rather than a spinner: the next page arrives in the
+             shape of the thing already on screen. */
+          <Sk style={styles.cardSk} />
         ) : items.length > 0 && !query.hasNextPage ? (
           <Text style={styles.end}>That&apos;s the whole shelf — {items.length} shown.</Text>
         ) : null
@@ -253,6 +280,7 @@ export default function ResourcesScreen() {
   );
 }
 
+/** A type filter. Was a Pressable with no role and no selected state. */
 function Tab({
   label,
   count,
@@ -265,16 +293,25 @@ function Tab({
   onPress: () => void;
 }) {
   return (
-    <Pressable style={[styles.tab, active && styles.tabActive]} onPress={onPress}>
+    <Press
+      style={[styles.tab, active && styles.tabActive]}
+      onPress={onPress}
+      accessibilityLabel={`${label}, ${count}`}
+      accessibilityState={{ selected: active }}
+    >
       <Text style={[styles.tabLabel, active && styles.tabLabelActive]}>{label}</Text>
       <Text style={[styles.tabCount, active && styles.tabCountActive]}>{count}</Text>
-    </Pressable>
+    </Press>
   );
 }
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
-  content: { padding: 16, paddingBottom: 40, gap: 12 },
+  /* flexGrow so the empty state centres in the screen rather than sitting
+     under the filters it is telling you to clear. */
+  content: { paddingVertical: 16, paddingBottom: 40, gap: 12, flexGrow: 1 },
+  row: { gap: 12 },
+  cell: { flex: 1 },
   header: { gap: 10, marginBottom: 2 },
   eyebrow: { color: colors.accent, fontSize: 10, fontWeight: "800", letterSpacing: 1.2 },
   title: { color: colors.text, fontSize: 27, fontWeight: "800", letterSpacing: -0.5 },
@@ -285,11 +322,11 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 5,
+    minHeight: 38,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius.pill,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
+    paddingHorizontal: 13,
   },
   tabActive: { backgroundColor: colors.accentSoft, borderColor: colors.accent },
   tabLabel: { color: colors.muted, fontSize: 12, fontWeight: "600" },
@@ -308,25 +345,42 @@ const styles = StyleSheet.create({
     height: 40,
   },
   searchInput: { flex: 1, color: colors.text, fontSize: 13, padding: 0 },
-  sortRow: { flexDirection: "row", alignItems: "center", gap: 14 },
+  sortRow: { flexDirection: "row", alignItems: "center", gap: 7 },
+  sortPill: {
+    justifyContent: "center",
+    minHeight: 38,
+    paddingHorizontal: 13,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.border,
+  },
+  sortPillOn: { borderColor: colors.accent, backgroundColor: colors.accentSoft },
   sortOption: { color: colors.muted, fontSize: 12, fontWeight: "600" },
   sortActive: { color: colors.accent },
-  clearAll: { flexDirection: "row", alignItems: "center", gap: 3, marginLeft: "auto" },
+  clearAll: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 3,
+    minHeight: 38,
+    paddingHorizontal: 4,
+    marginLeft: "auto",
+  },
   clearAllText: { color: colors.muted, fontSize: 12, fontWeight: "600" },
   pills: { flexDirection: "row", flexWrap: "wrap", gap: 6 },
   pill: {
     flexDirection: "row",
     alignItems: "center",
     gap: 5,
+    minHeight: 38,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius.pill,
-    paddingHorizontal: 10,
-    paddingVertical: 5,
+    paddingHorizontal: 12,
   },
   pillActive: { backgroundColor: colors.accent, borderColor: colors.accent },
   pillLabel: { color: colors.muted, fontSize: 11, fontWeight: "600" },
-  pillLabelActive: { color: "#211308" },
+  pillLabelActive: { color: colors.onAccent },
   pillCount: { color: colors.dim, fontSize: 10, fontVariant: ["tabular-nums"] },
   featured: { gap: 8, marginTop: 6 },
   tagChip: {
@@ -334,24 +388,14 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: 5,
     alignSelf: "flex-start",
+    minHeight: 34,
     backgroundColor: colors.accent,
     borderRadius: radius.pill,
-    paddingHorizontal: 11,
-    paddingVertical: 5,
+    paddingHorizontal: 12,
   },
-  tagChipText: { color: "#211308", fontSize: 11, fontWeight: "800" },
+  tagChipText: { color: colors.onAccent, fontSize: 11, fontWeight: "800" },
   sectionLabel: { color: colors.dim, fontSize: 10, fontWeight: "800", letterSpacing: 1 },
-  center: { alignItems: "center", justifyContent: "center", gap: 8, paddingVertical: 40 },
-  muted: { color: colors.muted, fontSize: 13 },
-  mutedSmall: { color: colors.dim, fontSize: 11, textAlign: "center" },
-  retry: {
-    borderWidth: 1,
-    borderColor: colors.accent,
-    borderRadius: radius.pill,
-    paddingHorizontal: 16,
-    paddingVertical: 7,
-    marginTop: 4,
-  },
-  retryText: { color: colors.accent, fontSize: 12, fontWeight: "700" },
+  skeletons: { gap: 12, paddingTop: 4 },
+  cardSk: { height: 132, borderRadius: radius.lg },
   end: { color: colors.dim, fontSize: 11, textAlign: "center", marginVertical: 18 },
 });

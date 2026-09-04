@@ -1,9 +1,13 @@
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { Ionicons } from "@expo/vector-icons";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { usePathname, useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
-import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { StyleSheet, View } from "react-native";
+import { Note } from "./Note";
+import { Press } from "./Press";
+import { Sheet } from "./Sheet";
+import { Text } from "./Type";
 import * as api from "../lib/api";
 import { useAuth } from "../lib/auth";
 import { colors, radius } from "../lib/tokens";
@@ -34,12 +38,16 @@ const keyOf = (docs: PendingLegalDoc[]) => docs.map((d) => `${d.type}@${d.versio
  * app they paid for is worth less than consent given freely, and a hiccup on
  * /legal/pending must never be able to brick the app. React Query swallowing
  * that failure leaves `data` undefined, which renders nothing.
+ *
+ * It is the shared `Sheet` now. Its own Modal had the two faults that sheet was
+ * built to fix: a `maxHeight: 260` ScrollView nested inside a panel that could
+ * not scroll, so three documents put the buttons past the bottom of the screen,
+ * and no way out but the backdrop.
  */
 export default function LegalConsent() {
   const { user, loading } = useAuth();
   const pathname = usePathname();
   const router = useRouter();
-  const insets = useSafeAreaInsets();
   const queryClient = useQueryClient();
   const [snoozeKey, setSnoozeKey] = useState<string | null>(null);
   const [snoozeReady, setSnoozeReady] = useState(false);
@@ -97,122 +105,137 @@ export default function LegalConsent() {
   // changed; someone new is just being asked. Same sheet, different headline.
   const changed = pending.filter((d) => d.previousVersion);
   const isUpdate = changed.length > 0;
+  const accept =
+    pending.length === 1 ? "Accept" : pending.length === 2 ? "Accept both" : "Accept all";
 
   return (
-    <Modal visible transparent animationType="slide" onRequestClose={later}>
-      <View style={styles.backdrop}>
-        <View style={[styles.sheet, { paddingBottom: insets.bottom + 16 }]}>
-          <Text style={styles.eyebrow}>{isUpdate ? "UPDATED" : "BEFORE YOU CONTINUE"}</Text>
-          <Text style={styles.title}>
-            {isUpdate
-              ? `We've updated our ${joinTitles(changed)}`
-              : `Please accept our ${joinTitles(pending)}`}
-          </Text>
-          <Text style={styles.subtitle}>
-            {isUpdate
-              ? "Your account is still active — we just need your agreement to the new wording."
-              : "A quick one-time confirmation so you know where you stand with us."}
-          </Text>
-
-          <ScrollView style={styles.list} contentContainerStyle={{ gap: 12 }}>
-            {pending.map((d) => (
-              <View key={d.type}>
-                <Text style={styles.docTitle}>
-                  {d.title}{" "}
-                  <Text style={styles.docVersion}>
-                    v{d.version}
-                    {d.previousVersion ? ` · you accepted v${d.previousVersion}` : ""}
-                  </Text>
-                </Text>
-                {!!d.changeSummary && <Text style={styles.docSummary}>{d.changeSummary}</Text>}
-                <Pressable onPress={() => read(d.type)} hitSlop={6}>
-                  <Text style={styles.readIt}>Read it</Text>
-                </Pressable>
-              </View>
-            ))}
-          </ScrollView>
-
-          {!!acceptMut.error && (
-            <Text style={styles.error}>
-              {acceptMut.error instanceof Error
-                ? acceptMut.error.message
-                : "Could not record that — try again."}
-            </Text>
-          )}
-
-          <View style={styles.actions}>
-            <Pressable
-              style={[styles.acceptBtn, acceptMut.isPending && { opacity: 0.5 }]}
-              onPress={() => acceptMut.mutate()}
-              disabled={acceptMut.isPending}
-            >
-              <Text style={styles.acceptLabel}>
-                {acceptMut.isPending
-                  ? "Saving…"
-                  : pending.length === 1
-                    ? "Accept"
-                    : pending.length === 2
-                      ? "Accept both"
-                      : "Accept all"}
-              </Text>
-            </Pressable>
-            <Pressable style={styles.laterBtn} onPress={later} disabled={acceptMut.isPending}>
-              <Text style={styles.laterLabel}>Later</Text>
-            </Pressable>
-          </View>
+    <Sheet
+      visible
+      onClose={later}
+      /* The document names live in the body: the sheet's title is one line, and
+         "We've updated our Terms of Service and Privacy Policy" is not. */
+      title={isUpdate ? "Your agreement has changed" : "Before you continue"}
+      subtitle={
+        isUpdate
+          ? "Your account is still active — we just need your agreement to the new wording."
+          : "A quick one-time confirmation so you know where you stand with us."
+      }
+      footer={
+        <View style={styles.actions}>
+          <Press
+            style={styles.laterBtn}
+            onPress={later}
+            disabled={acceptMut.isPending}
+            accessibilityLabel="Remind me later"
+          >
+            <Text style={styles.laterLabel}>Later</Text>
+          </Press>
+          {/* `disabled` already dims a Press, so the inline opacity was doubled up. */}
+          <Press
+            style={styles.acceptBtn}
+            onPress={() => acceptMut.mutate()}
+            disabled={acceptMut.isPending}
+            haptic="success"
+            accessibilityLabel={`${accept} — ${joinTitles(pending)}`}
+          >
+            <Text style={styles.acceptLabel}>{acceptMut.isPending ? "Saving…" : accept}</Text>
+          </Press>
         </View>
+      }
+    >
+      <Text style={styles.lead}>
+        {isUpdate
+          ? `We've updated our ${joinTitles(changed)}.`
+          : `Please accept our ${joinTitles(pending)} to carry on.`}
+      </Text>
+
+      <View style={styles.docs}>
+        {pending.map((d) => (
+          <View key={d.type} style={styles.doc}>
+            <View style={styles.docHead}>
+              <Ionicons name="document-text-outline" size={15} color={colors.accent} />
+              <Text style={styles.docTitle}>{d.title}</Text>
+            </View>
+            <Text style={styles.docVersion}>
+              v{d.version}
+              {d.previousVersion ? ` · you accepted v${d.previousVersion}` : ""}
+            </Text>
+            {!!d.changeSummary && <Text style={styles.docSummary}>{d.changeSummary}</Text>}
+            {/* Was an underlined 12px sentence, which is 12px of tap target. */}
+            <Press
+              style={styles.readBtn}
+              onPress={() => read(d.type)}
+              accessibilityLabel={`Read the ${d.title}`}
+            >
+              <Text style={styles.readLabel}>Read it</Text>
+              <Ionicons name="arrow-forward" size={13} color={colors.accent} />
+            </Press>
+          </View>
+        ))}
       </View>
-    </Modal>
+
+      {!!acceptMut.error && (
+        <Note
+          bad
+          text={
+            acceptMut.error instanceof Error
+              ? acceptMut.error.message
+              : "Could not record that — try again."
+          }
+          style={styles.error}
+        />
+      )}
+    </Sheet>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.65)", justifyContent: "flex-end" },
-  sheet: {
-    backgroundColor: colors.surface,
-    borderTopLeftRadius: 22,
-    borderTopRightRadius: 22,
-    borderWidth: 1,
-    borderColor: colors.border,
-    paddingHorizontal: 18,
-    paddingTop: 18,
-  },
-  eyebrow: { color: colors.accent, fontSize: 10, fontWeight: "800", letterSpacing: 1.2 },
-  title: { color: colors.text, fontSize: 19, fontWeight: "800", marginTop: 6 },
-  subtitle: { color: colors.muted, fontSize: 12.5, lineHeight: 18, marginTop: 6 },
-  list: {
-    maxHeight: 260,
-    backgroundColor: colors.surfaceRaised,
+  lead: { color: colors.body, fontSize: 13, lineHeight: 19 },
+  docs: { gap: 10, marginTop: 14 },
+  doc: {
+    backgroundColor: colors.bg,
     borderRadius: radius.md,
-    padding: 14,
-    marginTop: 14,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    padding: 13,
+    gap: 3,
   },
-  docTitle: { color: colors.text, fontSize: 13, fontWeight: "800" },
-  docVersion: { color: colors.muted, fontSize: 11, fontWeight: "500" },
-  docSummary: { color: colors.muted, fontSize: 12, lineHeight: 17, marginTop: 3 },
-  readIt: {
-    color: colors.accent,
-    fontSize: 12,
-    fontWeight: "700",
-    textDecorationLine: "underline",
-    marginTop: 4,
+  docHead: { flexDirection: "row", alignItems: "center", gap: 7 },
+  docTitle: { flex: 1, color: colors.text, fontSize: 13.5, fontWeight: "800" },
+  docVersion: { color: colors.muted, fontSize: 11 },
+  docSummary: { color: colors.body, fontSize: 12, lineHeight: 17, marginTop: 3 },
+  readBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    alignSelf: "flex-start",
+    minHeight: 38,
+    paddingHorizontal: 13,
+    marginTop: 6,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
+    borderRadius: radius.pill,
+    backgroundColor: colors.surfaceRaised,
   },
-  error: { color: colors.danger, fontSize: 12, marginTop: 10 },
-  actions: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 16 },
+  readLabel: { color: colors.accent, fontSize: 12.5, fontWeight: "700" },
+  error: { marginTop: 12 },
+  actions: { flexDirection: "row", alignItems: "center", gap: 10 },
   acceptBtn: {
     flex: 1,
+    minHeight: 46,
+    alignItems: "center",
+    justifyContent: "center",
     backgroundColor: colors.accent,
     borderRadius: radius.pill,
-    paddingVertical: 11,
-    alignItems: "center",
   },
-  acceptLabel: { color: "#000", fontSize: 13.5, fontWeight: "800" },
+  acceptLabel: { color: colors.onAccent, fontSize: 13.5, fontWeight: "800" },
   laterBtn: {
+    minHeight: 46,
+    justifyContent: "center",
+    paddingHorizontal: 18,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius.pill,
-    paddingVertical: 11,
-    paddingHorizontal: 18,
   },
   laterLabel: { color: colors.muted, fontSize: 13, fontWeight: "700" },
 });

@@ -1,7 +1,9 @@
 import { Ionicons } from "@expo/vector-icons";
 import { useRouter } from "expo-router";
 import React, { useCallback } from "react";
-import { Image, Pressable, StyleSheet, Text, View } from "react-native";
+import { Image, StyleSheet, View } from "react-native";
+import { Press } from "./Press";
+import { Text } from "./Type";
 import { cloudinaryUrl } from "../lib/cloudinary";
 import { colors, radius } from "../lib/tokens";
 import type { ResourceSummary } from "../lib/types";
@@ -104,7 +106,11 @@ export function ResourceCard({ resource, width }: { resource: ResourceSummary; w
   const meta = typeMeta(resource.type);
 
   return (
-    <Pressable style={[styles.card, width ? { width } : { width: "100%" }]} onPress={go}>
+    <Press
+      style={[styles.card, width ? { width } : styles.full]}
+      onPress={go}
+      accessibilityLabel={`${resource.title}. ${meta.label}${resource.isPremium ? ", premium" : ""}`}
+    >
       <View>
         <ResourceCover resource={resource} />
         <View style={styles.typeChip}>
@@ -137,7 +143,7 @@ export function ResourceCard({ resource, width }: { resource: ResourceSummary; w
           </View>
         </View>
       </View>
-    </Pressable>
+    </Press>
   );
 }
 
@@ -148,7 +154,11 @@ export function ResourceFeature({ resource }: { resource: ResourceSummary }) {
   const meta = typeMeta(resource.type);
 
   return (
-    <Pressable style={styles.feature} onPress={go}>
+    <Press
+      style={styles.feature}
+      onPress={go}
+      accessibilityLabel={`${resource.title}. ${meta.label}${resource.isPremium ? ", premium" : ""}`}
+    >
       <View style={styles.featureArt}>
         <ResourceCover resource={resource} height={104} glyphSize={28} />
       </View>
@@ -171,7 +181,7 @@ export function ResourceFeature({ resource }: { resource: ResourceSummary }) {
           {resource.readMinutes > 0 ? ` · ${resource.readMinutes} min read` : ""}
         </Text>
       </View>
-    </Pressable>
+    </Press>
   );
 }
 
@@ -199,6 +209,7 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   cover: { width: "100%", backgroundColor: colors.surfaceRaised },
+  full: { width: "100%" },
   coverFallback: { alignItems: "center", justifyContent: "center", overflow: "hidden" },
   coverBlob: {
     position: "absolute",
@@ -233,7 +244,7 @@ const styles = StyleSheet.create({
     paddingHorizontal: 8,
     paddingVertical: 3,
   },
-  premiumChipText: { color: "#211308", fontSize: 9, fontWeight: "800" },
+  premiumChipText: { color: colors.onAccent, fontSize: 9, fontWeight: "800" },
   body: { padding: 12, gap: 5 },
   title: { color: colors.text, fontSize: 14, fontWeight: "700", lineHeight: 19 },
   excerpt: { color: colors.muted, fontSize: 12, lineHeight: 17 },
@@ -261,7 +272,7 @@ const styles = StyleSheet.create({
     padding: 10,
   },
   featureArt: { width: 116, borderRadius: radius.md, overflow: "hidden" },
-  featureBody: { flex: 1, gap: 4 },
+  featureBody: { flex: 1, minWidth: 0, gap: 4 },
   featureKicker: { flexDirection: "row", alignItems: "center", gap: 4 },
   featureKickerText: { color: colors.accent, fontSize: 9, fontWeight: "800", letterSpacing: 0.8 },
   featureTitle: { color: colors.text, fontSize: 15, fontWeight: "800", lineHeight: 20 },

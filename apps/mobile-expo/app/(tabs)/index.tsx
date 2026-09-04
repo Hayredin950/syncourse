@@ -1,23 +1,19 @@
+import { Ionicons } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
-import { Link, useRouter } from "expo-router";
+import { useRouter } from "expo-router";
 import React, { useCallback, useState } from "react";
-import {
-  ActivityIndicator,
-  FlatList,
-  Image,
-  Pressable,
-  RefreshControl,
-  ScrollView,
-  StyleSheet,
-  Text,
-  View,
-} from "react-native";
-import { Rail, ResourceRail } from "../../components/Rail";
+import { FlatList, Image, RefreshControl, ScrollView, StyleSheet, useWindowDimensions, View } from "react-native";
+import { Text } from "../../components/Type";
+import { Failed } from "../../components/Empty";
+import { Press } from "../../components/Press";
+import { Rail, ResourceRail, SectionHeader } from "../../components/Rail";
+import { SkHome } from "../../components/Skeleton";
 import { CourseCard } from "../../components/CourseCard";
+import { Stars } from "../../components/StarRating";
 import { cloudinaryUrl } from "../../lib/cloudinary";
 import * as api from "../../lib/api";
-import { colors, radius } from "../../lib/tokens";
-import type { CourseSummary, HomeFeed } from "../../lib/types";
+import { colors, elevation, radius } from "../../lib/tokens";
+import { formatDuration, plural, type CourseSummary, type HomeFeed } from "../../lib/types";
 
 export default function HomeScreen() {
   const { data, isLoading, error, refetch, isRefetching } = useQuery({
@@ -27,6 +23,7 @@ export default function HomeScreen() {
   const [catSlug, setCatSlug] = useState<string>("");
   const [lecturerSlug, setLecturerSlug] = useState<string>("");
   const [orgSlug, setOrgSlug] = useState<string>("");
+  const { width } = useWindowDimensions();
 
   // ALL hooks first, unconditionally — React requires the same hooks on every
   // render, so nothing may be called after the early returns below.
@@ -43,7 +40,7 @@ export default function HomeScreen() {
     enabled: !!activeLecturer?.slug,
   });
   const router = useRouter();
-  const goTo = useCallback((href: string) => () => router.push(href as any), [router]);
+  const goTo = useCallback((href: string) => () => router.push(href as never), [router]);
 
   // Resources aren't part of /home, which is a course feed. The rail simply
   // doesn't render if this fails or comes back empty, so a library with no
@@ -53,28 +50,18 @@ export default function HomeScreen() {
     queryFn: () => api.resources({ limit: 8 }),
   });
 
-  if (isLoading) {
-    return (
-      <View style={styles.center}>
-        <ActivityIndicator color={colors.accent} size="large" />
-      </View>
-    );
-  }
+  if (isLoading) return <SkHome />;
 
   if (error || !data) {
+    // This used to print `error.message` *and* `error.cause` at 11px and 10px —
+    // a reader got "TypeError: Network request failed" and a truncated Java
+    // exception. The transport detail now stays in the log where it belongs.
     return (
-      <View style={styles.center}>
-        <Text style={styles.errorText}>Could not reach the server</Text>
-        <Text style={[styles.errorText, { fontSize: 11, color: "#999", marginTop: 4, textAlign: "center" }]}>
-          {(error as Error)?.message ?? "No data yet"}
-        </Text>
-        <Text style={[styles.errorText, { fontSize: 10, color: "#777", marginTop: 2, textAlign: "center" }]}>
-          {(((error as any)?.cause as any)?.message || String((error as any)?.cause || ""))?.slice(0, 160)}
-        </Text>
-        <Pressable onPress={() => refetch()} style={styles.retry}>
-          <Text style={styles.retryText}>Retry</Text>
-        </Pressable>
-      </View>
+      <Failed
+        title="Could not reach the server"
+        body={error instanceof api.ApiError ? error.message : "Check your connection and try again."}
+        onRetry={() => refetch()}
+      />
     );
   }
 
@@ -84,6 +71,16 @@ export default function HomeScreen() {
   const catCourses = catSlug ? (catCoursesQ.data ?? []) : feed.trending.slice(0, 8);
   const activeOrg = (feed.bestOf ?? []).find((o) => o.slug === orgSlug) ?? feed.bestOf?.[0];
   const hero = feed.trending[0];
+  // A fixed 240px hero is a third of a small phone and a letterbox strip on a
+  // tablet; the category grid was three fixed 31% tiles at any width, so on a
+  // tablet three tiles ran the width of the screen.
+  const heroH = Math.min(300, Math.round(width * 0.62));
+  const catCols = width >= 900 ? 6 : width >= 620 ? 4 : 3;
+  const catW = Math.floor((width - 32 - (catCols - 1) * 10) / catCols);
+  /* The rating used to be `${avg} ★` folded into this joined string — Manrope has
+     no star, so the one glyph came from a fallback font at its own baseline. It
+     is drawn beside the line now instead. */
+  const heroMeta = [hero?.level, formatDuration(hero?.durationMin ?? 0)].filter(Boolean).join(" · ");
 
   return (
     <ScrollView
@@ -95,7 +92,7 @@ export default function HomeScreen() {
     >
       {/* hero — featured course banner */}
       {hero && (
-        <Pressable style={styles.hero} onPress={goTo(`/courses/${hero.slug}`)}>
+        <Press style={[styles.hero, { height: heroH }]} onPress={goTo(`/courses/${hero.slug}`)} accessibilityLabel={`Featured course: ${hero.title}`}>
           {hero.thumbnailUrl ? (
             <Image
               source={{ uri: cloudinaryUrl(hero.thumbnailUrl, { width: 720, height: 500 }) ?? undefined }}
@@ -109,22 +106,29 @@ export default function HomeScreen() {
           <View style={styles.heroContent}>
             <Text style={styles.heroEyebrow}>FEATURED COURSE</Text>
             <Text style={styles.heroTitle} numberOfLines={2}>{hero.title}</Text>
-            <Text style={styles.heroMeta} numberOfLines={1}>
-              ★ {hero.ratingAvg.toFixed(1)} · {hero.level} · {formatMin(hero.durationMin)}
-            </Text>
+            <View style={styles.heroMetaRow}>
+              {!!hero.ratingCount && <Stars value={hero.ratingAvg} size={11} />}
+              {!!heroMeta && (
+                <Text style={styles.heroMetaText} numberOfLines={1}>
+                  {hero.ratingCount ? `· ${heroMeta}` : heroMeta}
+                </Text>
+              )}
+            </View>
             <View style={styles.heroCta}>
-              <Text style={styles.heroCtaText}>Start learning free →</Text>
+              <Text style={styles.heroCtaText}>Start learning free</Text>
+              <Ionicons name="arrow-forward" size={13} color={colors.onAccent} />
             </View>
           </View>
-        </Pressable>
+        </Press>
       )}
 
-      <Rail title="🔥 Trending" courses={feed.trending} href="/browse" />
-      <Rail title="✨ Latest added" courses={feed.latest} href="/browse" />
-      <Rail title="⭐ Top rated" courses={feed.topRated} href="/browse" />
+      <Rail title="Trending" icon="flame" courses={feed.trending} href="/browse" />
+      <Rail title="Latest added" icon="sparkles" courses={feed.latest} href="/browse" />
+      <Rail title="Top rated" icon="star" courses={feed.topRated} href="/browse" />
 
       <ResourceRail
-        title="📄 Cheat-sheets & roadmaps"
+        title="Cheat-sheets & roadmaps"
+        icon="document-text"
         resources={resourcesQ.data?.results ?? []}
         href="/resources"
       />
@@ -132,6 +136,7 @@ export default function HomeScreen() {
       {/* Explore by Category — dropdown row (phonofilm: Movie Genre →) */}
       <DropdownRow
         title="Explore by Category"
+        icon="pricetags"
         options={feed.categories.map((c) => ({ value: c.slug, label: c.name }))}
         value={catSlug}
         onChange={setCatSlug}
@@ -141,6 +146,7 @@ export default function HomeScreen() {
       {/* By Instructor — dropdown row */}
       <DropdownRow
         title="By Instructor"
+        icon="person-circle"
         options={feed.lecturers.map((l) => ({ value: l.slug, label: l.name }))}
         value={lecturerSlug}
         onChange={setLecturerSlug}
@@ -150,6 +156,7 @@ export default function HomeScreen() {
       {/* Best of — dropdown row */}
       <DropdownRow
         title="Best of"
+        icon="ribbon"
         options={feed.bestOf.map((o) => ({ value: o.slug, label: o.name }))}
         value={orgSlug}
         onChange={setOrgSlug}
@@ -159,9 +166,7 @@ export default function HomeScreen() {
       {/* Featured learning paths — franchise-style cards with thumbnail strips */}
       {feed.featuredPaths.length > 0 && (
         <View style={styles.wrap}>
-          <View style={styles.header}>
-            <Text style={styles.title}>Featured learning paths</Text>
-          </View>
+          <SectionHeader title="Featured learning paths" icon="git-branch" href="/paths" />
           <FlatList
             horizontal
             showsHorizontalScrollIndicator={false}
@@ -169,7 +174,7 @@ export default function HomeScreen() {
             data={feed.featuredPaths}
             keyExtractor={(p) => p.id}
             renderItem={({ item }) => (
-              <Pressable style={styles.pathCard} onPress={goTo(`/paths/${item.id}`)}>
+              <Press style={styles.pathCard} onPress={goTo(`/paths/${item.id}`)} accessibilityLabel={`Learning path: ${item.title}`}>
                 <View style={styles.pathStrip}>
                   {item.courses.slice(0, 4).map((c, i) =>
                     c.thumbnailUrl ? (
@@ -186,10 +191,14 @@ export default function HomeScreen() {
                 </View>
                 <Text style={styles.pathEyebrow}>LEARNING PATH</Text>
                 <Text style={styles.pathTitle} numberOfLines={1}>{item.title}</Text>
-                <Text style={styles.muted} numberOfLines={1}>
-                  ★ {item.ratingAvg.toFixed(1)} · {item.courseCount} courses · {item.totalVotes} votes
-                </Text>
-              </Pressable>
+                {/* Was `${avg} ★` inside the joined string below. */}
+                <View style={styles.pathMetaRow}>
+                  {item.totalVotes > 0 && <Stars value={item.ratingAvg} size={10} />}
+                  <Text style={styles.muted} numberOfLines={1}>
+                    {item.totalVotes > 0 ? `· ${plural(item.courseCount, "course")}` : plural(item.courseCount, "course")}
+                  </Text>
+                </View>
+              </Press>
             )}
           />
         </View>
@@ -198,17 +207,26 @@ export default function HomeScreen() {
       {/* Explore by category — tiles */}
       {feed.categories.length > 0 && (
         <View style={styles.wrap}>
-          <View style={styles.header}>
-            <Text style={styles.title}>Explore by category</Text>
-            <Link href="/browse" style={styles.seeAll}>See all</Link>
-          </View>
+          <SectionHeader title="Explore by category" icon="grid" href="/browse" />
           <View style={styles.catGrid}>
             {feed.categories.map((c) => (
-              <Pressable key={c.slug} style={styles.catTile} onPress={goTo(`/browse?category=${c.slug}`)}>
-                <Text style={styles.catIcon}>{c.icon ?? "🎓"}</Text>
+              <Press
+                key={c.slug}
+                style={[styles.catTile, { width: catW }]}
+                onPress={goTo(`/browse?category=${c.slug}`)}
+                accessibilityLabel={`${c.name}, ${plural(c.courseCount, "course")}`}
+              >
+                {/* Category icons come from the database as emoji, so they stay
+                    emoji — but a category with none got a bare 🎓 that read as a
+                    missing image. */}
+                {c.icon ? (
+                  <Text style={styles.catIcon}>{c.icon}</Text>
+                ) : (
+                  <Ionicons name="school-outline" size={19} color={colors.accent} />
+                )}
                 <Text style={styles.catName} numberOfLines={1}>{c.name}</Text>
-                <Text style={styles.catCount}>{c.courseCount} courses</Text>
-              </Pressable>
+                <Text style={styles.catCount}>{plural(c.courseCount, "course")}</Text>
+              </Press>
             ))}
           </View>
         </View>
@@ -216,10 +234,10 @@ export default function HomeScreen() {
 
       {/* Lecturers + Channels & Schools */}
       {feed.lecturers.length > 0 && (
-        <PersonRow title="Lecturers" seeAllHref="/lecturers" people={feed.lecturers} href={(l) => `/lecturers/${l.slug}`} image={(l) => l.photoUrl} sub={(l) => `${l.courseCount} courses`} />
+        <PersonRow title="Lecturers" icon="person" seeAllHref="/lecturers" people={feed.lecturers} href={(l) => `/lecturers/${l.slug}`} image={(l) => l.photoUrl} sub={(l) => plural(l.courseCount, "course")} />
       )}
       {feed.organizations.length > 0 && (
-        <PersonRow title="Channels & Schools" seeAllHref="/organizations" people={feed.organizations} href={(o) => `/organizations/${o.slug}`} image={(o) => o.logoUrl} sub={(o) => `${o.courseCount} courses`} />
+        <PersonRow title="Channels & Schools" icon="business" seeAllHref="/organizations" people={feed.organizations} href={(o) => `/organizations/${o.slug}`} image={(o) => o.logoUrl} sub={(o) => plural(o.courseCount, "course")} />
       )}
     </ScrollView>
   );
@@ -227,53 +245,61 @@ export default function HomeScreen() {
 
 /* ---------- helpers ---------- */
 
-function formatMin(min: number): string {
-  if (!min) return "";
-  const h = Math.floor(min / 60);
-  const m = Math.round(min % 60);
-  return h > 0 ? `${h}h ${m}m` : `${m}m`;
-}
-
 function DropdownRow({
   title,
+  icon,
   options,
   value,
   onChange,
   courses,
 }: {
   title: string;
+  icon?: keyof typeof Ionicons.glyphMap;
   options: { value: string; label: string }[];
   value: string;
   onChange: (v: string) => void;
   courses: CourseSummary[];
 }) {
   const [open, setOpen] = useState(false);
+  const current = options.find((o) => o.value === value) ?? options[0];
   return (
     <View style={styles.wrap}>
       <View style={styles.header}>
-        <Text style={styles.title}>{title}</Text>
+        <View style={styles.titleWrap}>
+          {!!icon && <Ionicons name={icon} size={16} color={colors.accent} />}
+          <Text style={styles.title} numberOfLines={1}>{title}</Text>
+        </View>
         <View style={styles.dropWrap}>
-          <Pressable style={styles.drop} onPress={() => setOpen((o) => !o)}>
+          <Press
+            style={styles.drop}
+            onPress={() => setOpen((o) => !o)}
+            accessibilityRole="button"
+            accessibilityState={{ expanded: open }}
+            accessibilityLabel={`${title}: ${current?.label ?? "All"}. Change`}
+          >
             <Text style={styles.dropLabel} numberOfLines={1}>
-              {options.find((o) => o.value === value)?.label ?? (options[0]?.label ?? "All")}
+              {current?.label ?? "All"}
             </Text>
-            <Text style={styles.dropCaret}>{open ? "▲" : "▼"}</Text>
-          </Pressable>
+            <Ionicons name={open ? "chevron-up" : "chevron-down"} size={13} color={colors.accent} />
+          </Press>
           {open && (
             <View style={styles.dropMenu}>
               {options.map((o) => (
-                <Pressable
+                <Press
                   key={o.value}
                   style={styles.dropItem}
                   onPress={() => {
                     onChange(o.value);
                     setOpen(false);
                   }}
+                  accessibilityLabel={o.label}
+                  accessibilityState={{ selected: o.value === value }}
                 >
-                  <Text style={[styles.dropItemLabel, o.value === value && { color: colors.accent, fontWeight: "700" }]}>
+                  <Text style={[styles.dropItemLabel, o.value === value && styles.dropItemOn]}>
                     {o.label}
                   </Text>
-                </Pressable>
+                  {o.value === value && <Ionicons name="checkmark" size={14} color={colors.accent} />}
+                </Press>
               ))}
             </View>
           )}
@@ -294,8 +320,9 @@ function DropdownRow({
   );
 }
 
-function PersonRow({
+function PersonRow<P extends { id: string; name: string; slug: string }>({
   title,
+  icon,
   seeAllHref,
   people,
   href,
@@ -303,22 +330,25 @@ function PersonRow({
   sub,
 }: {
   title: string;
+  icon?: keyof typeof Ionicons.glyphMap;
   seeAllHref: string;
-  people: { id: string; name: string; slug: string }[];
-  href: (p: any) => string;
-  image: (p: any) => string | null;
-  sub: (p: any) => string;
+  people: P[];
+  href: (p: P) => string;
+  image: (p: P) => string | null;
+  sub: (p: P) => string;
 }) {
   const router = useRouter();
   return (
     <View style={styles.wrap}>
-      <View style={styles.header}>
-        <Text style={styles.title}>{title}</Text>
-        <Link href={seeAllHref} style={styles.seeAll}>See all</Link>
-      </View>
+      <SectionHeader title={title} icon={icon} href={seeAllHref} />
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.row}>
         {people.map((p) => (
-          <Pressable key={p.id} style={styles.person} onPress={() => router.push(href(p) as any)}>
+          <Press
+            key={p.id}
+            style={styles.person}
+            onPress={() => router.push(href(p) as never)}
+            accessibilityLabel={`${p.name}, ${sub(p)}`}
+          >
             {image(p) ? (
               <Image source={{ uri: cloudinaryUrl(image(p), { width: 96, height: 96 }) ?? undefined }} style={styles.personPhoto} resizeMode="cover" />
             ) : (
@@ -327,8 +357,8 @@ function PersonRow({
               </View>
             )}
             <Text style={styles.personName} numberOfLines={1}>{p.name}</Text>
-            <Text style={styles.muted} numberOfLines={1}>{sub(p)}</Text>
-          </Pressable>
+            <Text style={styles.personSub} numberOfLines={1}>{sub(p)}</Text>
+          </Press>
         ))}
       </ScrollView>
     </View>
@@ -338,48 +368,49 @@ function PersonRow({
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
   content: { paddingTop: 12, paddingBottom: 32 },
-  center: { flex: 1, backgroundColor: colors.bg, alignItems: "center", justifyContent: "center", gap: 10 },
-  errorText: { color: colors.muted, fontSize: 14 },
-  retry: {
-    borderWidth: 1,
-    borderColor: colors.accent,
-    borderRadius: radius.pill,
-    paddingHorizontal: 18,
-    paddingVertical: 8,
-    marginTop: 6,
-  },
-  retryText: { color: colors.accent, fontWeight: "700" },
   wrap: { marginBottom: 22 },
   header: {
     flexDirection: "row",
     alignItems: "center",
     justifyContent: "space-between",
+    gap: 10,
     paddingHorizontal: 16,
     marginBottom: 10,
   },
-  title: { color: colors.text, fontSize: 17, fontWeight: "700" },
-  seeAll: { color: colors.accent, fontSize: 13, fontWeight: "600" },
+  titleWrap: { flexDirection: "row", alignItems: "center", gap: 7, flexShrink: 1 },
+  title: { color: colors.text, fontSize: 17, fontWeight: "700", letterSpacing: -0.2 },
   row: { paddingHorizontal: 16, gap: 12 },
-  muted: { color: colors.muted, fontSize: 12, paddingHorizontal: 16 },
+  muted: { color: colors.muted, fontSize: 12 },
   mutedEmpty: { color: colors.muted, fontSize: 12, paddingHorizontal: 16 },
 
   // hero
-  hero: { height: 240, borderRadius: 18, marginHorizontal: 16, marginBottom: 22, overflow: "hidden", backgroundColor: colors.surface },
+  hero: {
+    borderRadius: 18,
+    marginHorizontal: 16,
+    marginBottom: 22,
+    overflow: "hidden",
+    backgroundColor: colors.surface,
+    ...elevation[2],
+  },
   heroFallback: { backgroundColor: "hsl(32 42% 18%)" },
   heroShade: { ...(StyleSheet.absoluteFill as object), backgroundColor: "rgba(10,9,7,.55)" },
-  heroContent: { flex: 1, justifyContent: "flex-end", padding: 18 },
+  heroContent: { flex: 1, minWidth: 0, justifyContent: "flex-end", padding: 18 },
   heroEyebrow: { color: colors.accent, fontSize: 10, fontWeight: "800", letterSpacing: 1.2, marginBottom: 6 },
   heroTitle: { color: colors.text, fontSize: 24, fontWeight: "800", letterSpacing: -0.5, lineHeight: 28 },
-  heroMeta: { color: "#cfc6ba", fontSize: 12, marginTop: 6 },
+  heroMetaRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 6 },
+  heroMetaText: { color: "#cfc6ba", fontSize: 12, flexShrink: 1 },
   heroCta: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
     alignSelf: "flex-start",
     backgroundColor: colors.accent,
     borderRadius: radius.pill,
     paddingHorizontal: 16,
-    paddingVertical: 8,
+    paddingVertical: 10,
     marginTop: 12,
   },
-  heroCtaText: { color: "#211308", fontSize: 12, fontWeight: "800" },
+  heroCtaText: { color: colors.onAccent, fontSize: 12, fontWeight: "800" },
 
   // dropdown
   dropWrap: { position: "relative", zIndex: 20 },
@@ -387,33 +418,37 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
+    minHeight: 36,
     borderWidth: 1,
     borderColor: colors.border,
     borderRadius: radius.pill,
     paddingHorizontal: 12,
-    paddingVertical: 6,
     backgroundColor: colors.surface,
     maxWidth: 200,
   },
   dropLabel: { color: colors.text, fontSize: 12, fontWeight: "700", maxWidth: 150 },
-  dropCaret: { color: colors.accent, fontSize: 9 },
   dropMenu: {
     position: "absolute",
-    top: 34,
+    top: 42,
     right: 0,
     backgroundColor: colors.surfaceRaised,
     borderWidth: 1,
     borderColor: colors.border,
-    borderRadius: 12,
+    borderRadius: radius.md,
     paddingVertical: 4,
-    minWidth: 180,
-    shadowColor: "#000",
-    shadowOpacity: 0.4,
-    shadowRadius: 12,
-    elevation: 8,
+    minWidth: 190,
+    ...elevation[3],
   },
-  dropItem: { paddingHorizontal: 14, paddingVertical: 9 },
-  dropItemLabel: { color: colors.text, fontSize: 13 },
+  dropItem: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    gap: 10,
+    minHeight: 42,
+    paddingHorizontal: 14,
+  },
+  dropItemLabel: { color: colors.text, fontSize: 13, flexShrink: 1 },
+  dropItemOn: { color: colors.accent, fontWeight: "700" },
 
   // learning paths
   pathCard: {
@@ -425,22 +460,24 @@ const styles = StyleSheet.create({
     borderColor: colors.border,
   },
   pathStrip: { flexDirection: "row", gap: 4, height: 64 },
-  pathThumb: { flex: 1, borderRadius: 6 },
+  pathThumb: { flex: 1, borderRadius: 6, backgroundColor: colors.surfaceRaised },
   pathThumbFallback: { backgroundColor: "hsl(32 42% 18%)" },
   pathEyebrow: { color: colors.accent, fontSize: 9, fontWeight: "800", letterSpacing: 1, marginTop: 12 },
   pathTitle: { color: colors.text, fontSize: 15, fontWeight: "700", marginTop: 3 },
+  pathMetaRow: { flexDirection: "row", alignItems: "center", gap: 5, marginTop: 2 },
 
-  // categories
+  // categories — width comes from the column count, which follows the screen
   catGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10, paddingHorizontal: 16 },
   catTile: {
-    width: "31%",
+    minHeight: 92,
+    justifyContent: "flex-start",
     backgroundColor: colors.surface,
     borderRadius: radius.md,
     padding: 12,
     borderWidth: 1,
     borderColor: colors.border,
   },
-  catIcon: { fontSize: 20 },
+  catIcon: { fontSize: 20, lineHeight: 24 },
   catName: { color: colors.text, fontSize: 12, fontWeight: "700", marginTop: 6 },
   catCount: { color: colors.muted, fontSize: 10, marginTop: 2 },
 
@@ -450,4 +487,5 @@ const styles = StyleSheet.create({
   personFallback: { alignItems: "center", justifyContent: "center", backgroundColor: colors.surfaceRaised },
   personInitial: { color: colors.accent, fontSize: 26, fontWeight: "800" },
   personName: { color: colors.text, fontSize: 12, fontWeight: "700", marginTop: 6, textAlign: "center" },
+  personSub: { color: colors.muted, fontSize: 11, marginTop: 1, textAlign: "center" },
 });

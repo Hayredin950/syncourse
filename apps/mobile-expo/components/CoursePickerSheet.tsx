@@ -1,16 +1,12 @@
+import { Ionicons } from "@expo/vector-icons";
 import { useQuery } from "@tanstack/react-query";
 import React, { useEffect, useMemo, useState } from "react";
-import {
-  ActivityIndicator,
-  FlatList,
-  Image,
-  Modal,
-  Pressable,
-  StyleSheet,
-  Text,
-  TextInput,
-  View,
-} from "react-native";
+import { FlatList, Image, StyleSheet, useWindowDimensions, View } from "react-native";
+import { Empty } from "./Empty";
+import { Press } from "./Press";
+import { Sheet } from "./Sheet";
+import { SkRows } from "./Skeleton";
+import { Text, TextInput } from "./Type";
 import * as api from "../lib/api";
 import { cloudinaryUrl } from "../lib/cloudinary";
 import { colors, radius } from "../lib/tokens";
@@ -26,6 +22,9 @@ import type { CourseSummary } from "../lib/types";
  *
  * `single` swaps ticking for picking: a circle post carries one recommendation,
  * so tapping a row there returns it immediately instead of building a set.
+ *
+ * The panel is the shared `Sheet` with `scroll={false}`, because the body is a
+ * FlatList and a virtualised list nested in a ScrollView loses its windowing.
  */
 export function CoursePickerSheet({
   visible,
@@ -50,6 +49,11 @@ export function CoursePickerSheet({
   const [dq, setDq] = useState("");
   const [picked, setPicked] = useState<string[]>([]);
   const have = useMemo(() => new Set(already), [already]);
+  const { height } = useWindowDimensions();
+  // Was a flat `maxHeight: 380`, which is most of a small phone and a third of a
+  // tablet. The sheet itself is capped at 88%, so the list takes a share of the
+  // screen and leaves room for the search box and the confirm button.
+  const listH = Math.max(200, Math.round(height * 0.44));
 
   // 300ms is long enough that typing a title doesn't fire a request per keystroke.
   useEffect(() => {
@@ -89,149 +93,178 @@ export function CoursePickerSheet({
   };
 
   return (
-    <Modal visible={visible} transparent animationType="slide" onRequestClose={onClose}>
-      <Pressable style={styles.backdrop} onPress={onClose}>
-        <Pressable style={styles.sheet} onPress={(e) => e.stopPropagation()}>
-          <View style={styles.header}>
-            <Text style={styles.title}>{heading}</Text>
-            <Pressable onPress={onClose} hitSlop={10}>
-              <Text style={styles.done}>Close</Text>
-            </Pressable>
-          </View>
-
-          <TextInput
-            style={styles.input}
-            value={q}
-            onChangeText={setQ}
-            placeholder="Search the catalogue…"
-            placeholderTextColor={colors.dim}
-            autoCorrect={false}
-          />
-
-          {isLoading ? (
-            <View style={styles.center}>
-              <ActivityIndicator color={colors.accent} />
-            </View>
-          ) : results.length === 0 ? (
-            <View style={styles.center}>
-              <Text style={styles.muted}>{dq ? `Nothing matches “${dq}”.` : "The catalogue is empty."}</Text>
-            </View>
-          ) : (
-            <FlatList
-              data={results}
-              keyExtractor={(c) => c.id}
-              style={styles.list}
-              contentContainerStyle={{ gap: 8, paddingVertical: 4 }}
-              keyboardShouldPersistTaps="handled"
-              renderItem={({ item }) => {
-                const owned = have.has(item.id);
-                const on = picked.includes(item.id);
-                const thumb = cloudinaryUrl(item.thumbnailUrl, { width: 120, height: 168 });
-                return (
-                  <Pressable
-                    style={[styles.row, owned && { opacity: 0.55 }]}
-                    onPress={() => !owned && toggle(item)}
-                    disabled={owned}
-                  >
-                    {thumb ? (
-                      <Image source={{ uri: thumb }} style={styles.thumb} />
-                    ) : (
-                      <View style={[styles.thumb, styles.thumbFallback]}>
-                        <Text style={{ color: colors.dim, fontSize: 12 }}>▶</Text>
-                      </View>
-                    )}
-                    <View style={{ flex: 1 }}>
-                      <Text style={styles.rowTitle} numberOfLines={2}>
-                        {item.title}
-                      </Text>
-                      <Text style={styles.muted}>
-                        {owned ? "already in this list" : `★ ${item.ratingAvg.toFixed(1)} · ${item.level}`}
-                      </Text>
+    <Sheet
+      visible={visible}
+      onClose={onClose}
+      title={heading}
+      subtitle={
+        single
+          ? "Tap a course to pick it"
+          : picked.length > 0
+            ? `${picked.length} picked`
+            : "Tick as many as you like"
+      }
+      scroll={false}
+      /* Single-pick commits on the row tap, so a confirm button would be a
+         second press that does nothing. */
+      footer={
+        single ? undefined : (
+          <Press
+            style={styles.primaryBtn}
+            disabled={picked.length === 0 || busy}
+            onPress={() => onAdd(picked, results.filter((r) => picked.includes(r.id)))}
+            haptic="success"
+            accessibilityLabel={`${cta} ${picked.length} selected`}
+          >
+            <Text style={styles.primaryLabel}>
+              {busy ? "Adding…" : picked.length === 0 ? cta : `${cta} ${picked.length}`}
+            </Text>
+          </Press>
+        )
+      }
+    >
+      <View style={styles.inputWrap}>
+        <Ionicons name="search" size={15} color={colors.dim} />
+        <TextInput
+          style={styles.input}
+          value={q}
+          onChangeText={setQ}
+          placeholder="Search the catalogue…"
+          placeholderTextColor={colors.dim}
+          autoCorrect={false}
+          autoCapitalize="none"
+          returnKeyType="search"
+        />
+        {q.length > 0 && (
+          <Press onPress={() => setQ("")} accessibilityLabel="Clear the search box" style={styles.clear}>
+            <Ionicons name="close-circle" size={16} color={colors.dim} />
+          </Press>
+        )}
+      </View>
+      {isLoading ? (
+        <View style={styles.loading}>
+          <SkRows n={5} thumb={34} />
+        </View>
+      ) : results.length === 0 ? (
+        <Empty
+          icon="search"
+          title={dq ? `Nothing matches “${dq}”` : "The catalogue is empty"}
+          body={dq ? "Try a shorter phrase." : undefined}
+        />
+      ) : (
+        <FlatList
+          data={results}
+          keyExtractor={(c) => c.id}
+          style={[styles.list, { maxHeight: listH }]}
+          contentContainerStyle={styles.listContent}
+          keyboardShouldPersistTaps="handled"
+          keyboardDismissMode="on-drag"
+          renderItem={({ item }) => {
+            const owned = have.has(item.id);
+            const on = picked.includes(item.id);
+            const thumb = cloudinaryUrl(item.thumbnailUrl, { width: 120, height: 168 });
+            return (
+              <Press
+                style={[styles.row, owned && styles.rowOwned]}
+                onPress={() => !owned && toggle(item)}
+                disabled={owned}
+                haptic
+                accessibilityLabel={
+                  owned ? `${item.title}, already added` : `${on ? "Unpick" : "Pick"} ${item.title}`
+                }
+                accessibilityState={{ selected: on || owned }}
+              >
+                {thumb ? (
+                  <Image source={{ uri: thumb }} style={styles.thumb} resizeMode="cover" />
+                ) : (
+                  <View style={[styles.thumb, styles.thumbFallback]}>
+                    <Ionicons name="school-outline" size={14} color={colors.dim} />
+                  </View>
+                )}
+                <View style={styles.rowBody}>
+                  <Text style={styles.rowTitle} numberOfLines={2}>
+                    {item.title}
+                  </Text>
+                  {owned ? (
+                    <Text style={styles.muted}>Already added</Text>
+                  ) : (
+                    <View style={styles.metaRow}>
+                      {item.ratingCount > 0 && (
+                        <>
+                          <Ionicons name="star" size={10} color={colors.star} />
+                          <Text style={styles.muted}>{item.ratingAvg.toFixed(1)}</Text>
+                          <Text style={styles.muted}>·</Text>
+                        </>
+                      )}
+                      <Text style={styles.muted}>{item.level}</Text>
                     </View>
-                    <View style={[styles.tick, (on || owned) && styles.tickOn]}>
-                      <Text style={[styles.tickLabel, (on || owned) && styles.tickLabelOn]}>
-                        {on || owned ? "✓" : "＋"}
-                      </Text>
-                    </View>
-                  </Pressable>
-                );
-              }}
-            />
-          )}
-
-          {/* Single-pick commits on the row tap, so a confirm button would be a
-              second press that does nothing. */}
-          {!single && (
-            <Pressable
-              style={[styles.primaryBtn, (picked.length === 0 || busy) && { opacity: 0.4 }]}
-              disabled={picked.length === 0 || busy}
-              onPress={() => onAdd(picked, results.filter((r) => picked.includes(r.id)))}
-            >
-              <Text style={styles.primaryLabel}>
-                {busy ? "Adding…" : picked.length === 0 ? cta : `${cta} ${picked.length}`}
-              </Text>
-            </Pressable>
-          )}
-        </Pressable>
-      </Pressable>
-    </Modal>
+                  )}
+                </View>
+                <View style={[styles.tick, (on || owned) && styles.tickOn]}>
+                  <Ionicons
+                    name={on || owned ? "checkmark" : "add"}
+                    size={16}
+                    color={on || owned ? colors.accent : colors.dim}
+                  />
+                </View>
+              </Press>
+            );
+          }}
+        />
+      )}
+    </Sheet>
   );
 }
 
 const styles = StyleSheet.create({
-  backdrop: { flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "flex-end" },
-  sheet: {
-    backgroundColor: colors.surface,
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    padding: 20,
-    paddingBottom: 34,
-    maxHeight: "86%",
-  },
-  header: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", marginBottom: 12 },
-  title: { color: colors.text, fontSize: 18, fontWeight: "800" },
-  done: { color: colors.accent, fontSize: 14, fontWeight: "700" },
-  input: {
+  inputWrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
     backgroundColor: colors.bg,
-    borderRadius: radius.sm,
+    borderRadius: radius.pill,
     borderWidth: 1,
     borderColor: colors.border,
-    color: colors.text,
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 14,
+    paddingHorizontal: 14,
   },
-  list: { marginTop: 12, maxHeight: 380 },
-  center: { padding: 30, alignItems: "center" },
-  muted: { color: colors.muted, fontSize: 12 },
+  input: { flex: 1, color: colors.text, paddingVertical: 11, fontSize: 14 },
+  clear: { padding: 2 },
+  loading: { paddingTop: 6 },
+  list: { marginTop: 12 },
+  listContent: { gap: 8, paddingVertical: 4 },
+  muted: { color: colors.muted, fontSize: 11.5 },
+  metaRow: { flexDirection: "row", alignItems: "center", gap: 5 },
   row: {
     flexDirection: "row",
     alignItems: "center",
     gap: 12,
+    minHeight: 68,
     backgroundColor: colors.bg,
     borderRadius: radius.md,
     padding: 10,
+    borderWidth: StyleSheet.hairlineWidth,
+    borderColor: colors.border,
   },
+  rowOwned: { opacity: 0.55 },
   thumb: { width: 34, height: 48, borderRadius: 6, backgroundColor: colors.surfaceRaised },
   thumbFallback: { alignItems: "center", justifyContent: "center" },
-  rowTitle: { color: colors.text, fontSize: 13, fontWeight: "600" },
+  rowBody: { flex: 1, minWidth: 0, gap: 3 },
+  rowTitle: { color: colors.text, fontSize: 13, fontWeight: "700", lineHeight: 18 },
   tick: {
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 30,
+    height: 30,
+    borderRadius: 15,
     backgroundColor: colors.surfaceRaised,
     alignItems: "center",
     justifyContent: "center",
   },
   tickOn: { backgroundColor: colors.accentSoft },
-  tickLabel: { color: colors.dim, fontSize: 13, fontWeight: "800" },
-  tickLabelOn: { color: colors.accent },
   primaryBtn: {
+    minHeight: 48,
+    alignItems: "center",
+    justifyContent: "center",
     backgroundColor: colors.accent,
     borderRadius: radius.pill,
-    paddingVertical: 12,
-    alignItems: "center",
-    marginTop: 16,
   },
-  primaryLabel: { color: "#000", fontWeight: "800" },
+  primaryLabel: { color: colors.onAccent, fontSize: 14, fontWeight: "800" },
 });
