@@ -40,3 +40,16 @@ export function formatDate(iso: string | null): string {
   const d = new Date(iso);
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
+
+/**
+ * A count and its noun, agreeing.
+ *
+ * Twenty-eight places wrote this by hand as `{n} {n === 1 ? "course" : "courses"}`,
+ * and the ones that didn't bother printed "1 courses" and "1 ratings". Includes
+ * the number, and groups it — "1,204 downloads", not "1204 downloads".
+ *
+ * Mirrors `plural` in the app's `lib/types.ts` so the two surfaces read the same.
+ */
+export function plural(n: number, one: string, many = `${one}s`): string {
+  return `${n.toLocaleString()} ${n === 1 ? one : many}`;
+}
