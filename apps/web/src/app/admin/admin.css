@@ -508,7 +508,10 @@
   padding: 12px 16px;
   border-bottom: 1px solid var(--adm-line);
 }
-.admin-card__head h3 { margin: 0; }
+/* Flex, not just a reset margin: Tailwind's preflight sets `display: block` on
+   every svg, so a heading that opens with an icon renders the icon on a line of
+   its own above the words. Every icon-led h3 in here relies on this. */
+.admin-card__head h3 { display: flex; align-items: center; gap: 6px; margin: 0; }
 .admin-grid-2 { display: grid; grid-template-columns: 1.6fr 1fr; gap: 14px; align-items: start; }
 /* Two charts side by side read as a comparison, so they get equal halves rather
    than the main/aside split of .admin-grid-2. */
@@ -1023,11 +1026,21 @@ a.admin-tile:hover {
   flex-wrap: wrap;
 }
 .admin-panel__title { font-size: 13px; font-weight: 650; color: var(--adm-ink); }
-/* A head titled with an <h3> keeps it on one line: at 390px "Attachments"
-   preceded by a paperclip broke the icon onto its own line and the buttons rode
-   up beside the orphan. Scoped to h3 so the longer `Edit <name>` titles on the
-   table pages — which use .admin-panel__title — can still wrap. */
-.admin-panel__head h3 { margin: 0; white-space: nowrap; }
+/* A head titled with an <h3> keeps its icon on the title's line. Tailwind's
+   preflight makes every svg `display: block`, so a Lucide icon dropped into
+   heading text takes a line of its own — at 390px the paperclip sat above
+   "Attachments" with the buttons riding up beside the orphan. Flex puts them
+   back on one row and the gap replaces the icon's margin. `nowrap` then keeps
+   the count from wrapping away from the word it counts. Scoped to h3 so the
+   longer `Edit <name>` titles on the table pages — which use
+   .admin-panel__title — can still wrap. */
+.admin-panel__head h3 {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  white-space: nowrap;
+}
 
 /* Checkbox — native input, restyled, so keyboard and a11y come for free. */
 .admin-check {
@@ -1413,7 +1426,9 @@ a.admin-tile:hover {
 .admin-minitiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
 .admin-minitile { padding: 11px 12px; border: 1px solid var(--adm-line); border-radius: var(--adm-r); background: var(--adm-plane); }
 .admin-minitile strong { display: block; font-size: 17px; font-weight: 650; color: var(--adm-ink); letter-spacing: -0.02em; }
-.admin-minitile span { font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--adm-ink-4); }
+/* Flex for the same reason as .admin-card__head h3 — the label is "icon + one
+   word", and a block-level svg would stack them. */
+.admin-minitile span { display: flex; align-items: center; gap: 4px; font-size: 10px; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--adm-ink-4); }
 /* Same treatment as .admin-tile--attn: a queue with work in it is warned about,
    not recoloured wholesale. */
 .admin-minitile--attn { border-color: rgba(250, 178, 25, 0.28); }

@@ -180,21 +180,21 @@ function CourseDetail() {
         <div className="admin-minitile">
           <strong>{(row?.downloadCount ?? 0).toLocaleString("en-US")}</strong>
           <span>
-            <Download size={10} style={{ verticalAlign: -1, marginRight: 4 }} />
+            <Download size={10} />
             Downloads
           </span>
         </div>
         <div className="admin-minitile">
           <strong>{row ? row.ratingAvg.toFixed(1) : "—"}</strong>
           <span>
-            <Star size={10} style={{ verticalAlign: -1, marginRight: 4 }} />
+            <Star size={10} />
             Average rating
           </span>
         </div>
         <div className="admin-minitile">
           <strong>{lessons.toLocaleString("en-US")}</strong>
           <span>
-            <Layers size={10} style={{ verticalAlign: -1, marginRight: 4 }} />
+            <Layers size={10} />
             Lessons in {plural(course.sections.length, "section")}
           </span>
         </div>

@@ -206,7 +206,7 @@ export default function AdminTelegramPage() {
                 }}
               />
               <span className="admin-field__hint">
-                <Megaphone size={11} style={{ verticalAlign: -1, marginRight: 4 }} />
+                <Megaphone size={11} style={{ display: "inline", verticalAlign: -1, marginRight: 4 }} />
                 Blocked users are skipped silently.
               </span>
             </div>

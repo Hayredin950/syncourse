@@ -216,7 +216,7 @@ function UserDetail() {
           <div className="admin-card admin-card--flush">
             <div className="admin-card__head">
               <h3>
-                <Star size={13} style={{ verticalAlign: -2, marginRight: 6 }} />
+                <Star size={13} />
                 Reviews
               </h3>
               <Link href="/admin/reviews" className="admin-section-head__hint">
@@ -256,7 +256,7 @@ function UserDetail() {
           <div className="admin-card admin-card--flush">
             <div className="admin-card__head">
               <h3>
-                <CircleDollarSign size={13} style={{ verticalAlign: -2, marginRight: 6 }} />
+                <CircleDollarSign size={13} />
                 Payments
               </h3>
               <Link href="/admin/payments" className="admin-section-head__hint">

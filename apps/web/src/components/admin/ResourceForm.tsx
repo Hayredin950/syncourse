@@ -523,9 +523,9 @@ export function ResourceForm({ initial }: { initial?: AdminResourceDetail }) {
           <div className="admin-card">
             <div className="admin-panel__head">
               <h3>
-                <Paperclip size={13} style={{ verticalAlign: "-2px", marginRight: 6 }} />
+                <Paperclip size={13} />
                 Attachments
-                {media.length > 0 && <span className="admin-dim"> · {media.length}</span>}
+                {media.length > 0 && <span className="admin-dim">· {media.length}</span>}
               </h3>
               <span className="admin-inline" style={{ gap: 6 }}>
                 <button
