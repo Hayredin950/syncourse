@@ -72,7 +72,7 @@ export default function RootLayout() {
             <Stack.Screen name="courses/[slug]/lessons/[lessonId]" options={{ title: "Lesson" }} />
             <Stack.Screen name="auth" options={{ title: "Account" }} />
             <Stack.Screen name="premium" options={{ title: "Premium" }} />
-            <Stack.Screen name="lists/index" options={{ title: "Collections" }} />
+            {/* `/lists` is a tab now, so only the detail screen pushes here. */}
             <Stack.Screen name="lists/[id]" options={{ title: "Collection" }} />
             <Stack.Screen name="resources/index" options={{ title: "Resources" }} />
             {/* The hero carries the title, so a duplicate in the bar is noise. */}

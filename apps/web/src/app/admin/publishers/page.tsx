@@ -1,11 +1,13 @@
 "use client";
 
 import { Suspense, useEffect, useMemo, useState } from "react";
-import { Plus, Search, X } from "lucide-react";
+import { Building2, Plus, Search, X } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { del, get, post, patch } from "@/lib/api";
 import type { AdminPublisherRow } from "@/lib/types";
 import { useAdminToast } from "@/components/admin/AdminToast";
+import AdminAvatar from "@/components/admin/AdminAvatar";
+import AdminEmpty from "@/components/admin/AdminEmpty";
 import ConfirmButton from "@/components/admin/ConfirmButton";
 import ExpandableText from "@/components/admin/ExpandableText";
 import UploadField from "@/components/admin/UploadField";
@@ -70,6 +72,10 @@ function AdminPublishers() {
     setDescription(p?.description ?? "");
   }
   const close = () => setEditing(undefined);
+  const clearFilters = () => {
+    setQuery("");
+    setTypeFilter("all");
+  };
 
   const save = async () => {
     if (!name.trim()) return toast.error("A name is required");
@@ -227,18 +233,24 @@ function AdminPublishers() {
             </div>
           ))}
         {!loading && filtered.length === 0 && (
-          <p className="admin-empty">{rows.length === 0 ? "No publishers yet." : "Nothing matches those filters."}</p>
+          <AdminEmpty
+            icon={<Building2 size={18} />}
+            title={rows.length === 0 ? "No publishers yet" : "Nothing matches those filters"}
+            hint={
+              rows.length === 0
+                ? "A publisher is the university, company or imprint a course is credited to."
+                : "Search matches names and descriptions; the type filter narrows it further."
+            }
+            action={
+              rows.length === 0
+                ? { label: "New publisher", onClick: () => open(null) }
+                : { label: "Clear filters", onClick: clearFilters }
+            }
+          />
         )}
         {filtered.map((p) => (
           <div key={p.id} className="admin-row admin-row--top">
-            <span className="admin-avatar admin-avatar--sq">
-              {p.logoUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={p.logoUrl} alt="" style={{ objectFit: "contain" }} />
-              ) : (
-                p.name.charAt(0).toUpperCase()
-              )}
-            </span>
+            <AdminAvatar src={p.logoUrl} name={p.name} square contain />
             <div className="admin-row__main">
               <div className="admin-inline" style={{ gap: 7 }}>
                 <span className="admin-row__title">{p.name}</span>

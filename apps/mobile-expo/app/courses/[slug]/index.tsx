@@ -16,7 +16,7 @@ import { Press } from "../../../components/Press";
 import { Sheet } from "../../../components/Sheet";
 import { SkCourse } from "../../../components/Skeleton";
 import { colors, radius } from "../../../lib/tokens";
-import { formatDurationSec, plural, type Category, type CourseSummary, type TelegramFile } from "../../../lib/types";
+import { formatDurationSec, isOpaqueFileName, mediaTitle, plural, type Category, type CourseDetail, type CourseSummary, type Review, type TelegramFile } from "../../../lib/types";
 import { Stars, StarPicker, StarRow } from "../../../components/StarRating";
 
 const BOT_USERNAME = "syncourse_bot";
@@ -76,22 +76,18 @@ export default function CourseDetailScreen() {
   });
 
   /**
-   * Saved and liked start from the reader's own library.
+   * Saved, liked, the like tally and your own stars all come with the course now.
    *
    * Both icons used to be permanently unfilled: the screen fired the toggle and
    * never looked at the answer, so a saved course looked unsaved on every visit
-   * and a second tap silently un-saved it. `/me/learning` is the same cached
-   * query the Learning tab already holds, so this usually costs no request.
+   * and a second tap silently un-saved it. That was first patched by scanning the
+   * cached `/me/learning` list, which worked but could only answer for courses
+   * that fit in the library page it happens to hold. The detail payload answers
+   * for this course directly, in the request the screen already makes.
    */
-  const { data: library } = useQuery({
-    queryKey: ["my-library"],
-    queryFn: api.myLibrary,
-    enabled: !!me,
-    retry: false,
-  });
-
   const [saved, setSaved] = useState<boolean | null>(null);
   const [liked, setLiked] = useState<boolean | null>(null);
+  const [likeCount, setLikeCount] = useState(0);
   const [myRating, setMyRating] = useState(0);
   const [reviewText, setReviewText] = useState("");
   const [spoilers, setSpoilers] = useState(false);
@@ -105,10 +101,12 @@ export default function CourseDetailScreen() {
 
   const courseId = data?.id;
   useEffect(() => {
-    if (!library || !courseId) return;
-    setSaved(library.saved.some((x) => x.id === courseId));
-    setLiked(library.liked.some((x) => x.id === courseId));
-  }, [library, courseId]);
+    if (!data) return;
+    setSaved(data.saved);
+    setLiked(data.liked);
+    setLikeCount(data.likeCount);
+    setMyRating(data.myRating);
+  }, [data]);
 
   // Both toggles answer with the state they left behind, so the icon settles on
   // the truth even if the tap raced another device.
@@ -123,6 +121,7 @@ export default function CourseDetailScreen() {
     mutationFn: () => api.toggleLike(slug!),
     onSuccess: (r) => {
       setLiked(r.liked);
+      setLikeCount(r.likeCount);
       queryClient.invalidateQueries({ queryKey: ["my-library"] });
     },
   });
@@ -144,6 +143,49 @@ export default function CourseDetailScreen() {
     mutationFn: (id: string) => api.toggleUpvote(id),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["course", slug] }),
   });
+
+  /**
+   * An author's edit or delete is patched into the cached course rather than
+   * refetched. A refetch would drop the reader back at the top of a screen they
+   * had scrolled down to read — and the row they just changed is the one thing
+   * they are looking at.
+   *
+   * Both walk the top level and each reply list, because a reply is a review row
+   * with a parent and the two paths are otherwise identical.
+   */
+  const patchReviewRow = (id: string, body: string, editedAt: string | null) =>
+    queryClient.setQueryData<CourseDetail>(["course", slug], (prev) =>
+      prev
+        ? {
+            ...prev,
+            reviews: prev.reviews.map((rv) =>
+              rv.id === id
+                ? { ...rv, body, editedAt }
+                : { ...rv, replies: rv.replies?.map((rep) => (rep.id === id ? { ...rep, body, editedAt } : rep)) },
+            ),
+          }
+        : prev,
+    );
+
+  const dropReviewRow = (id: string) =>
+    queryClient.setQueryData<CourseDetail>(["course", slug], (prev) => {
+      if (!prev) return prev;
+      if (prev.reviews.some((rv) => rv.id === id)) {
+        return { ...prev, reviews: prev.reviews.filter((rv) => rv.id !== id) };
+      }
+      return {
+        ...prev,
+        reviews: prev.reviews.map((rv) =>
+          rv.replies?.some((rep) => rep.id === id)
+            ? {
+                ...rv,
+                replies: rv.replies.filter((rep) => rep.id !== id),
+                replyCount: Math.max(0, rv.replyCount - 1),
+              }
+            : rv,
+        ),
+      };
+    });
 
   /** Signed out, these all 401 in silence — send them to sign in instead. */
   const gated =
@@ -451,13 +493,23 @@ export default function CourseDetailScreen() {
               <Ionicons name={saved ? "bookmark" : "bookmark-outline"} size={18} color={saved ? colors.accent : colors.text} />
             </Press>
             <Press
-              style={[styles.iconBtn, liked && styles.iconBtnOn]}
+              style={[styles.iconBtn, liked && styles.iconBtnOn, likeCount > 0 && styles.iconBtnWide]}
               onPress={gated(() => likeMut.mutate())}
               haptic
-              accessibilityLabel={liked ? "Remove like" : "Like this course"}
+              accessibilityLabel={
+                liked
+                  ? `Remove like. ${likeCount} ${likeCount === 1 ? "like" : "likes"}`
+                  : `Like this course. ${likeCount} ${likeCount === 1 ? "like" : "likes"}`
+              }
               accessibilityState={{ selected: !!liked }}
             >
               <Ionicons name={liked ? "heart" : "heart-outline"} size={18} color={liked ? colors.accent : colors.text} />
+              {/* The tally is the point of the button once anyone has pressed it —
+                  a filled heart says what you did, the number says what everyone
+                  else did. Hidden at zero rather than showing a bare "0". */}
+              {likeCount > 0 && (
+                <Text style={[styles.iconBtnCount, liked && styles.iconBtnCountOn]}>{likeCount}</Text>
+              )}
             </Press>
             {/* Saving keeps a course to yourself; a list is how you group them and
                 hand the group to someone else. */}
@@ -683,6 +735,7 @@ export default function CourseDetailScreen() {
               )}
             </View>
             {r.body && <Text style={styles.reviewBody}>{r.body}</Text>}
+            {r.editedAt && <Text style={styles.ownEdited}>edited</Text>}
             <View style={styles.reviewFooter}>
               <Press
                 style={styles.actionBtn}
@@ -702,6 +755,9 @@ export default function CourseDetailScreen() {
                 <Text style={styles.muted}>{plural(r.replyCount, "reply", "replies")}</Text>
               )}
             </View>
+            {r.mine && (
+              <ReviewOwnControls row={r} onEdited={patchReviewRow} onDeleted={dropReviewRow} />
+            )}
             {/* the API nests reply bodies under each review — render them instead
                 of only a counter the reader can never open */}
             {(r.replies ?? []).map((rep) => (
@@ -711,6 +767,10 @@ export default function CourseDetailScreen() {
                   {rep.isStaff ? " · staff" : ""}
                 </Text>
                 {rep.body && <Text style={styles.replyBody}>{rep.body}</Text>}
+                {rep.editedAt && <Text style={styles.ownEdited}>edited</Text>}
+                {rep.mine && (
+                  <ReviewOwnControls row={rep} small onEdited={patchReviewRow} onDeleted={dropReviewRow} />
+                )}
               </View>
             ))}
           </View>
@@ -795,7 +855,7 @@ export default function CourseDetailScreen() {
                     <Text style={styles.filePartNum}>{String(file.partIndex).padStart(2, "0")}</Text>
                     <View style={styles.rowText}>
                       <Text style={styles.fileName} numberOfLines={2}>
-                        {file.fileName || `Part ${file.partIndex}`}
+                        {mediaTitle(file, `Part ${file.partIndex}`)}
                       </Text>
                       <Text style={styles.fileMeta}>
                         {file.fileSizeMb ? `${file.fileSizeMb} MB` : "Telegram attachment"}
@@ -894,9 +954,15 @@ export default function CourseDetailScreen() {
                     {f.moduleTitle ? `${f.moduleTitle} · Part ${f.partIndex}` : `Part ${f.partIndex}`}
                   </Text>
                   {/* These facts were crammed into one <Text> with no separators,
-                      so a filename ran straight into its size. */}
+                      so a filename ran straight into its size. A storage key is
+                      dropped rather than printed — it names nothing. */}
                   <Text style={styles.fileMeta} numberOfLines={1}>
-                    {[f.fileName, f.fileSizeMb ? `${f.fileSizeMb} MB` : null].filter(Boolean).join(" · ")}
+                    {[
+                      f.fileName && !isOpaqueFileName(f.fileName) ? f.fileName : null,
+                      f.fileSizeMb ? `${f.fileSizeMb} MB` : null,
+                    ]
+                      .filter(Boolean)
+                      .join(" · ")}
                   </Text>
                 </View>
               </Press>
@@ -951,6 +1017,132 @@ export default function CourseDetailScreen() {
         onClose={() => setListOpen(false)}
       />
     </ScrollView>
+  );
+}
+
+/**
+ * The author's controls on their own review or reply.
+ *
+ * Editing happens in place, where the text was, so the thread keeps its scroll
+ * position while you fix a typo. Deleting asks first, inline — an OS Alert on top
+ * of a screen you are already reading hides the thing you are deciding about, and
+ * a review with replies under it is exactly the case where you need to see them.
+ *
+ * Held at muted grey until pressed: these belong to one reader on a page everyone
+ * else can see, so they must not outshout Upvote.
+ */
+function ReviewOwnControls({
+  row,
+  small,
+  onEdited,
+  onDeleted,
+}: {
+  row: Review;
+  small?: boolean;
+  onEdited: (id: string, body: string, editedAt: string | null) => void;
+  onDeleted: (id: string) => void;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(row.body ?? "");
+  const [confirming, setConfirming] = useState(false);
+
+  const editMut = useMutation({
+    mutationFn: (body: string) => api.editReview(row.id, body),
+    onSuccess: (r) => {
+      onEdited(row.id, r.body, r.editedAt);
+      setEditing(false);
+    },
+  });
+  const delMut = useMutation({
+    mutationFn: () => api.deleteReview(row.id),
+    onSuccess: () => onDeleted(row.id),
+  });
+
+  if (editing) {
+    return (
+      <View style={styles.ownEdit}>
+        <TextInput
+          style={styles.reviewInput}
+          value={draft}
+          onChangeText={setDraft}
+          multiline
+          autoFocus
+          placeholder="Your review"
+          placeholderTextColor={colors.dim}
+        />
+        <View style={styles.ownRow}>
+          <Press
+            style={styles.actionBtn}
+            disabled={editMut.isPending || !draft.trim()}
+            onPress={() => {
+              const body = draft.trim();
+              if (!body || body === row.body) {
+                setDraft(row.body ?? "");
+                setEditing(false);
+                return;
+              }
+              editMut.mutate(body);
+            }}
+            accessibilityLabel="Save changes"
+          >
+            <Text style={styles.ownSave}>{editMut.isPending ? "Saving…" : "Save"}</Text>
+          </Press>
+          <Press
+            style={styles.actionBtn}
+            disabled={editMut.isPending}
+            onPress={() => {
+              setDraft(row.body ?? "");
+              setEditing(false);
+            }}
+            accessibilityLabel="Cancel editing"
+          >
+            <Text style={styles.actionLabel}>Cancel</Text>
+          </Press>
+        </View>
+        {editMut.isError && <Text style={styles.ownErr}>That did not save. Try again.</Text>}
+      </View>
+    );
+  }
+
+  if (confirming) {
+    return (
+      <View style={styles.ownRow}>
+        <Text style={styles.ownAsk}>
+          Delete this {small ? "reply" : "review"}
+          {!small && row.replyCount > 0 ? ` and its ${plural(row.replyCount, "reply", "replies")}` : ""}?
+        </Text>
+        <Press
+          style={styles.actionBtn}
+          disabled={delMut.isPending}
+          onPress={() => delMut.mutate()}
+          accessibilityLabel="Confirm delete"
+        >
+          <Text style={styles.ownDanger}>{delMut.isPending ? "Deleting…" : "Delete"}</Text>
+        </Press>
+        <Press
+          style={styles.actionBtn}
+          disabled={delMut.isPending}
+          onPress={() => setConfirming(false)}
+          accessibilityLabel="Keep it"
+        >
+          <Text style={styles.actionLabel}>Keep</Text>
+        </Press>
+      </View>
+    );
+  }
+
+  return (
+    <View style={styles.ownRow}>
+      <Press style={styles.actionBtn} onPress={() => setEditing(true)} accessibilityLabel="Edit your review">
+        <Ionicons name="pencil-outline" size={13} color={colors.muted} />
+        <Text style={styles.actionLabel}>Edit</Text>
+      </Press>
+      <Press style={styles.actionBtn} onPress={() => setConfirming(true)} accessibilityLabel="Delete your review">
+        <Ionicons name="trash-outline" size={13} color={colors.muted} />
+        <Text style={styles.actionLabel}>Delete</Text>
+      </Press>
+      {delMut.isError && <Text style={styles.ownErr}>Could not delete that.</Text>}
+    </View>
   );
 }
 
@@ -1105,6 +1297,11 @@ const styles = StyleSheet.create({
   // Filled + ringed, so saved reads as saved at a glance and not just as a
   // slightly different glyph.
   iconBtnOn: { backgroundColor: colors.accentSoft, borderColor: colors.accent },
+  // A count needs room the 46px circle does not have. Widening rather than
+  // shrinking the glyph keeps the tap target at 46 in both directions.
+  iconBtnWide: { width: "auto", flexDirection: "row", gap: 5, paddingHorizontal: 14 },
+  iconBtnCount: { color: colors.text, fontSize: 13, fontWeight: "800", fontVariant: ["tabular-nums"] },
+  iconBtnCountOn: { color: colors.accent },
   downloadsCard: {
     backgroundColor: colors.surface,
     borderRadius: radius.md,
@@ -1252,6 +1449,13 @@ const styles = StyleSheet.create({
   },
   replyAuthor: { color: colors.text, fontSize: 12, fontWeight: "700" },
   replyBody: { color: colors.body, fontSize: 12, marginTop: 2 },
+  ownEdit: { marginTop: 8, gap: 2 },
+  ownEdited: { color: colors.dim, fontSize: 10.5, fontStyle: "italic", marginTop: 2 },
+  ownRow: { flexDirection: "row", alignItems: "center", flexWrap: "wrap", gap: 14, marginTop: 6 },
+  ownAsk: { color: colors.text, fontSize: 12 },
+  ownSave: { color: colors.accent, fontSize: 12, fontWeight: "800" },
+  ownDanger: { color: colors.danger, fontSize: 12, fontWeight: "700" },
+  ownErr: { color: colors.danger, fontSize: 11.5, marginTop: 4 },
   downloadsBox: {
     backgroundColor: colors.surface,
     borderRadius: radius.md,

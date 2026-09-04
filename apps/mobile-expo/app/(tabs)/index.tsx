@@ -130,7 +130,9 @@ export default function HomeScreen() {
         title="Cheat-sheets & roadmaps"
         icon="document-text"
         resources={resourcesQ.data?.results ?? []}
-        href="/resources"
+        /* The Browse tab, not the stack route: a shelf you are still browsing
+           should not take the bottom bar away with it. */
+        href="/browse?tab=resources"
       />
 
       {/* Explore by Category — dropdown row (phonofilm: Movie Genre →) */}

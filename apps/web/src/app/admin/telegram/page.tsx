@@ -13,6 +13,8 @@ import { get, post } from "@/lib/api";
 import type { AdminTelegramConsole } from "@/lib/types";
 import { relativeTime } from "@/lib/metrics";
 import { useAdminToast } from "@/components/admin/AdminToast";
+import AdminEmpty from "@/components/admin/AdminEmpty";
+import AdminFold from "@/components/admin/AdminFold";
 import ConfirmButton from "@/components/admin/ConfirmButton";
 import { plural } from "@/lib/format";
 
@@ -38,6 +40,10 @@ export default function AdminTelegramPage() {
   const [busy, setBusy] = useState("");
 
   const load = useCallback(() => {
+    // Clearing first matters for the retry button: the error branch renders on a
+    // truthy `error`, so a successful reload that left it set would still show
+    // the failure it just recovered from.
+    setError("");
     get<AdminTelegramConsole>("/admin/telegram")
       .then(setData)
       .catch((e) => setError(e instanceof Error ? e.message : "Could not reach the bot"));
@@ -51,7 +57,14 @@ export default function AdminTelegramPage() {
         <div className="admin-page-head">
           <h1>Telegram bot</h1>
         </div>
-        <p className="admin-empty">{error}</p>
+        <div className="admin-card">
+          <AdminEmpty
+            icon={<AlertTriangle size={18} />}
+            title="Could not reach the bot"
+            hint={error}
+            action={{ label: "Try again", onClick: load }}
+          />
+        </div>
       </div>
     );
   }
@@ -132,11 +145,11 @@ export default function AdminTelegramPage() {
               </>
             ) : (
               <>
-                <div className="admin-alert admin-alert--warn" role="status" style={{ marginBottom: 12 }}>
-                  <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 1 }} />
+                <div className="admin-notice admin-notice--warn" role="status" style={{ marginBottom: 12 }}>
+                  <AlertTriangle size={14} />
                   <span>
-                    Not connected. Until you connect, the console cannot attach Telegram files and the bot will not
-                    treat you as an admin unless your numeric id is in <code>TELEGRAM_ADMIN_IDS</code>.
+                    <strong>Not connected.</strong> Until you connect, the console cannot attach Telegram files and the
+                    bot will not treat you as an admin unless your numeric id is in <code>TELEGRAM_ADMIN_IDS</code>.
                   </span>
                 </div>
                 <a
@@ -199,13 +212,18 @@ export default function AdminTelegramPage() {
             </div>
           </div>
 
-          <div className="admin-card admin-card--flush">
-            <div className="admin-card__head">
-              <h3>Recent bot activity</h3>
-              <span className="admin-section-head__hint">Last {data.recent.length}</span>
-            </div>
+          <AdminFold
+            title="Recent bot activity"
+            hint={`Last ${data.recent.length}`}
+            collapseOnPhone
+            flush
+          >
             {data.recent.length === 0 ? (
-              <p className="admin-empty">Nothing yet.</p>
+              <AdminEmpty
+                icon={<Send size={18} />}
+                title="Nothing yet"
+                hint="Downloads, pairings and broadcasts show up here as the bot handles them."
+              />
             ) : (
               <div>
                 {data.recent.map((r, i) => (
@@ -221,7 +239,7 @@ export default function AdminTelegramPage() {
                 ))}
               </div>
             )}
-          </div>
+          </AdminFold>
         </div>
 
         <div className="admin-stack">

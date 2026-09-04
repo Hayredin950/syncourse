@@ -53,3 +53,39 @@ export function formatDate(iso: string | null): string {
 export function plural(n: number, one: string, many = `${one}s`): string {
   return `${n.toLocaleString()} ${n === 1 ? one : many}`;
 }
+
+/**
+ * True when a stored file name is a storage key rather than something a person
+ * typed.
+ *
+ * Cloudinary mints a 20-character public id when an upload arrives without
+ * `use_filename` — `hsjghfs0im0k6l1p2fzj.mp4`. Printing that as a heading tells a
+ * reader nothing except that we did not know what to call the file. The test:
+ * one unbroken token, long, carrying digits, and with too few vowels to be
+ * language. `algebra-cheatsheet.pdf` keeps its name (separator), so does
+ * `Lecture 4.pdf` (space), and so does `roadmap.png` (short, no digits).
+ */
+export function isOpaqueFileName(name: string): boolean {
+  const stem = name.split("/").pop()!.replace(/\.[a-z0-9]{1,5}$/i, "");
+  if (stem.length < 12 || /[\s._-]/.test(stem)) return false;
+  if (!/\d/.test(stem)) return false;
+  const letters = stem.replace(/[^a-z]/gi, "");
+  const vowels = stem.replace(/[^aeiou]/gi, "");
+  return letters.length > 0 && vowels.length / letters.length < 0.25;
+}
+
+/**
+ * What to print above a piece of media: the editor's caption if there is one,
+ * the uploaded file name if it means anything, and otherwise the generic noun
+ * the caller supplies ("Video", "Recording", "Document").
+ */
+export function mediaTitle(
+  item: { fileName?: string | null; caption?: string | null },
+  fallback: string,
+): string {
+  const name = item.fileName?.trim();
+  if (name && !isOpaqueFileName(name)) return name;
+  const cap = item.caption?.trim();
+  if (cap) return cap;
+  return fallback;
+}

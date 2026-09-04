@@ -1,4 +1,4 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
@@ -71,8 +71,72 @@ export class ReviewsService {
       replyCount: 0,
       upvotes: review.upvotes,
       upvoted: false,
+      // you wrote it, so the card it renders into gets its edit/delete controls
+      mine: true,
       replies: [],
     };
+  }
+
+  /**
+   * Edit a review or a reply. Only the author may change the words — staff can
+   * remove something, but rewriting what someone else said under their name is
+   * a different power and not one this endpoint grants.
+   *
+   * `editedAt` is stamped on every save so the card can say "edited": a review
+   * that quietly changes after people have replied to it is how a thread stops
+   * making sense.
+   */
+  async editReview(userId: string, reviewId: string, body: string, containsSpoilers?: boolean) {
+    const review = await this.prisma.review.findUnique({ where: { id: reviewId } });
+    if (!review) throw new NotFoundException('Review not found');
+    if (review.userId !== userId) throw new ForbiddenException('You can only edit your own review');
+
+    const text = body.trim();
+    if (!text) throw new BadRequestException('A review needs some text');
+
+    const updated = await this.prisma.review.update({
+      where: { id: reviewId },
+      data: {
+        body: text,
+        containsSpoilers: containsSpoilers ?? review.containsSpoilers,
+        editedAt: new Date(),
+      },
+    });
+    return {
+      id: updated.id,
+      body: updated.body,
+      containsSpoilers: updated.containsSpoilers,
+      editedAt: updated.editedAt,
+    };
+  }
+
+  /**
+   * Delete a review or a reply. The author can always remove their own; staff
+   * can remove anyone's, which is the moderation path.
+   *
+   * Replies cascade (`onDelete: Cascade` on the self-relation), so deleting a
+   * top-level review takes its thread with it. The reply count is returned so
+   * the client knows how many cards vanished rather than guessing.
+   *
+   * `isStaff` is read from the database, not the token: the JWT payload carries
+   * only id/email/username, so a staff claim in it would be nothing but a
+   * client's word for it.
+   */
+  async deleteReview(userId: string, reviewId: string) {
+    const [review, actor] = await Promise.all([
+      this.prisma.review.findUnique({
+        where: { id: reviewId },
+        include: { _count: { select: { replies: true } } },
+      }),
+      this.prisma.user.findUnique({ where: { id: userId }, select: { isStaff: true } }),
+    ]);
+    if (!review) throw new NotFoundException('Review not found');
+    if (review.userId !== userId && !actor?.isStaff) {
+      throw new ForbiddenException('You can only delete your own review');
+    }
+
+    await this.prisma.review.delete({ where: { id: reviewId } });
+    return { deleted: true, id: reviewId, repliesRemoved: review._count.replies };
   }
 
   async listReviews(courseIdOrSlug: string, sort: 'top' | 'newest' = 'newest', page = 1) {

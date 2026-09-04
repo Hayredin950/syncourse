@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
+  Activity,
   AlertTriangle,
   BookOpen,
   CircleDollarSign,
@@ -22,6 +23,7 @@ import {
   periodDelta,
   relativeTime,
 } from "@/lib/metrics";
+import AdminEmpty from "@/components/admin/AdminEmpty";
 import StatTile from "@/components/admin/StatTile";
 
 const DAY_MS = 86_400_000;
@@ -219,7 +221,11 @@ export default function AdminDashboard() {
           </div>
           <div style={{ padding: "6px 16px 14px" }}>
             {activity.length === 0 ? (
-              <p className="admin-empty">Nothing has happened yet.</p>
+              <AdminEmpty
+                icon={<Activity size={18} />}
+                title="Nothing has happened yet"
+                hint="Signups, publishes, reviews and payments all land here as they happen."
+              />
             ) : (
               <ul className="admin-activity">
                 {activity.slice(0, 8).map((e, i) => (

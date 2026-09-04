@@ -2,12 +2,14 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ChevronRight, Copy, Search, ShieldCheck, ShieldOff, X } from "lucide-react";
+import { ChevronRight, Copy, Search, ShieldCheck, ShieldOff, UserX, X } from "lucide-react";
 import { get, patch } from "@/lib/api";
 import type { AdminUserRow } from "@/lib/types";
 import { formatDate, plural } from "@/lib/format";
 import { useAuth } from "@/lib/auth";
 import { useAdminToast } from "@/components/admin/AdminToast";
+import AdminAvatar from "@/components/admin/AdminAvatar";
+import AdminEmpty from "@/components/admin/AdminEmpty";
 import Pagination, { clampPage } from "@/components/admin/Pagination";
 
 export default function AdminUsers() {
@@ -114,6 +116,14 @@ export default function AdminUsers() {
     }
   };
 
+  /** The way out of a filter combination that matches nothing. */
+  const clearFilters = () => {
+    setQuery("");
+    setRoleFilter("all");
+    setPlanFilter("all");
+    setPage(1);
+  };
+
   return (
     <div>
       <div className="admin-page-head">
@@ -213,13 +223,18 @@ export default function AdminUsers() {
             {!loading && visible.length === 0 && (
               <tr>
                 <td colSpan={7}>
-                  <p className="admin-empty">No account matches those filters.</p>
+                  <AdminEmpty
+                    icon={<UserX size={18} />}
+                    title="No account matches those filters"
+                    hint="Clear the role and plan filters, or search a different name."
+                    action={{ label: "Clear filters", onClick: clearFilters }}
+                  />
                 </td>
               </tr>
             )}
             {visible.map((u) => (
               <tr key={u.id} data-selected={selected.has(u.id)}>
-                <td>
+                <td data-role="select">
                   {u.id !== user?.id && (
                     <input
                       type="checkbox"
@@ -230,40 +245,39 @@ export default function AdminUsers() {
                     />
                   )}
                 </td>
-                <td>
+                <td data-role="head">
                   <Link href={`/admin/users/detail?id=${u.id}`} className="admin-inline admin-cell-link" style={{ gap: 10 }}>
-                    <span className="admin-avatar">
-                      {u.avatarUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={u.avatarUrl} alt="" />
-                      ) : (
-                        u.name.charAt(0).toUpperCase()
-                      )}
-                    </span>
-                    <span>
+                    <AdminAvatar src={u.avatarUrl} name={u.name} />
+                    <span style={{ minWidth: 0 }}>
                       <span className="admin-cell-title admin-inline" style={{ gap: 6 }}>
                         {u.name}
                         {u.id === user?.id && <span className="admin-badge admin-badge--gray">You</span>}
-                        {!u.isVerified && <span className="admin-badge admin-badge--gray">Unverified</span>}
+                        {!u.isVerified && <span className="admin-badge admin-badge--warn">Unverified</span>}
                       </span>
-                      <span className="admin-cell-sub" style={{ display: "block" }}>
+                      <span className="admin-cell-sub" style={{ display: "block", overflowWrap: "anywhere" }}>
                         {u.email} · @{u.username}
                       </span>
                     </span>
                   </Link>
                 </td>
-                <td>
+                <td data-label="Access">
                   {u.isStaff ? (
-                    <span className="admin-badge admin-badge--accent">Staff</span>
+                    <span className="admin-badge admin-badge--blue">Staff</span>
                   ) : u.planType === "premium" ? (
-                    <span className="admin-badge admin-badge--green">Premium</span>
+                    <span className="admin-badge admin-badge--violet">Premium</span>
                   ) : (
                     <span className="admin-badge admin-badge--gray">Free</span>
                   )}
                 </td>
-                <td className="admin-table__num">{u.downloads}</td>
-                <td className="admin-table__num">{u.reviews}</td>
-                <td className="admin-table__quiet">{formatDate(u.createdAt)}</td>
+                <td className="admin-table__num" data-label="Downloads">
+                  {u.downloads}
+                </td>
+                <td className="admin-table__num" data-label="Reviews">
+                  {u.reviews}
+                </td>
+                <td className="admin-table__quiet" data-label="Joined">
+                  {formatDate(u.createdAt)}
+                </td>
                 <td className="admin-table__actions">
                   {u.id !== user?.id && (
                     <button
@@ -279,7 +293,6 @@ export default function AdminUsers() {
                     href={`/admin/users/detail?id=${u.id}`}
                     className="admin-btn admin-btn--quiet admin-btn--icon"
                     aria-label={`Open ${u.name}`}
-                    style={{ marginLeft: 4 }}
                   >
                     <ChevronRight size={14} />
                   </Link>

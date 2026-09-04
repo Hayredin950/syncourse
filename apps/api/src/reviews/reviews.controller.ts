@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, Param, Patch, Post, Query } from '@nestjs/common';
 import { ReviewsService } from './reviews.service';
 import { CurrentUser } from '../common/current-user.decorator';
 import { AuthUser } from '../common/jwt-auth.guard';
@@ -25,6 +25,15 @@ class ReviewDto {
   parentId?: string;
 }
 
+class EditReviewDto {
+  @IsString()
+  body: string;
+
+  @IsOptional()
+  @IsBoolean()
+  containsSpoilers?: boolean;
+}
+
 @Controller()
 export class ReviewsController {
   constructor(private readonly reviews: ReviewsService) {}
@@ -37,6 +46,18 @@ export class ReviewsController {
   @Post('courses/:id/reviews')
   postReview(@Param('id') id: string, @CurrentUser() user: AuthUser, @Body() dto: ReviewDto) {
     return this.reviews.postReview(user.id, id, dto.body, dto.containsSpoilers ?? false, dto.parentId);
+  }
+
+  /** Authors fix their own typos. Works for replies too — a reply is a Review. */
+  @Patch('reviews/:id')
+  editReview(@Param('id') id: string, @CurrentUser() user: AuthUser, @Body() dto: EditReviewDto) {
+    return this.reviews.editReview(user.id, id, dto.body, dto.containsSpoilers);
+  }
+
+  /** Author or staff. Deleting a top-level review takes its replies with it. */
+  @Delete('reviews/:id')
+  deleteReview(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    return this.reviews.deleteReview(user.id, id);
   }
 
   @Public()

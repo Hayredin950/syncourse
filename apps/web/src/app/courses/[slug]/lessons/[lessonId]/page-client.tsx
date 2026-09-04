@@ -8,7 +8,7 @@ import { get, post } from "@/lib/api";
 import type { LessonDetail } from "@/lib/types";
 import { useAuth } from "@/lib/auth";
 import { SkRows } from "@/components/Skeleton";
-import { formatSec } from "@/lib/format";
+import { formatSec, mediaTitle } from "@/lib/format";
 import { Toast } from "@/components/Toast";
 
 // Static export: real lesson URLs are served at runtime via the SPA fallback (_redirects).
@@ -97,12 +97,14 @@ export default function LessonPage() {
       const r = await get<{ url: string; fileName: string }>(`/lessons/${lessonId}/file-url?attachmentId=${attachmentId}`);
       const a = document.createElement("a");
       a.href = r.url;
+      // `a.download` keeps the real name — the file on disk should be what the
+      // server called it. The toast is for a person, so it gets the readable one.
       a.download = r.fileName || fileName;
       a.rel = "noopener";
       document.body.appendChild(a);
       a.click();
       a.remove();
-      setToast(`Downloading ${r.fileName || fileName}…`);
+      setToast(`Downloading ${mediaTitle({ fileName: r.fileName || fileName }, "file")}…`);
       void recordDownload(r.fileName || fileName);
     } catch (e: any) {
       setToast(e.message || "Download failed — sign in and try again");
@@ -231,7 +233,7 @@ export default function LessonPage() {
                   <div key={a.id} className="flex items-center gap-3 rounded-lg border border-border bg-surface p-3">
                     <span className="text-lg">📦</span>
                     <div className="min-w-0 flex-1">
-                      <div className="line-clamp-1 text-sm font-medium text-text">{a.fileName || "Course file"}</div>
+                      <div className="line-clamp-1 text-sm font-medium text-text">{mediaTitle(a, "Course file")}</div>
                       <div className="text-[11px] text-dim">
                         {a.fileType} · {a.sizeMb > 0 ? `${a.sizeMb.toFixed(1)} MB` : "size unknown"}
                       </div>

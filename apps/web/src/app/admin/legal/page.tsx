@@ -1,10 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Plus, X } from "lucide-react";
+import { AlertTriangle, Info, Plus, Scale, X } from "lucide-react";
 import { get, patch, post } from "@/lib/api";
 import type { AdminLegalRow } from "@/lib/types";
 import { useAdminToast } from "@/components/admin/AdminToast";
+import AdminEmpty from "@/components/admin/AdminEmpty";
 import ConfirmButton from "@/components/admin/ConfirmButton";
 import { Markdown } from "@/components/Markdown";
 import { plural } from "@/lib/format";
@@ -291,20 +292,24 @@ export default function AdminLegalPage() {
 
           {editing && (
             <div
-              className={`admin-alert ${willNotify > 0 ? "admin-alert--warn" : "admin-alert--info"}`}
+              className={`admin-notice ${willNotify > 0 ? "admin-notice--warn" : ""}`}
+              role="status"
               style={{ marginTop: 12 }}
             >
-              {form.minorEdit
-                ? `Saving quietly as v${editing.version}. Nobody is notified and no acceptance is reset.`
-                : republishing
-                  ? `Publishing as v${publishAs} — ${
-                      willNotify === 0
-                        ? "nobody has accepted this version yet, so no notifications go out."
-                        : `${willNotify.toLocaleString("en-US")} ${
-                            willNotify === 1 ? "person" : "people"
-                          } who accepted v${editing.version} will be notified and asked to accept again.`
-                    }`
-                  : "No text change yet — saving now only updates the settings above."}
+              {willNotify > 0 ? <AlertTriangle size={14} /> : <Info size={14} />}
+              <span>
+                {form.minorEdit
+                  ? `Saving quietly as v${editing.version}. Nobody is notified and no acceptance is reset.`
+                  : republishing
+                    ? `Publishing as v${publishAs} — ${
+                        willNotify === 0
+                          ? "nobody has accepted this version yet, so no notifications go out."
+                          : `${willNotify.toLocaleString("en-US")} ${
+                              willNotify === 1 ? "person" : "people"
+                            } who accepted v${editing.version} will be notified and asked to accept again.`
+                      }`
+                    : "No text change yet — saving now only updates the settings above."}
+              </span>
             </div>
           )}
 
@@ -339,31 +344,36 @@ export default function AdminLegalPage() {
             </div>
           ))}
         {!loading && rows.length === 0 && (
-          <p className="admin-empty">
-            No legal documents yet. Create one and it appears at /legal/&lt;type&gt; straight away.
-          </p>
+          <AdminEmpty
+            icon={<Scale size={18} />}
+            title="No legal documents yet"
+            hint="A document is live at /legal/<type> the moment it is created — nothing to deploy."
+            action={{ label: "New document", onClick: () => open(null) }}
+          />
         )}
         {rows.map((d) => (
           <div key={d.id} className="admin-row">
             <div className="admin-row__main">
               <div className="admin-row__title">
                 {d.title}
-                <span className="admin-badge admin-badge--accent" style={{ marginLeft: 8 }}>
-                  v{d.version}
-                </span>
-                {!d.requiresAcceptance && (
-                  <span className="admin-badge admin-badge--gray" style={{ marginLeft: 6 }}>
-                    informational
-                  </span>
-                )}
+                <span className="admin-badge admin-badge--blue">v{d.version}</span>
+                {!d.requiresAcceptance && <span className="admin-badge admin-badge--gray">informational</span>}
               </div>
               <div className="admin-row__meta">
                 /legal/{d.type} · effective {fmt(d.effectiveAt)} · edited {fmt(d.updatedAt)}
                 {d.updatedBy ? ` by ${d.updatedBy}` : ""}
-                {d.requiresAcceptance &&
-                  ` · ${d.acceptedCurrent.toLocaleString("en-US")} of ${d.eligibleUsers.toLocaleString(
-                    "en-US",
-                  )} accounts on this version`}
+                {d.requiresAcceptance && (
+                  <>
+                    {" · "}
+                    <span
+                      title={`${d.acceptedCurrent.toLocaleString("en-US")} of ${d.eligibleUsers.toLocaleString(
+                        "en-US",
+                      )} accounts have accepted v${d.version}`}
+                    >
+                      {d.acceptedCurrent.toLocaleString("en-US")}/{d.eligibleUsers.toLocaleString("en-US")} accepted
+                    </span>
+                  </>
+                )}
               </div>
             </div>
             <div className="admin-row__actions">

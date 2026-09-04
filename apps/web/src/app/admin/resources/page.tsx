@@ -7,6 +7,7 @@ import { del, get } from "@/lib/api";
 import type { AdminResourceRow } from "@/lib/types";
 import { formatDate } from "@/lib/format";
 import { useAdminToast } from "@/components/admin/AdminToast";
+import AdminEmpty from "@/components/admin/AdminEmpty";
 import ConfirmButton from "@/components/admin/ConfirmButton";
 import Pagination, { clampPage } from "@/components/admin/Pagination";
 
@@ -84,6 +85,12 @@ export default function AdminResourcesPage() {
     } finally {
       setBusy(null);
     }
+  };
+
+  const clearFilters = () => {
+    setQuery("");
+    setScope("live");
+    setPage(1);
   };
 
   return (
@@ -180,17 +187,27 @@ export default function AdminResourcesPage() {
             {!loading && visible.length === 0 && (
               <tr>
                 <td colSpan={7}>
-                  <p className="admin-empty">
-                    {rows.length === 0
-                      ? "Nothing here yet. A cheat-sheet, roadmap or note published here appears at /resources straight away."
-                      : "Nothing matches those filters."}
-                  </p>
+                  {rows.length === 0 ? (
+                    <AdminEmpty
+                      icon={<FileText size={18} />}
+                      title="Nothing here yet"
+                      hint="A cheat-sheet, roadmap or note published here appears at /resources straight away."
+                      action={{ label: "New resource", href: "/admin/resources/new" }}
+                    />
+                  ) : (
+                    <AdminEmpty
+                      icon={<Search size={18} />}
+                      title="Nothing matches those filters"
+                      hint="Try a different title, or widen the scope to All."
+                      action={{ label: "Clear filters", onClick: clearFilters }}
+                    />
+                  )}
                 </td>
               </tr>
             )}
             {visible.map((r) => (
               <tr key={r.id}>
-                <td>
+                <td data-role="media">
                   <span className="admin-thumb" style={{ display: "block" }}>
                     {r.coverUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
@@ -200,7 +217,7 @@ export default function AdminResourcesPage() {
                     )}
                   </span>
                 </td>
-                <td style={{ maxWidth: 360 }}>
+                <td data-role="head" style={{ maxWidth: 360 }}>
                   <Link href={`/admin/resources/edit?slug=${r.slug}`} className="admin-cell-link">
                     <span className={`admin-cell-title ${r.deletedAt ? "admin-strike" : ""}`}>{r.title}</span>
                     <span className="admin-cell-sub" style={{ display: "block" }}>
@@ -210,17 +227,23 @@ export default function AdminResourcesPage() {
                     </span>
                   </Link>
                 </td>
-                <td>
+                <td data-role="wide">
                   <span className="admin-inline" style={{ gap: 4 }}>
                     <span className="admin-badge admin-badge--gray">{TYPE_LABELS[r.type] ?? r.type}</span>
-                    {r.isFeatured && <span className="admin-badge admin-badge--accent">Featured</span>}
+                    {r.isFeatured && <span className="admin-badge admin-badge--blue">Featured</span>}
                     {r.isEmpty && <span className="admin-badge admin-badge--red">Empty</span>}
                     {r.deletedAt && <span className="admin-badge admin-badge--red">Hidden</span>}
                   </span>
                 </td>
-                <td className="admin-table__num">{r.mediaCount}</td>
-                <td className="admin-table__num">{r.viewCount.toLocaleString("en-US")}</td>
-                <td className="admin-table__quiet">{formatDate(r.updatedAt)}</td>
+                <td className="admin-table__num" data-label="Files">
+                  {r.mediaCount}
+                </td>
+                <td className="admin-table__num" data-label="Views">
+                  {r.viewCount.toLocaleString("en-US")}
+                </td>
+                <td className="admin-table__quiet" data-label="Updated">
+                  {formatDate(r.updatedAt)}
+                </td>
                 <td className="admin-table__actions">
                   <a
                     className="admin-btn admin-btn--ghost admin-btn--sm"

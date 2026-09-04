@@ -13,7 +13,7 @@ import { Sk } from "../../../../components/Skeleton";
 import { Text } from "../../../../components/Type";
 import * as api from "../../../../lib/api";
 import { colors, elevation, radius } from "../../../../lib/tokens";
-import { formatDurationSec } from "../../../../lib/types";
+import { formatDurationSec, mediaTitle } from "../../../../lib/types";
 
 export default function LessonScreen() {
   const { slug, lessonId } = useLocalSearchParams<{ slug: string; lessonId: string }>();
@@ -219,12 +219,12 @@ export default function LessonScreen() {
               style={styles.fileRow}
               onPress={() => openAttachment(a.id)}
               haptic
-              accessibilityLabel={`Download ${a.fileName || "course file"}`}
+              accessibilityLabel={`Download ${mediaTitle(a, "course file")}`}
             >
               <Ionicons name="cube-outline" size={17} color={colors.dim} />
               <View style={styles.rowText}>
                 <Text numberOfLines={1} style={styles.fileLabel}>
-                  {a.fileName || "Course file"}
+                  {mediaTitle(a, "Course file")}
                 </Text>
                 <Text style={styles.muted}>
                   {[a.fileType, a.sizeMb > 0 ? `${a.sizeMb.toFixed(1)} MB` : null].filter(Boolean).join(" · ")}

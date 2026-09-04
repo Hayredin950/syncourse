@@ -33,7 +33,7 @@ const GROUPS: { title: string; rows: Row[] }[] = [
     title: "Around Syncourse",
     rows: [
       { icon: "people-outline", label: "Circles", href: "/circles", hint: "Groups and what they are reading" },
-      { icon: "document-text-outline", label: "Resources", href: "/resources", hint: "Cheat-sheets, roadmaps, notes" },
+      { icon: "document-text-outline", label: "Resources", href: "/browse?tab=resources", hint: "Cheat-sheets, roadmaps, notes" },
       { icon: "sparkles-outline", label: "What's new", href: "/changelog", hint: "Every release, newest first" },
     ],
   },

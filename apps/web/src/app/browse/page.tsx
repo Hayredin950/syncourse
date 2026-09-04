@@ -9,6 +9,7 @@ import type { CourseSummary } from "@/lib/types";
 import { CourseCard, CourseRow } from "@/components/CourseCard";
 import Modal from "@/components/Modal";
 import { MobileHeader } from "@/components/Nav";
+import { BrowseTabs } from "@/components/BrowseTabs";
 import { SkGrid } from "@/components/Skeleton";
 import { LoadError } from "@/components/LoadError";
 
@@ -109,7 +110,8 @@ function BrowseInner() {
 
   return (
     <main className="page">
-      <MobileHeader title="Courses" />
+      <MobileHeader title="Browse" />
+      <BrowseTabs />
 
       <div className="page-head">
         <div className="page-head__main">

@@ -72,7 +72,7 @@ export default function UploadField({
       <label className="admin-label" htmlFor={inputId}>
         {label}
       </label>
-      <div className="admin-inline" style={{ gap: 8, flexWrap: "nowrap" }}>
+      <div className="admin-uploadrow">
         <input
           id={inputId}
           className="admin-input admin-input--full"

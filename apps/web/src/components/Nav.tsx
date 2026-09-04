@@ -174,25 +174,30 @@ export function MobileHeader({ title = "Syncourse" }: { title?: string }) {
 /* ---------- BottomNav — fixed mobile tab bar ---------- */
 /**
  * The whole top bar is desktop-only, so this is the entire site navigation on a
- * phone: Courses, Resources and Circles had no way in at all. Search keeps its
- * icon in every page's MobileHeader and Collections is one tap inside Me, which
- * is what freed the two slots.
+ * phone. Five slots, and Courses and Resources used to take two of them for what
+ * is one job — browsing the library — which left Collections with no way in at
+ * all. They are now one Browse tab that lands on /browse and stays lit on
+ * /resources, with `BrowseTabs` switching between the two halves.
  */
 export function BottomNav() {
   const pathname = usePathname();
   if (pathname.startsWith("/auth")) return null;
-  const active = (href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href));
   const tabs = [
-    { href: "/", label: "Home", icon: Home },
-    { href: "/browse", label: "Courses", icon: BookOpen },
-    { href: "/resources", label: "Resources", icon: FileText },
-    { href: "/circles", label: "Circles", icon: MessageCircle },
-    { href: "/me", label: "Me", icon: CircleUserRound },
+    { href: "/", label: "Home", icon: Home, on: pathname === "/" },
+    {
+      href: "/browse",
+      label: "Browse",
+      icon: BookOpen,
+      on: pathname.startsWith("/browse") || pathname.startsWith("/resources") || pathname.startsWith("/courses"),
+    },
+    { href: "/lists", label: "Collections", icon: Bookmark, on: pathname.startsWith("/lists") },
+    { href: "/circles", label: "Circles", icon: MessageCircle, on: pathname.startsWith("/circles") },
+    { href: "/me", label: "Me", icon: CircleUserRound, on: pathname.startsWith("/me") },
   ];
   return (
     <nav className="mobile-nav mobile-only">
       {tabs.map((t) => (
-        <Link key={t.href} href={t.href} className={active(t.href) ? "active" : ""}>
+        <Link key={t.href} href={t.href} className={t.on ? "active" : ""}>
           <t.icon />
           <span>{t.label}</span>
         </Link>

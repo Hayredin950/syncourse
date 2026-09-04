@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, Download, FolderDown, Link2, RefreshCw, Send } from "lucide-react";
+import { AlertTriangle, Download, FolderDown, Link2, Paperclip, RefreshCw, Send } from "lucide-react";
 import { del, get, post } from "@/lib/api";
 import { plural } from "@/lib/format";
 import type {
@@ -11,6 +11,7 @@ import type {
   AdminTelegramModule,
 } from "@/lib/types";
 import { useAdminToast } from "./AdminToast";
+import AdminEmpty from "./AdminEmpty";
 import ConfirmButton from "./ConfirmButton";
 
 /**
@@ -96,8 +97,8 @@ export default function CourseFilesPanel({ slug }: { slug: string }) {
 
       {loadError && (
         <div style={{ padding: "12px 14px 0" }}>
-          <div className="admin-alert admin-alert--warn" role="status">
-            <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 1 }} />
+          <div className="admin-notice admin-notice--warn" role="status">
+            <AlertTriangle size={14} />
             <span>
               {loadError} — this course may still have files attached.{" "}
               <button type="button" className="admin-btn admin-btn--quiet admin-btn--sm" onClick={load}>
@@ -110,8 +111,8 @@ export default function CourseFilesPanel({ slug }: { slug: string }) {
 
       {bot && !bot.paired && (
         <div style={{ padding: "12px 14px 0" }}>
-          <div className="admin-alert admin-alert--warn" role="status">
-            <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 1 }} />
+          <div className="admin-notice admin-notice--warn" role="status">
+            <AlertTriangle size={14} />
             <span>
               Connect your Telegram account before attaching files — the bot needs your chat to read messages
               through. <Link href="/admin/telegram">Open the Telegram page →</Link>
@@ -121,9 +122,11 @@ export default function CourseFilesPanel({ slug }: { slug: string }) {
       )}
 
       {modules !== null && fileCount === 0 && !loadError && (
-        <p className="admin-empty">
-          No files attached. Students will see this course but have nothing to download.
-        </p>
+        <AdminEmpty
+          icon={<Paperclip size={18} />}
+          title="No files attached"
+          hint="Students can see this course but have nothing to download. Attach the archive below."
+        />
       )}
 
       {(modules ?? []).map((m, i) => (

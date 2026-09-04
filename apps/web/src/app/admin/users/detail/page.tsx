@@ -11,6 +11,7 @@ import {
   ShieldCheck,
   ShieldOff,
   Star,
+  UserSearch,
 } from "lucide-react";
 import { get, patch } from "@/lib/api";
 import type { AdminPaymentRow, AdminReviewRow, AdminUserRow } from "@/lib/types";
@@ -18,6 +19,8 @@ import { formatDate } from "@/lib/format";
 import { moneyByCurrency, relativeTime } from "@/lib/metrics";
 import { useAuth } from "@/lib/auth";
 import { useAdminToast } from "@/components/admin/AdminToast";
+import AdminAvatar from "@/components/admin/AdminAvatar";
+import AdminEmpty from "@/components/admin/AdminEmpty";
 import ConfirmButton from "@/components/admin/ConfirmButton";
 import ExpandableText from "@/components/admin/ExpandableText";
 
@@ -99,7 +102,14 @@ function UserDetail() {
         <Link href="/admin/users" className="admin-back">
           <ArrowLeft size={13} /> Users
         </Link>
-        <p className="admin-empty">No account was specified. Open an account from the users list.</p>
+        <div className="admin-card">
+          <AdminEmpty
+            icon={<UserSearch size={18} />}
+            title="No account was specified"
+            hint="This page needs an account id. Open one from the users list."
+            action={{ label: "Browse users", href: "/admin/users" }}
+          />
+        </div>
       </div>
     );
   }
@@ -124,7 +134,14 @@ function UserDetail() {
         <Link href="/admin/users" className="admin-back">
           <ArrowLeft size={13} /> Users
         </Link>
-        <p className="admin-empty">No account with that id — it may have been removed.</p>
+        <div className="admin-card">
+          <AdminEmpty
+            icon={<UserSearch size={18} />}
+            title="No account with that id"
+            hint="It may have been removed since the link was made."
+            action={{ label: "Browse users", href: "/admin/users" }}
+          />
+        </div>
       </div>
     );
   }
@@ -139,19 +156,12 @@ function UserDetail() {
 
       <div className="admin-page-head">
         <div className="admin-detail-head">
-          <span className="admin-avatar">
-            {account.avatarUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={account.avatarUrl} alt="" />
-            ) : (
-              account.name.charAt(0).toUpperCase()
-            )}
-          </span>
+          <AdminAvatar src={account.avatarUrl} name={account.name} />
           <div>
             <h1 className="admin-inline" style={{ gap: 7 }}>
               {account.name}
-              {account.isStaff && <span className="admin-badge admin-badge--accent">Staff</span>}
-              {account.planType === "premium" && <span className="admin-badge admin-badge--green">Premium</span>}
+              {account.isStaff && <span className="admin-badge admin-badge--blue">Staff</span>}
+              {account.planType === "premium" && <span className="admin-badge admin-badge--violet">Premium</span>}
               {isSelf && <span className="admin-badge admin-badge--gray">You</span>}
             </h1>
             <p className="page-desc">
@@ -214,11 +224,15 @@ function UserDetail() {
               </Link>
             </div>
             {mine.reviews.length === 0 ? (
-              <p className="admin-empty">
-                {account.reviews > 0
-                  ? "None in the 100 most recent reviews — older ones are not loaded."
-                  : "This account has not written a review."}
-              </p>
+              <AdminEmpty
+                icon={<Star size={18} />}
+                title={account.reviews > 0 ? "None in the recent window" : "No reviews written"}
+                hint={
+                  account.reviews > 0
+                    ? `This account has written ${account.reviews.toLocaleString("en-US")}, but none are in the 100 most recent across the platform.`
+                    : "Reviews are written from course pages on the site."
+                }
+              />
             ) : (
               <div>
                 {mine.reviews.map((r) => (
@@ -250,7 +264,11 @@ function UserDetail() {
               </Link>
             </div>
             {mine.payments.length === 0 ? (
-              <p className="admin-empty">Nothing in the 100 most recent payments for this account.</p>
+              <AdminEmpty
+                icon={<CircleDollarSign size={18} />}
+                title="No payments on record"
+                hint="Nothing for this account in the 100 most recent payments platform-wide."
+              />
             ) : (
               <table className="admin-table">
                 <thead>
@@ -265,15 +283,21 @@ function UserDetail() {
                 <tbody>
                   {mine.payments.map((p) => (
                     <tr key={p.id}>
-                      <td className="admin-cell-title">{p.planName}</td>
-                      <td className="admin-table__quiet">{p.paymentMethod}</td>
-                      <td className="admin-table__num">
+                      <td className="admin-cell-title" data-role="head">
+                        {p.planName}
+                      </td>
+                      <td className="admin-table__quiet" data-label="Method">
+                        {p.paymentMethod}
+                      </td>
+                      <td className="admin-table__num" data-label="Amount">
                         {p.amount.toLocaleString("en-US")} {p.currency}
                       </td>
-                      <td>
+                      <td data-label="Status">
                         <PaymentStatus status={p.status} />
                       </td>
-                      <td className="admin-table__quiet">{formatDate(p.createdAt)}</td>
+                      <td className="admin-table__quiet" data-label="Submitted">
+                        {formatDate(p.createdAt)}
+                      </td>
                     </tr>
                   ))}
                 </tbody>

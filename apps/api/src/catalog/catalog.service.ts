@@ -276,7 +276,7 @@ export class CatalogService {
 
     if (!course || course.deletedAt) throw new NotFoundException('Course not found');
 
-    const [ratings, reviewRows, downloadStats, myUpvotes, reviewRatings] = await Promise.all([
+    const [ratings, reviewRows, downloadStats, myUpvotes, reviewRatings, likeCount, mine] = await Promise.all([
       this.prisma.rating.aggregate({ where: { courseId: course.id }, _avg: { stars: true }, _count: true }),
       this.prisma.review.findMany({
         where: { courseId: course.id, parentId: null },
@@ -301,9 +301,30 @@ export class CatalogService {
         where: { courseId: course.id },
         select: { userId: true, stars: true },
       }),
+      // The like tally is public: the button shows a number, not just a state.
+      this.prisma.likedCourse.count({ where: { courseId: course.id } }),
+      // Whether *you* saved / liked / rated it. Signed out, all three are blank —
+      // the page renders the same buttons, they just start empty.
+      userId
+        ? Promise.all([
+            this.prisma.savedCourse.findUnique({
+              where: { userId_courseId: { userId, courseId: course.id } },
+              select: { userId: true },
+            }),
+            this.prisma.likedCourse.findUnique({
+              where: { userId_courseId: { userId, courseId: course.id } },
+              select: { userId: true },
+            }),
+            this.prisma.rating.findUnique({
+              where: { userId_courseId: { userId, courseId: course.id } },
+              select: { stars: true },
+            }),
+          ])
+        : Promise.resolve([null, null, null] as const),
     ]);
     const upvotedIds = new Set(myUpvotes.map((u) => u.reviewId));
     const ratingByUser = new Map(reviewRatings.map((r) => [r.userId, r.stars]));
+    const [savedRow, likedRow, myRatingRow] = mine;
 
     const ratingDistribution = await this.ratingDistribution(course.id);
 
@@ -340,6 +361,12 @@ export class CatalogService {
         count: ratings._count,
         distribution: ratingDistribution,
       },
+      // What this reader has already done to the course, so the buttons can open
+      // in the right state instead of claiming nothing is saved or liked.
+      saved: !!savedRow,
+      liked: !!likedRow,
+      likeCount,
+      myRating: myRatingRow?.stars ?? 0,
       reviews: reviewRows.map((r) => ({
         id: r.id,
         userName: r.user.name,
@@ -353,6 +380,9 @@ export class CatalogService {
         upvotes: r.upvotes,
         upvoted: upvotedIds.has(r.id),
         isStaff: r.user.isStaff,
+        // The author gets Edit and Delete; nobody else sees them. Staff can also
+        // delete, but the API is the authority on that — this only drives the UI.
+        mine: !!userId && r.userId === userId,
         replies: r.replies.map((rep) => ({
           id: rep.id,
           userName: rep.user.name,
@@ -366,6 +396,7 @@ export class CatalogService {
           replyCount: 0,
           upvotes: rep.upvotes,
           upvoted: upvotedIds.has(rep.id),
+          mine: !!userId && rep.userId === userId,
         })),
       })),
       downloads: downloadStats,

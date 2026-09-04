@@ -1,13 +1,15 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
+  AlertTriangle,
   ArrowLeft,
-  BadgeCheck,
+  BookOpen,
   Download,
   ExternalLink,
+  FileText,
   Layers,
   Pencil,
   Star,
@@ -17,6 +19,7 @@ import type { AdminCourseDetail, AdminCourseRow, AdminReviewRow } from "@/lib/ty
 import { formatDate, plural } from "@/lib/format";
 import { relativeTime } from "@/lib/metrics";
 import { useAdminToast } from "@/components/admin/AdminToast";
+import AdminEmpty from "@/components/admin/AdminEmpty";
 import ConfirmButton from "@/components/admin/ConfirmButton";
 import CourseFilesPanel from "@/components/admin/CourseFilesPanel";
 import ExpandableText from "@/components/admin/ExpandableText";
@@ -47,8 +50,11 @@ function CourseDetail() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  useEffect(() => {
+  const load = useCallback(() => {
     if (!slug) return;
+    // Cleared up front so a successful retry leaves the error branch, which
+    // renders on a truthy `error` and would otherwise outlive the failure.
+    setError(null);
     get<AdminCourseDetail>(`/admin/courses/${slug}`)
       .then(setCourse)
       .catch((e) => setError(e instanceof Error ? e.message : "Could not load that course"));
@@ -57,6 +63,8 @@ function CourseDetail() {
       .catch(() => {});
     get<AdminReviewRow[]>("/admin/reviews").then(setReviews).catch(() => {});
   }, [slug]);
+
+  useEffect(load, [load]);
 
   const mine = useMemo(() => reviews.filter((r) => r.course.slug === slug), [reviews, slug]);
 
@@ -84,7 +92,14 @@ function CourseDetail() {
         <Link href="/admin/courses" className="admin-back">
           <ArrowLeft size={13} /> Courses
         </Link>
-        <p className="admin-empty">No course was specified. Open one from the courses list.</p>
+        <div className="admin-card">
+          <AdminEmpty
+            icon={<BookOpen size={18} />}
+            title="No course was specified"
+            hint="This page needs a course slug. Open one from the courses list."
+            action={{ label: "Browse courses", href: "/admin/courses" }}
+          />
+        </div>
       </div>
     );
   }
@@ -95,7 +110,14 @@ function CourseDetail() {
         <Link href="/admin/courses" className="admin-back">
           <ArrowLeft size={13} /> Courses
         </Link>
-        <p className="admin-empty">{error}</p>
+        <div className="admin-card">
+          <AdminEmpty
+            icon={<AlertTriangle size={18} />}
+            title="Could not load that course"
+            hint={error}
+            action={{ label: "Try again", onClick: load }}
+          />
+        </div>
       </div>
     );
   }
@@ -138,8 +160,8 @@ function CourseDetail() {
             </p>
             <div className="admin-inline" style={{ gap: 5, marginTop: 6 }}>
               <span className="admin-badge admin-badge--gray">{course.contentType}</span>
-              {course.isPremium && <span className="admin-badge admin-badge--accent">Premium</span>}
-              {course.isFeatured && <span className="admin-badge admin-badge--green">Featured</span>}
+              {course.isPremium && <span className="admin-badge admin-badge--violet">Premium</span>}
+              {course.isFeatured && <span className="admin-badge admin-badge--blue">Featured</span>}
               {row?.deleted && <span className="admin-badge admin-badge--red">Deleted</span>}
             </div>
           </div>
@@ -182,8 +204,16 @@ function CourseDetail() {
         <div className="admin-stack">
           <div className="admin-card">
             <h3>Description</h3>
-            <ExpandableText text={course.description} lines={5} />
-            {!course.description && <p className="admin-empty">No description written yet.</p>}
+            {course.description ? (
+              <ExpandableText text={course.description} lines={5} />
+            ) : (
+              <AdminEmpty
+                icon={<FileText size={18} />}
+                title="No description written yet"
+                hint="This is the first paragraph a student reads on the course page."
+                action={{ label: "Write one", href: `/admin/courses/edit?slug=${course.slug}` }}
+              />
+            )}
           </div>
 
           <div className="admin-card admin-card--flush">
@@ -194,7 +224,12 @@ function CourseDetail() {
               </span>
             </div>
             {course.sections.length === 0 ? (
-              <p className="admin-empty">No sections yet — add them from the edit form.</p>
+              <AdminEmpty
+                icon={<Layers size={18} />}
+                title="No sections yet"
+                hint="The curriculum is what the course page lists as its contents — sections, then lessons inside them."
+                action={{ label: "Add sections", href: `/admin/courses/edit?slug=${course.slug}` }}
+              />
             ) : (
               <div>
                 {course.sections.map((s, i) => (
@@ -230,7 +265,11 @@ function CourseDetail() {
               </Link>
             </div>
             {mine.length === 0 ? (
-              <p className="admin-empty">Nothing in the 100 most recent reviews for this course.</p>
+              <AdminEmpty
+                icon={<Star size={18} />}
+                title="No reviews in the recent window"
+                hint="This list is drawn from the 100 most recent reviews platform-wide, so an older course can rate well here and still show none."
+              />
             ) : (
               <div>
                 {mine.map((r) => (
@@ -265,9 +304,7 @@ function CourseDetail() {
               <dt>Access</dt>
               <dd>
                 {course.isPremium ? (
-                  <span className="admin-status admin-status--good">
-                    <BadgeCheck size={12} /> Premium only
-                  </span>
+                  <span className="admin-badge admin-badge--violet">Premium only</span>
                 ) : (
                   <span className="admin-status admin-status--idle">Free to all</span>
                 )}

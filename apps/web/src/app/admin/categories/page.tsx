@@ -1,11 +1,12 @@
 "use client";
 
 import { Suspense, useEffect, useMemo, useState } from "react";
-import { Plus, Search, X } from "lucide-react";
+import { FolderTree, Plus, Search, X } from "lucide-react";
 import { useSearchParams } from "next/navigation";
 import { del, get, post, patch } from "@/lib/api";
 import type { AdminCategoryRow } from "@/lib/types";
 import { useAdminToast } from "@/components/admin/AdminToast";
+import AdminEmpty from "@/components/admin/AdminEmpty";
 import ConfirmButton from "@/components/admin/ConfirmButton";
 import { plural } from "@/lib/format";
 
@@ -219,7 +220,20 @@ function AdminCategories() {
             </div>
           ))}
         {!loading && filtered.length === 0 && (
-          <p className="admin-empty">{rows.length === 0 ? "No categories yet." : "No category matches that search."}</p>
+          <AdminEmpty
+            icon={<FolderTree size={18} />}
+            title={rows.length === 0 ? "No categories yet" : "No category matches that search"}
+            hint={
+              rows.length === 0
+                ? "Categories are how the site groups the catalogue — every course and resource picks one."
+                : undefined
+            }
+            action={
+              rows.length === 0
+                ? { label: "New category", onClick: () => open(null) }
+                : { label: "Clear search", onClick: () => setQuery("") }
+            }
+          />
         )}
         {filtered.map((c) => (
           <div key={c.id} className="admin-row">

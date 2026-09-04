@@ -24,7 +24,7 @@ import {
 import * as api from "../../lib/api";
 import { attachmentUrl, cloudinaryUrl } from "../../lib/cloudinary";
 import { colors, radius } from "../../lib/tokens";
-import { plural, type ResourceMedia } from "../../lib/types";
+import { mediaTitle, plural, type ResourceMedia } from "../../lib/types";
 
 /**
  * A resource, shown whole.
@@ -40,6 +40,16 @@ const PLAIN_KINDS = ["doc", "sheet", "slide", "archive", "code", "other"];
 
 const stamp = (iso: string) =>
   new Date(iso).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" });
+
+/** "docs.expo.dev" — a link's own name when nobody gave it one. */
+function hostOf(url: string | null): string {
+  if (!url) return "Link";
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return "Link";
+  }
+}
 
 export default function ResourceScreen() {
   const { slug } = useLocalSearchParams<{ slug: string }>();
@@ -106,7 +116,7 @@ export default function ResourceScreen() {
       const url = attachmentUrl(item.url);
       if (!url) return;
       countDownload();
-      flash(`Saving ${item.fileName ?? "file"}…`);
+      flash(`Saving ${mediaTitle(item, "file")}…`);
       void Linking.openURL(url);
     },
     [countDownload, flash],
@@ -164,7 +174,7 @@ export default function ResourceScreen() {
             a dead end, so this screen gives up its place in the stack. */}
         <Press
           style={styles.ghostBtn}
-          onPress={() => router.replace("/resources" as never)}
+          onPress={() => router.replace("/browse?tab=resources" as never)}
           accessibilityLabel="Go to all resources"
         >
           <Ionicons name="albums-outline" size={14} color={colors.text} />
@@ -305,32 +315,31 @@ export default function ResourceScreen() {
           <View style={styles.block}>
             <Text style={styles.blockHead}>Gallery</Text>
             <View style={styles.gallery}>
-              {images.map((m, i) => (
-                <Press
-                  key={m.id}
-                  style={[styles.shot, images.length === 1 && styles.shotWide]}
-                  onPress={() => setShot(i)}
-                  accessibilityLabel={
-                    m.caption
-                      ? `View ${m.caption} full size`
-                      : `View image ${i + 1} of ${images.length} full size`
-                  }
-                >
-                  <Image
-                    source={{ uri: cloudinaryUrl(m.url, { width: 800 }) ?? undefined }}
-                    style={styles.shotImg}
-                    resizeMode="cover"
-                  />
-                  <View style={styles.shotZoom}>
-                    <Ionicons name="expand-outline" size={12} color={colors.text} />
-                  </View>
-                  {!!m.caption && (
-                    <Text numberOfLines={1} style={styles.shotCap}>
-                      {m.caption}
-                    </Text>
-                  )}
-                </Press>
-              ))}
+              {images.map((m, i) => {
+                const label = mediaTitle(m, `Sheet ${i + 1}`);
+                return (
+                  <Press
+                    key={m.id}
+                    style={[styles.shot, images.length === 1 && styles.shotWide]}
+                    onPress={() => setShot(i)}
+                    accessibilityLabel={`View ${label} full size`}
+                  >
+                    <Image
+                      source={{ uri: cloudinaryUrl(m.url, { width: 800 }) ?? undefined }}
+                      style={styles.shotImg}
+                      resizeMode="cover"
+                    />
+                    <View style={styles.shotZoom}>
+                      <Ionicons name="expand-outline" size={12} color={colors.text} />
+                    </View>
+                    {!!m.caption && (
+                      <Text numberOfLines={1} style={styles.shotCap}>
+                        {m.caption}
+                      </Text>
+                    )}
+                  </Press>
+                );
+              })}
             </View>
           </View>
         )}
@@ -349,7 +358,7 @@ export default function ResourceScreen() {
             <Text style={styles.blockHead}>Listen</Text>
             {tracks.map((m) => {
               const active = audioId === m.id;
-              const name = m.caption || m.fileName || "Audio";
+              const name = mediaTitle(m, "Audio");
               return (
                 <View key={m.id} style={styles.audioRow}>
                   <Press
@@ -401,7 +410,7 @@ export default function ResourceScreen() {
             <Text style={styles.blockHead}>Documents</Text>
             <Text style={styles.blockHint}>PDFs open in your browser. Save keeps a copy.</Text>
             {pdfs.map((m) => {
-              const name = m.caption || m.fileName || "Document.pdf";
+              const name = mediaTitle(m, "Document");
               return (
                 <View key={m.id} style={styles.fileRow}>
                   <Ionicons name="document-outline" size={16} color={colors.accent} />
@@ -444,7 +453,7 @@ export default function ResourceScreen() {
             </Text>
             {keepable.map((m) => {
               const km = mediaMeta(m.kind);
-              const name = m.fileName || m.caption || km.label;
+              const name = mediaTitle(m, km.label);
               return (
                 <Press
                   key={m.id}
@@ -472,25 +481,31 @@ export default function ResourceScreen() {
         {links.length > 0 && (
           <View style={styles.block}>
             <Text style={styles.blockHead}>Links</Text>
-            {links.map((m) => (
-              <Press
-                key={m.id}
-                style={styles.fileRow}
-                onPress={() => openExternally(m.url!)}
-                accessibilityLabel={`Open ${m.caption || m.fileName || m.url}, outside the app`}
-              >
-                <Ionicons name="link-outline" size={16} color={colors.accent} />
-                <View style={styles.rowText}>
-                  <Text numberOfLines={1} style={styles.rowName}>
-                    {m.caption || m.fileName || m.url}
-                  </Text>
-                  <Text numberOfLines={1} style={styles.rowSub}>
-                    {m.url}
-                  </Text>
-                </View>
-                <Ionicons name="open-outline" size={15} color={colors.muted} />
-              </Press>
-            ))}
+            {links.map((m) => {
+              // A link's natural name is where it goes. Falling back to the host
+              // beats printing a storage key, and beats printing the whole URL
+              // twice when the row already shows it underneath.
+              const name = mediaTitle(m, hostOf(m.url) || "Link");
+              return (
+                <Press
+                  key={m.id}
+                  style={styles.fileRow}
+                  onPress={() => openExternally(m.url!)}
+                  accessibilityLabel={`Open ${name}, outside the app`}
+                >
+                  <Ionicons name="link-outline" size={16} color={colors.accent} />
+                  <View style={styles.rowText}>
+                    <Text numberOfLines={1} style={styles.rowName}>
+                      {name}
+                    </Text>
+                    <Text numberOfLines={1} style={styles.rowSub}>
+                      {m.url}
+                    </Text>
+                  </View>
+                  <Ionicons name="open-outline" size={15} color={colors.muted} />
+                </Press>
+              );
+            })}
           </View>
         )}
 
@@ -568,6 +583,10 @@ function ResourceVideo({ item }: { item: ResourceMedia }) {
   const player = useVideoPlayer(item.url ?? "", (p) => {
     p.loop = false;
   });
+  // A Cloudinary public id is not a title. Falls through to the caption, then to
+  // the generic noun, so the caption under the player never reads
+  // "hsjghfs0im0k6l1p2fzj.mp4".
+  const label = mediaTitle(item, "");
   return (
     <View style={styles.videoWrap}>
       <VideoView
@@ -577,9 +596,9 @@ function ResourceVideo({ item }: { item: ResourceMedia }) {
         contentFit="contain"
         fullscreenOptions={{ enable: true }}
       />
-      {!!(item.caption || item.fileName) && (
+      {!!label && (
         <Text numberOfLines={1} style={styles.cap}>
-          {item.caption || item.fileName}
+          {label}
         </Text>
       )}
     </View>
@@ -669,13 +688,13 @@ function Lightbox({
           ]}
         >
           <Text numberOfLines={1} style={styles.lbCap}>
-            {current?.caption || current?.fileName || `${page + 1} of ${images.length}`}
+            {current ? mediaTitle(current, `${page + 1} of ${images.length}`) : ""}
           </Text>
           {!!current && (
             <Press
               style={styles.rowBtn}
               onPress={() => onSave(current)}
-              accessibilityLabel={`Save ${current.caption || current.fileName || "this image"}`}
+              accessibilityLabel={`Save ${mediaTitle(current, "this image")}`}
             >
               <Ionicons name="download-outline" size={14} color={colors.text} />
               <Text style={styles.rowBtnLabel}>Save</Text>

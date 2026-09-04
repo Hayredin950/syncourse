@@ -3,9 +3,10 @@
 import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { ArrowLeft, ExternalLink } from "lucide-react";
+import { ArrowLeft, AlertTriangle, ExternalLink } from "lucide-react";
 import { get } from "@/lib/api";
 import type { AdminResourceDetail } from "@/lib/types";
+import AdminEmpty from "@/components/admin/AdminEmpty";
 import { ResourceForm } from "@/components/admin/ResourceForm";
 
 /**
@@ -61,7 +62,16 @@ function EditResource() {
         )}
       </div>
 
-      {error && <p className="admin-empty">{error}</p>}
+      {error && (
+        <div className="admin-card">
+          <AdminEmpty
+            icon={<AlertTriangle size={18} />}
+            title={slug ? "Could not open that resource" : "No resource selected"}
+            hint={slug ? error : "This form edits one resource at a time — pick one from the list."}
+            action={{ label: "Browse resources", href: "/admin/resources" }}
+          />
+        </div>
+      )}
       {!error && !resource && (
         <div className="admin-stack">
           <span className="admin-skeleton" style={{ height: 140, display: "block" }} />

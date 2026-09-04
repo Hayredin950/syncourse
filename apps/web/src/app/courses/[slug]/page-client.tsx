@@ -6,22 +6,24 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import {
   Bookmark,
-  Check,
+  BookmarkCheck,
   ChevronDown,
   ChevronRight,
   Download,
   Heart,
   ListPlus,
   MessageCircle,
+  Pencil,
   Play,
   Share2,
   Star,
+  Trash2,
 } from "lucide-react";
-import { get, post } from "@/lib/api";
+import { del, get, patch, post } from "@/lib/api";
 import type { CourseDetail, CourseSummary, ReviewRow, TelegramFile } from "@/lib/types";
 import { useAuth } from "@/lib/auth";
 import { StarPicker } from "@/components/StarRating";
-import { formatDuration, formatSec, compact, formatDate, plural } from "@/lib/format";
+import { formatDuration, formatSec, compact, formatDate, plural, isOpaqueFileName, mediaTitle } from "@/lib/format";
 import { cloudinaryUrl } from "@/lib/cloudinary";
 import { hueFromString, CourseCard } from "@/components/CourseCard";
 import Modal from "@/components/Modal";
@@ -84,6 +86,7 @@ export function CourseDetailView({ slug }: { slug: string }) {
   const [openSection, setOpenSection] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
   const [liked, setLiked] = useState(false);
+  const [likeCount, setLikeCount] = useState(0);
   const [myRating, setMyRating] = useState(0);
   const [reviewText, setReviewText] = useState("");
   const [containsSpoilers, setContainsSpoilers] = useState(false);
@@ -109,6 +112,13 @@ export function CourseDetailView({ slug }: { slug: string }) {
       .then((d) => {
         setCourse(d);
         setOpenSection(d.sections[0]?.id ?? null);
+        // Hydrate the action row from the server. Without this the buttons always
+        // opened as "Save"/"Like" — you could like a course, reload, and be
+        // offered the same button again as if nothing had happened.
+        setSaved(d.saved);
+        setLiked(d.liked);
+        setLikeCount(d.likeCount);
+        setMyRating(d.myRating);
         const cat = d.categoryNames[0];
         if (cat) {
           // resolve category name -> slug (the list API filters by slug)
@@ -165,8 +175,9 @@ export function CourseDetailView({ slug }: { slug: string }) {
   const onLike = async () => {
     if (!requireAuth()) return;
     try {
-      const r = await post<{ liked: boolean }>(`/courses/${slug}/like`);
+      const r = await post<{ liked: boolean; likeCount: number }>(`/courses/${slug}/like`);
       setLiked(r.liked);
+      setLikeCount(r.likeCount);
     } catch (e: any) {
       flash(e.message);
     }
@@ -234,6 +245,62 @@ export function CourseDetailView({ slug }: { slug: string }) {
           : c,
       );
       flash("Reply posted");
+    } catch (e: any) {
+      flash(e.message);
+    }
+  };
+
+  /**
+   * Edit one's own review or reply. Patches the row in place rather than
+   * refetching the course: the reader is looking at the card they just changed,
+   * and a full reload would jump them back to the top of the page.
+   */
+  const onEditReview = async (id: string, body: string) => {
+    try {
+      const r = await patch<{ body: string; editedAt: string | null }>(`/reviews/${id}`, { body });
+      setCourse((c) =>
+        c
+          ? {
+              ...c,
+              reviews: c.reviews.map((rv) =>
+                rv.id === id
+                  ? { ...rv, body: r.body, editedAt: r.editedAt }
+                  : { ...rv, replies: rv.replies?.map((rep) => (rep.id === id ? { ...rep, body: r.body, editedAt: r.editedAt } : rep)) },
+              ),
+            }
+          : c,
+      );
+      flash("Review updated");
+    } catch (e: any) {
+      flash(e.message);
+    }
+  };
+
+  /**
+   * Delete one's own review or reply. Deleting a top-level review cascades to its
+   * replies on the API side, so the whole card goes; deleting a reply only drops
+   * that row and decrements the counter its parent prints.
+   */
+  const onDeleteReview = async (id: string) => {
+    try {
+      await del(`/reviews/${id}`);
+      setCourse((c) => {
+        if (!c) return c;
+        const wasTopLevel = c.reviews.some((rv) => rv.id === id);
+        if (wasTopLevel) return { ...c, reviews: c.reviews.filter((rv) => rv.id !== id) };
+        return {
+          ...c,
+          reviews: c.reviews.map((rv) => {
+            if (!rv.replies?.some((rep) => rep.id === id)) return rv;
+            return {
+              ...rv,
+              replies: rv.replies.filter((rep) => rep.id !== id),
+              replyCount: Math.max(0, rv.replyCount - 1),
+            };
+          }),
+        };
+      });
+      flash("Deleted");
     } catch (e: any) {
       flash(e.message);
     }
@@ -362,9 +429,13 @@ export function CourseDetailView({ slug }: { slug: string }) {
             </a>
           )}
         </div>
+        {/* The icon carries the state, not the label. A button that swaps "Like"
+            for "Liked" makes you read a word to find out what you did; a filled
+            heart and a count you can watch tick up says it at a glance, and the
+            label stays put so the row doesn't reflow under your thumb. */}
         <div className="icon-actions">
-          <button className="icon-btn" onClick={onSave}>
-            {saved ? <Check size={14} /> : <Bookmark size={14} />} {saved ? "Saved" : "Save"}
+          <button className="icon-btn" onClick={onSave} aria-pressed={saved} data-on={saved || undefined}>
+            {saved ? <BookmarkCheck size={14} fill="currentColor" /> : <Bookmark size={14} />} Save
           </button>
           <button
             className="icon-btn"
@@ -372,8 +443,10 @@ export function CourseDetailView({ slug }: { slug: string }) {
           >
             <ListPlus size={14} /> List
           </button>
-          <button className="icon-btn" onClick={onLike}>
-            <Heart size={14} /> {liked ? "Liked" : "Like"}
+          <button className="icon-btn" onClick={onLike} aria-pressed={liked} data-on={liked || undefined}>
+            <Heart size={14} fill={liked ? "currentColor" : "none"} />
+            <span>Like</span>
+            {likeCount > 0 && <span className="icon-btn__count">{compact(likeCount)}</span>}
           </button>
           <button className="icon-btn" onClick={onShare}>
             <Share2 size={14} /> Share
@@ -584,7 +657,7 @@ export function CourseDetailView({ slug }: { slug: string }) {
                         <div className="file-row" key={f.id}>
                           <span className="file-row__num mono">{String(f.partIndex).padStart(2, "0")}</span>
                           <span className="file-row__body">
-                            <span className="file-row__name">{f.fileName ?? `Part ${f.partIndex}`}</span>
+                            <span className="file-row__name">{mediaTitle(f, `Part ${f.partIndex}`)}</span>
                             <span className="file-row__meta mono">
                               {f.fileSizeMb ? `${f.fileSizeMb} MB` : "Telegram attachment"}
                             </span>
@@ -663,7 +736,14 @@ export function CourseDetailView({ slug }: { slug: string }) {
               </div>
             )}
             {course.reviews.slice(0, 8).map((r) => (
-              <ReviewCard key={r.id} review={r} onUpvote={onUpvote} onReply={onReplyToReview} />
+              <ReviewCard
+                key={r.id}
+                review={r}
+                onUpvote={onUpvote}
+                onReply={onReplyToReview}
+                onEdit={onEditReview}
+                onDelete={onDeleteReview}
+              />
             ))}
             </div>
 
@@ -767,7 +847,9 @@ export function CourseDetailView({ slug }: { slug: string }) {
                     <Download size={14} className="rating" />
                     <span style={{ flex: 1 }}>
                       {f.moduleTitle ? `${f.moduleTitle} · Part ${f.partIndex}` : `Part ${f.partIndex}`}
-                      {f.fileName && <span className="muted mono" style={{ marginLeft: 6, fontSize: 10 }}>{f.fileName}</span>}
+                      {f.fileName && !isOpaqueFileName(f.fileName) && (
+                        <span className="muted mono" style={{ marginLeft: 6, fontSize: 10 }}>{f.fileName}</span>
+                      )}
                       {f.fileSizeMb && <span className="muted mono" style={{ marginLeft: 4, fontSize: 10 }}>{f.fileSizeMb} MB</span>}
                     </span>
                     <ChevronRight size={14} className="muted" />
@@ -890,14 +972,138 @@ function Sparkline({ data }: { data: number[] }) {
   );
 }
 
+/**
+ * One review body, in display or edit mode, with the author's own controls.
+ *
+ * Editing happens in place — a textarea exactly where the paragraph was — so the
+ * thread keeps its scroll position and you can still see what you were replying
+ * to while you fix a typo. A modal would cover the one thing you need to read.
+ *
+ * Shared by reviews and replies: a reply is the same row with a parent, so it
+ * gets the same rights over its own words.
+ */
+function ReviewText({
+  row,
+  small,
+  onEdit,
+  onDelete,
+}: {
+  row: ReviewRow;
+  small?: boolean;
+  onEdit: (id: string, body: string) => Promise<void>;
+  onDelete: (id: string) => Promise<void>;
+}) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(row.body);
+  const [confirming, setConfirming] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const fs = small ? 12 : undefined;
+
+  const save = async () => {
+    const body = draft.trim();
+    if (!body || body === row.body) {
+      setEditing(false);
+      setDraft(row.body);
+      return;
+    }
+    setBusy(true);
+    try {
+      await onEdit(row.id, body);
+      setEditing(false);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const remove = async () => {
+    setBusy(true);
+    try {
+      await onDelete(row.id);
+    } finally {
+      setBusy(false);
+      setConfirming(false);
+    }
+  };
+
+  if (editing) {
+    return (
+      <div className="review-edit">
+        <textarea
+          className="form-input"
+          rows={small ? 2 : 3}
+          value={draft}
+          autoFocus
+          onChange={(e) => setDraft(e.target.value)}
+          aria-label="Edit your review"
+        />
+        <div className="review-edit__row">
+          <button className="btn primary" disabled={busy || !draft.trim()} onClick={save}>
+            {busy ? "Saving…" : "Save changes"}
+          </button>
+          <button
+            className="btn ghost"
+            disabled={busy}
+            onClick={() => {
+              setDraft(row.body);
+              setEditing(false);
+            }}
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <>
+      <p style={{ fontSize: fs, margin: small ? "4px 0 0" : undefined }}>
+        {row.body}
+        {row.editedAt && <span className="review-edited"> · edited</span>}
+      </p>
+      {row.mine && (
+        <div className="review-own">
+          {confirming ? (
+            <>
+              <span className="review-own__ask">
+                Delete this {small ? "reply" : "review"}
+                {!small && row.replyCount > 0 ? ` and its ${plural(row.replyCount, "reply", "replies")}` : ""}?
+              </span>
+              <button className="link-btn danger" disabled={busy} onClick={remove}>
+                {busy ? "Deleting…" : "Yes, delete"}
+              </button>
+              <button className="link-btn" disabled={busy} onClick={() => setConfirming(false)}>
+                Keep
+              </button>
+            </>
+          ) : (
+            <>
+              <button className="link-btn" onClick={() => setEditing(true)}>
+                <Pencil size={11} /> Edit
+              </button>
+              <button className="link-btn danger" onClick={() => setConfirming(true)}>
+                <Trash2 size={11} /> Delete
+              </button>
+            </>
+          )}
+        </div>
+      )}
+    </>
+  );
+}
+
 function ReviewCard({
   review,
   onUpvote,
   onReply,
+  onEdit,
+  onDelete,
 }: {
   review: ReviewRow;
   onUpvote: (id: string) => void;
   onReply: (parentId: string, body: string) => void;
+  onEdit: (id: string, body: string) => Promise<void>;
+  onDelete: (id: string) => Promise<void>;
 }) {
   const [show, setShow] = useState(!review.containsSpoilers);
   const [replying, setReplying] = useState(false);
@@ -933,7 +1139,7 @@ function ReviewCard({
           This review may contain spoilers — Show review
         </button>
       ) : (
-        <p>{review.body}</p>
+        <ReviewText row={review} onEdit={onEdit} onDelete={onDelete} />
       )}
 
       {/* phonofilm review actions: upvote/downvote counter + Reply */}
@@ -992,7 +1198,7 @@ function ReviewCard({
               {rep.isStaff && <span className="badge" style={{ marginLeft: 6 }}>Staff</span>}
             </span>
           </div>
-          <p style={{ fontSize: 12, margin: "4px 0 0" }}>{rep.body}</p>
+          <ReviewText row={rep} small onEdit={onEdit} onDelete={onDelete} />
         </div>
       ))}
     </div>

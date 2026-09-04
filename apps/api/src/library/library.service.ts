@@ -61,6 +61,12 @@ export class LibraryService {
     return { saved: true };
   }
 
+  /**
+   * Toggle a like and return the new public tally with it. The button on the
+   * course page prints that number, so it has to come back from the row count
+   * rather than being guessed client-side — otherwise two readers liking at the
+   * same moment each see their own +1 and neither sees the other's.
+   */
   async likeCourse(userId: string, courseIdOrSlug: string) {
     const course = await this.findCourse(courseIdOrSlug);
     if (!course) throw new NotFoundException('Course not found');
@@ -70,10 +76,10 @@ export class LibraryService {
     });
     if (existing) {
       await this.prisma.likedCourse.delete({ where: { userId_courseId: { userId, courseId } } });
-      return { liked: false };
+      return { liked: false, likeCount: await this.prisma.likedCourse.count({ where: { courseId } }) };
     }
     await this.prisma.likedCourse.create({ data: { userId, courseId } });
-    return { liked: true };
+    return { liked: true, likeCount: await this.prisma.likedCourse.count({ where: { courseId } }) };
   }
 
   private async findCourse(idOrSlug: string) {

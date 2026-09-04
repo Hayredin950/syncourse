@@ -46,11 +46,11 @@ export default function AdminSettings() {
         </div>
       </div>
 
-      <div className="admin-alert admin-alert--bad" style={{ marginBottom: 14, borderColor: "var(--adm-line-strong)", background: "var(--adm-raised)", color: "var(--adm-ink-2)" }}>
-        <Info size={14} style={{ flexShrink: 0, marginTop: 1 }} />
+      <div className="admin-notice" style={{ marginBottom: 14 }}>
+        <Info size={14} />
         <span>
-          These fields are not persisted yet. The live values are read from the API&rsquo;s environment variables on
-          Render — editing here changes what you see on this screen and nothing else.
+          <strong>These fields are not persisted yet.</strong> The live values are read from the API&rsquo;s environment
+          variables on Render — editing here changes what you see on this screen and nothing else.
         </span>
       </div>
 
@@ -119,10 +119,16 @@ export default function AdminSettings() {
           <tbody>
             {PLANS.map((p) => (
               <tr key={p.name}>
-                <td className="admin-cell-title">{p.name}</td>
-                <td className="admin-table__num">{p.days}</td>
-                <td className="admin-table__num">{p.price}</td>
-                <td>{p.badge ? <span className="admin-badge admin-badge--accent">{p.badge}</span> : "—"}</td>
+                <td className="admin-cell-title" data-role="head">
+                  {p.name}
+                </td>
+                <td className="admin-table__num" data-label="Days">
+                  {p.days}
+                </td>
+                <td className="admin-table__num" data-label="Price">
+                  {p.price}
+                </td>
+                <td data-role="wide">{p.badge ? <span className="admin-badge admin-badge--violet">{p.badge}</span> : "—"}</td>
               </tr>
             ))}
           </tbody>

@@ -2,11 +2,12 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { Search } from "lucide-react";
+import { History, Search } from "lucide-react";
 import { get } from "@/lib/api";
 import type { AdminCourseRow, AdminPaymentRow, AdminReviewRow, AdminUserRow } from "@/lib/types";
 import { formatDate, plural } from "@/lib/format";
 import { relativeTime } from "@/lib/metrics";
+import AdminEmpty from "@/components/admin/AdminEmpty";
 
 /**
  * Activity log.
@@ -190,7 +191,18 @@ export default function AdminActivity() {
 
       {!loading && filtered.length === 0 && (
         <div className="admin-card">
-          <p className="admin-empty">Nothing matches those filters.</p>
+          <AdminEmpty
+            icon={<History size={18} />}
+            title="Nothing matches those filters"
+            hint="The log is built from signups, courses, reviews and payments — pick Everything to see all four."
+            action={{
+              label: "Clear filters",
+              onClick: () => {
+                setKind("all");
+                setQuery("");
+              },
+            }}
+          />
         </div>
       )}
 

@@ -438,6 +438,29 @@ p { text-wrap: pretty; }
 }
 .icon-btn:hover { background: var(--s-3); border-color: hsl(30 6% 26%); color: hsl(var(--foreground)); }
 .icon-btn:active { transform: translateY(1px); }
+/* Engaged state. The label never changes — only the icon fills and the border
+   warms — so the row keeps its widths and nothing jumps under your thumb when
+   you tap. `data-on` rather than a class because the same attribute drives
+   `aria-pressed`, and one source of truth can't fall out of step. */
+.icon-btn[data-on] {
+  background: hsl(var(--primary) / 0.13);
+  border-color: hsl(var(--primary) / 0.42);
+  color: hsl(var(--primary));
+}
+.icon-btn[data-on]:hover { background: hsl(var(--primary) / 0.2); border-color: hsl(var(--primary) / 0.6); color: hsl(var(--primary)); }
+/* The tally rides in the button as its own chip so the count reads as data
+   attached to the action, not as part of the word. */
+.icon-btn__count {
+  min-width: 15px;
+  padding: 1px 5px;
+  border-radius: 999px;
+  background: hsl(var(--foreground) / 0.09);
+  font-size: 10px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.5;
+}
+.icon-btn[data-on] .icon-btn__count { background: hsl(var(--primary) / 0.22); }
 
 /* profile header card — warm amber gradient (phonofilm YOUR X card) */
 .profile-card { position: relative; border-radius: var(--r-xl); padding: 24px 26px; border: 1px solid hsl(var(--border)); background: linear-gradient(135deg, #2b1a08 0%, #1a1107 55%, #12100d 100%), radial-gradient(600px 220px at 12% 0%, hsl(var(--primary) / .2) 0%, transparent 65%); overflow: hidden; }
@@ -471,16 +494,17 @@ p { text-wrap: pretty; }
 
 /* bottom sheet used by modals — see the `.sheet` block further down */
 
+/* ============ browse: the phone's Courses / Resources switch ============ */
+/* Two halves of one surface, so this is a segmented control and not a pill row:
+   the tabs split the width evenly and the selected one is a filled slab, which
+   reads as "you are in this half" rather than "this filter is on". */
+.browse-tabs { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 4px; padding: 4px; margin: 0 0 18px; border: 1px solid var(--hairline); border-radius: var(--r-full); background: rgba(255,255,255,.04); }
+.browse-tab { display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 40px; border-radius: var(--r-full); font-size: 12px; font-weight: 700; color: hsl(var(--muted-foreground)); text-decoration: none; transition: color var(--t-fast) var(--ease), background var(--t-fast) var(--ease); }
+.browse-tab.active { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); }
+.browse-tab:not(.active):active { background: rgba(255,255,255,.07); }
+
 /* ============ circles: two-pane study groups ============ */
 .circles-layout { display: grid; grid-template-columns: 300px 1fr; gap: 18px; align-items: start; }
-/* Stacked, the sidebar is no longer a column beside the wall: sticking it there
-   would pin a half-screen list of circles over the posts you scrolled down to
-   read. */
-@media (max-width: 820px) {
-  .circles-layout { grid-template-columns: 1fr; }
-  .circles-side { position: static; }
-  .circle-list { max-height: 40vh; }
-}
 .circles-side { border: 1px solid hsl(var(--border)); border-radius: var(--r-lg); background: var(--s-2); padding: 14px; position: sticky; top: var(--sticky-top); }
 .circle-search { display: flex; align-items: center; gap: 8px; border: 1px solid hsl(var(--border)); border-radius: var(--r-sm); padding: 8px 12px; background: var(--s-1); color: hsl(var(--muted-foreground)); }
 .circle-search input { flex: 1; background: none; border: none; outline: none; color: hsl(var(--foreground)); font-size: 12px; }
@@ -503,6 +527,15 @@ p { text-wrap: pretty; }
 .feed { padding: 6px 16px; }
 .feed-item { display: flex; align-items: flex-start; gap: 12px; padding: 13px 4px; border-bottom: 1px solid hsl(var(--border) / .6); }
 .feed-item:last-child { border-bottom: none; }
+/* Stacked, the sidebar is no longer a column beside the wall: sticking it there
+   would pin a half-screen list of circles — and the New circle button — over the
+   posts you scrolled down to read. This block has to follow the base rules it
+   overrides; at equal specificity source order wins, media query or not. */
+@media (max-width: 820px) {
+  .circles-layout { grid-template-columns: minmax(0, 1fr); }
+  .circles-side { position: static; top: auto; }
+  .circle-list { max-height: 44vh; }
+}
 
 /* ============ entity pages: instructors / publishers / title lists ============ */
 .back-btn { display: inline-flex; align-items: center; gap: 6px; color: hsl(var(--muted-foreground)); font-size: 12px; text-decoration: none; margin: 6px 0 0; }
@@ -854,6 +887,35 @@ select option { background: var(--s-3); color: var(--ink-1); }
 .review { padding: 17px 0; border-top: 1px solid hsl(var(--border)); }
 .review-top { display: flex; justify-content: space-between; font-size: 11px; }
 .review p { font-size: 12px; color: var(--ink-3); line-height: 1.6; margin: 9px 0; }
+/* A review that changed after people replied to it has to say so, quietly. */
+.review-edited { color: hsl(var(--muted-foreground)); font-size: 10px; font-style: italic; }
+/* The author's own controls. Held back to muted grey until hover: they belong to
+   one person on a page everybody reads, so they must not compete with Reply. */
+.review-own { display: flex; align-items: center; gap: 14px; margin-top: 6px; }
+.review-own .link-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: hsl(var(--muted-foreground));
+  font-size: 11px;
+}
+.review-own .link-btn:hover { color: hsl(var(--foreground)); }
+.review-own .link-btn.danger:hover { color: hsl(var(--destructive)); }
+.review-own__ask { font-size: 11px; color: hsl(var(--foreground)); }
+/* In-place editor: the textarea takes the paragraph's slot, so the thread does
+   not reflow around a modal while you are reading what you replied to. */
+.review-edit { margin: 9px 0; }
+.review-edit textarea {
+  width: 100%;
+  margin: 0;
+  padding: 10px 12px;
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.6;
+  resize: vertical;
+}
+.review-edit__row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.review-edit__row .btn { padding: 7px 13px; font-size: 11px; }
 
 /* ---------- premium / plans ---------- */
 .premium-hero { position: relative; border-radius: var(--r-xl); overflow: hidden; border: 1px solid hsl(var(--border)); min-height: 300px; display: flex; align-items: flex-end; }
@@ -1010,10 +1072,12 @@ select option { background: var(--s-3); color: var(--ink-1); }
   .footer > * { margin-bottom: 16px; }
   /* Floats clear of the home indicator on a notched phone, and blurs what is
      behind it so the bar reads as glass over the page rather than a slab
-     covering the last row of content. */
+     covering the last row of content. `grid-auto-flow: column` and not
+     `repeat(4, 1fr)`: there are five tabs, and a fixed four-column track wrapped
+     the fifth onto a second row inside a bar sized for one. */
   .mobile-nav {
     position: fixed; bottom: calc(11px + env(safe-area-inset-bottom)); left: 14px; right: 14px; z-index: 40;
-    display: grid; grid-template-columns: repeat(4, 1fr); gap: 2px;
+    display: grid; grid-auto-flow: column; grid-auto-columns: minmax(0, 1fr); gap: 2px;
     background: rgba(23,21,18,.82); backdrop-filter: blur(20px) saturate(1.4);
     border: 1px solid var(--hairline); border-radius: var(--r-2xl); padding: 7px 6px;
     box-shadow: var(--e-3), inset 0 1px 0 rgba(255,255,255,.05);
@@ -1024,38 +1088,16 @@ select option { background: var(--s-3); color: var(--ink-1); }
     color: hsl(var(--muted-foreground)); font-size: 9px; font-weight: 600;
     transition: color var(--t-fast) var(--ease), background var(--t-fast) var(--ease);
   }
+  /* Five labels across 360px: "Collections" cannot wrap or the bar grows a line. */
+  .mobile-nav a span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .mobile-nav a.active { color: hsl(var(--primary)); background: hsl(var(--primary) / .13); }
   .mobile-nav a:active { background: rgba(255,255,255,.07); }
   .mobile-nav svg { width: 19px; height: 19px; }
 }
 
-/* Touch-screen refinements that are about the input device, not the width:
-   a stylus-less finger needs 44px, and a control under 16px makes iOS Safari
-   zoom the whole page the moment it takes focus — which then leaves the layout
-   scrolled sideways with no way back. */
-@media (pointer: coarse) {
-  .icon-btn, .quick-action, .view-toggle button, .res-search__clear { min-height: 40px; min-width: 40px; }
-  .title-row__actions .icon-btn { min-height: 38px; min-width: 38px; }
-  /* The four pill families are the primary controls on browse, /me and the
-     resource index — 26-30px tall on desktop, which is a chip, not a target.
-     `button.badge` and not `.badge`: the same class is a decorative caption on
-     a card ("Premium", "Best value", a filter count), and giving those a 40px
-     floor would blow a hole in every card that carries one. */
-  button.badge, .tab, .res-tab, .segmented__opt { min-height: 40px; --pill-py: 0; }
-  /* A text-only button needs the same reach, without becoming a block. */
-  .link-btn { display: inline-flex; align-items: center; min-height: 40px; }
-  /* The buttons and the row-shaped links. `.btn` came to 39px and `.lesson` to
-     31px — and `.lesson` is the lesson list on a course page, which is the main
-     way anyone navigates the most-visited page on the site. `align-items` is
-     already `center` on all of these, so a floor only adds air; it never
-     stretches the contents. */
-  .btn { min-height: 44px; }
-  .lesson, .list-row, .s-hit { min-height: 44px; }
-  input, select, textarea,
-  .form-input, .filter-search, .top-search input, .circle-search input, .res-search input, .s-field input, .toolbar-select, .res-select {
-    font-size: 16px;
-  }
-}
+/* Touch-screen refinements live at the end of this file, past every base rule
+   they raise a floor on — a `min-height` or a 16px `font-size` in a media query
+   still loses to an equal-specificity rule declared later in the source. */
 
 /* Admin console styles live in ./admin/admin.css — imported by app/admin/layout.tsx
    so the ops-console design system only ships on /admin routes. */
@@ -1223,7 +1265,15 @@ select option { background: var(--s-3); color: var(--ink-1); }
 .res-gallery--one { grid-template-columns: minmax(0, 1fr); }
 .res-shot { position: relative; display: block; padding: 0; border: 1px solid hsl(var(--border)); border-radius: var(--r-lg); overflow: hidden; background: var(--s-1); cursor: zoom-in; transition: border-color var(--t-fast) var(--ease); }
 .res-shot:hover { border-color: hsl(var(--primary) / .55); }
-.res-shot img { display: block; width: 100%; height: auto; }
+/* The picture fills a box the tile already has, rather than being the thing that
+   gives the tile a height. `--shot-ratio` opens at the portrait shape a scanned
+   sheet almost always has and is replaced by the real one on load; an image that
+   stalls or 404s therefore leaves a labelled box, not a 2px hairline. */
+.res-shot__frame { position: relative; display: block; aspect-ratio: var(--shot-ratio, 4 / 5); background: var(--s-2); }
+.res-shot img { position: absolute; inset: 0; display: block; width: 100%; height: 100%; object-fit: contain; }
+.res-shot__fail { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 5px; padding: 14px; text-align: center; color: hsl(var(--muted-foreground)); }
+.res-shot__fail-name { font-size: 11px; font-weight: 700; color: hsl(var(--foreground)); overflow-wrap: anywhere; }
+.res-shot__fail small { font-size: 10px; }
 .res-shot__zoom { position: absolute; top: 9px; right: 9px; display: grid; place-items: center; width: 27px; height: 27px; border-radius: var(--r-xs); background: rgba(8,7,6,.7); color: var(--ink-1); opacity: 0; transition: opacity var(--t-fast) var(--ease); }
 .res-shot:hover .res-shot__zoom { opacity: 1; }
 .res-shot__caption { display: block; padding: 9px 12px; text-align: left; font-size: 11px; color: hsl(var(--muted-foreground)); border-top: 1px solid hsl(var(--border)); }
@@ -1713,6 +1763,37 @@ input:focus-visible, textarea:focus-visible, select:focus-visible { outline-offs
 @media (max-width: 560px) {
   .s-field { height: 48px; padding-left: 14px; }
   .s-hit__kind { display: none; }
+}
+
+/* ---- touch input ----------------------------------------------------------
+   About the input device, not the width: a stylus-less finger needs 44px, and a
+   control under 16px makes iOS Safari zoom the whole page the moment it takes
+   focus — which then leaves the layout scrolled sideways with no way back.
+   Deliberately last in the file: three of the inputs below (`.res-search input`,
+   `.res-select`, `.s-field input`) declare a 12-15px size further up, and at
+   equal specificity the later rule wins no matter which one is in a query. */
+@media (pointer: coarse) {
+  .icon-btn, .quick-action, .view-toggle button, .res-search__clear { min-height: 40px; min-width: 40px; }
+  .title-row__actions .icon-btn { min-height: 38px; min-width: 38px; }
+  /* The four pill families are the primary controls on browse, /me and the
+     resource index — 26-30px tall on desktop, which is a chip, not a target.
+     `button.badge` and not `.badge`: the same class is a decorative caption on
+     a card ("Premium", "Best value", a filter count), and giving those a 40px
+     floor would blow a hole in every card that carries one. */
+  button.badge, .tab, .res-tab, .segmented__opt { min-height: 40px; --pill-py: 0; }
+  /* A text-only button needs the same reach, without becoming a block. */
+  .link-btn { display: inline-flex; align-items: center; min-height: 40px; }
+  /* The buttons and the row-shaped links. `.btn` came to 39px and `.lesson` to
+     31px — and `.lesson` is the lesson list on a course page, which is the main
+     way anyone navigates the most-visited page on the site. `align-items` is
+     already `center` on all of these, so a floor only adds air; it never
+     stretches the contents. */
+  .btn { min-height: 44px; }
+  .lesson, .list-row, .s-hit { min-height: 44px; }
+  input, select, textarea,
+  .form-input, .filter-search, .top-search input, .circle-search input, .res-search input, .s-field input, .toolbar-select, .res-select {
+    font-size: 16px;
+  }
 }
 
 /* ---- motion preference ----------------------------------------------------

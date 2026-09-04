@@ -236,7 +236,7 @@ export const fileUrl = (lessonId: string, attachmentId: string) =>
 // Both toggles answer with the state they left behind, so a screen can show the
 // truth after one tap without waiting for /me/learning to come back.
 export const toggleSave = (slug: string) => post<{ saved: boolean }>(`/courses/${slug}/save`);
-export const toggleLike = (slug: string) => post<{ liked: boolean }>(`/courses/${slug}/like`);
+export const toggleLike = (slug: string) => post<{ liked: boolean; likeCount: number }>(`/courses/${slug}/like`);
 export const myLibrary = () => get<LibraryData>("/me/learning");
 
 // --- search ---
@@ -379,6 +379,12 @@ export const rateCourse = (slug: string, stars: number) =>
   post<{ ratingAvg: number }>(`/courses/${slug}/rate`, { stars });
 export const postReview = (slug: string, body: string, containsSpoilers: boolean) =>
   post<Review>(`/courses/${slug}/reviews`, { body, containsSpoilers });
+// Authors own their words: edit fixes them, delete withdraws them. Replies are
+// Review rows too, so both paths address them the same way.
+export const editReview = (id: string, body: string) =>
+  patch<{ id: string; body: string; editedAt: string | null }>(`/reviews/${id}`, { body });
+export const deleteReview = (id: string) =>
+  del<{ deleted: boolean; id: string; repliesRemoved: number }>(`/reviews/${id}`);
 
 // --- images (Cloudinary) + course covers ---
 export const uploadImage = (input: { dataUrl?: string; imageUrl?: string }) =>

@@ -3,12 +3,13 @@ import { Tabs } from "expo-router";
 import React from "react";
 import { colors, fonts } from "../../lib/tokens";
 
-/** The five tabs. Active tabs take the filled glyph, inactive the outline —
+/** The six tabs. Active tabs take the filled glyph, inactive the outline —
  *  which is how a phone signals "you are here" without relying on colour. */
 const ICONS: Record<string, [keyof typeof Ionicons.glyphMap, keyof typeof Ionicons.glyphMap]> = {
   index: ["home", "home-outline"],
   browse: ["grid", "grid-outline"],
   search: ["search", "search-outline"],
+  lists: ["albums", "albums-outline"],
   learning: ["library", "library-outline"],
   me: ["person", "person-outline"],
 };
@@ -17,6 +18,7 @@ const TITLES: Record<string, string> = {
   index: "Home",
   browse: "Browse",
   search: "Search",
+  lists: "Lists",
   learning: "Library",
   me: "Me",
 };
@@ -32,7 +34,9 @@ export default function TabsLayout() {
         tabBarStyle: { backgroundColor: colors.surface, borderTopColor: colors.border, borderTopWidth: 1 },
         tabBarActiveTintColor: colors.accent,
         tabBarInactiveTintColor: colors.dim,
-        tabBarLabelStyle: { fontFamily: fonts.w600, fontSize: 11 },
+        // Six destinations on a 320px phone is ~53px each. At 11px the labels
+        // truncated to "Librar…"; 10 keeps every one of them whole.
+        tabBarLabelStyle: { fontFamily: fonts.w600, fontSize: 10 },
         tabBarItemStyle: { paddingTop: 4 },
         sceneStyle: { backgroundColor: colors.bg },
       }}

@@ -2,11 +2,12 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ChevronRight, Pencil, Plus, Search } from "lucide-react";
+import { BookOpen, ChevronRight, Pencil, Plus, Search } from "lucide-react";
 import { del, get } from "@/lib/api";
 import type { AdminCourseRow } from "@/lib/types";
 import { formatDate } from "@/lib/format";
 import { useAdminToast } from "@/components/admin/AdminToast";
+import AdminEmpty from "@/components/admin/AdminEmpty";
 import ConfirmButton from "@/components/admin/ConfirmButton";
 import Pagination, { clampPage } from "@/components/admin/Pagination";
 
@@ -64,6 +65,12 @@ export default function AdminCourses() {
     } finally {
       setBusySlug(null);
     }
+  };
+
+  const clearFilters = () => {
+    setQuery("");
+    setScope("all");
+    setPage(1);
   };
 
   return (
@@ -159,15 +166,27 @@ export default function AdminCourses() {
             {!loading && visible.length === 0 && (
               <tr>
                 <td colSpan={9}>
-                  <p className="admin-empty">
-                    {courses.length === 0 ? "No courses yet — create your first one." : "Nothing matches those filters."}
-                  </p>
+                  {courses.length === 0 ? (
+                    <AdminEmpty
+                      icon={<BookOpen size={18} />}
+                      title="No courses yet"
+                      hint="The catalogue is what the site shows. Create the first course and it goes live."
+                      action={{ label: "New course", href: "/admin/courses/new" }}
+                    />
+                  ) : (
+                    <AdminEmpty
+                      icon={<Search size={18} />}
+                      title="Nothing matches those filters"
+                      hint="Try a different title, or widen the scope to All."
+                      action={{ label: "Clear filters", onClick: clearFilters }}
+                    />
+                  )}
                 </td>
               </tr>
             )}
             {visible.map((c) => (
               <tr key={c.id}>
-                <td>
+                <td data-role="media">
                   <span className="admin-thumb" style={{ display: "block" }}>
                     {c.thumbnailUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
@@ -175,7 +194,7 @@ export default function AdminCourses() {
                     ) : null}
                   </span>
                 </td>
-                <td style={{ maxWidth: 340 }}>
+                <td data-role="head" style={{ maxWidth: 340 }}>
                   <Link href={`/admin/courses/detail?slug=${c.slug}`} className="admin-cell-link">
                     <span className={`admin-cell-title ${c.deleted ? "admin-strike" : ""}`}>{c.title}</span>
                     <span className="admin-cell-sub" style={{ display: "block" }}>
@@ -183,18 +202,28 @@ export default function AdminCourses() {
                     </span>
                   </Link>
                 </td>
-                <td>
+                <td data-role="wide">
                   <span className="admin-inline" style={{ gap: 4 }}>
                     <span className="admin-badge admin-badge--gray">{c.contentType}</span>
-                    {c.isPremium && <span className="admin-badge admin-badge--accent">Premium</span>}
+                    {c.isPremium && <span className="admin-badge admin-badge--violet">Premium</span>}
                     {c.deleted && <span className="admin-badge admin-badge--red">Deleted</span>}
                   </span>
                 </td>
-                <td className="admin-table__num">{c.sectionCount}</td>
-                <td className="admin-table__num">{c.fileCount}</td>
-                <td className="admin-table__num">{c.ratingAvg > 0 ? c.ratingAvg.toFixed(1) : "—"}</td>
-                <td className="admin-table__num">{c.downloadCount.toLocaleString("en-US")}</td>
-                <td className="admin-table__quiet">{formatDate(c.updatedAt)}</td>
+                <td className="admin-table__num" data-label="Sections">
+                  {c.sectionCount}
+                </td>
+                <td className="admin-table__num" data-label="Files">
+                  {c.fileCount}
+                </td>
+                <td className="admin-table__num" data-label="Rating">
+                  {c.ratingAvg > 0 ? c.ratingAvg.toFixed(1) : "—"}
+                </td>
+                <td className="admin-table__num" data-label="Downloads">
+                  {c.downloadCount.toLocaleString("en-US")}
+                </td>
+                <td className="admin-table__quiet" data-role="wide" data-label="Updated">
+                  {formatDate(c.updatedAt)}
+                </td>
                 <td className="admin-table__actions">
                   <Link
                     href={`/admin/courses/edit?slug=${c.slug}`}

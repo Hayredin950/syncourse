@@ -2,12 +2,13 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { BadgeCheck, Check, Search } from "lucide-react";
+import { BadgeCheck, Check, CheckCheck, CreditCard, Search } from "lucide-react";
 import { get, patch } from "@/lib/api";
 import type { AdminPaymentRow } from "@/lib/types";
 import { formatDate } from "@/lib/format";
 import { moneyByCurrency, relativeTime } from "@/lib/metrics";
 import { useAdminToast } from "@/components/admin/AdminToast";
+import AdminEmpty from "@/components/admin/AdminEmpty";
 import ConfirmButton from "@/components/admin/ConfirmButton";
 import Pagination, { clampPage } from "@/components/admin/Pagination";
 
@@ -145,13 +146,24 @@ export default function AdminPayments() {
             </div>
           ))}
         {!loading && visible.length === 0 && (
-          <p className="admin-empty">
-            {scope === "pending"
-              ? "Nothing is waiting for review."
-              : payments.length === 0
-                ? "No payments yet."
-                : "Nothing matches those filters."}
-          </p>
+          <AdminEmpty
+            icon={scope === "pending" ? <CheckCheck size={18} /> : <CreditCard size={18} />}
+            title={
+              scope === "pending"
+                ? "Nothing is waiting for review"
+                : payments.length === 0
+                  ? "No payments yet"
+                  : "Nothing matches those filters"
+            }
+            hint={
+              scope === "pending"
+                ? "An empty queue is the goal — every upgrade request has been answered."
+                : payments.length === 0
+                  ? "Manual transfers land here the moment a member submits one."
+                  : "Search matches names, emails and transaction references."
+            }
+            action={scope === "pending" ? { label: "Show all payments", onClick: () => setScope("all") } : undefined}
+          />
         )}
         {visible.map((p) => (
           <div key={p.id} className="admin-row admin-row--top">

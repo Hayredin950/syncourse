@@ -59,6 +59,8 @@ export interface ReviewRow {
   replyCount: number;
   upvotes?: number;
   upvoted?: boolean;
+  /** True when the signed-in reader wrote it — gates the edit and delete controls. */
+  mine?: boolean;
   replies?: ReviewRow[];
 }
 
@@ -88,6 +90,11 @@ export interface CourseDetail extends CourseSummary {
   organization: { id: string; name: string; slug: string; logoUrl: string | null; description: string | null; subscribers: number } | null;
   sections: Section[];
   ratings: RatingBlock;
+  /** Whether this reader saved / liked / rated it, plus the public like tally. */
+  saved: boolean;
+  liked: boolean;
+  likeCount: number;
+  myRating: number;
   reviews: ReviewRow[];
   downloads: { total: number; last30: number; last7: number; today: number; sparkline?: number[] };
   telegramFiles: TelegramFile[];

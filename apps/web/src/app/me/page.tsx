@@ -24,6 +24,7 @@ import {
   Save,
   Settings,
   Share2,
+  Wrench,
   Zap,
 } from "lucide-react";
 import { get, patch, post } from "@/lib/api";
@@ -251,16 +252,6 @@ export default function MePage() {
     }
   };
 
-  const terminateAll = async () => {
-    try {
-      await post("/users/sessions/terminate-all");
-      setToast("All other sessions terminated");
-      await refresh();
-    } catch (e: any) {
-      setToast(e.message);
-    }
-  };
-
   const unlinkGoogle = async () => {
     try {
       await post("/users/me/unlink-google");
@@ -339,14 +330,21 @@ export default function MePage() {
             <button className="btn" onClick={onShareProfile}>
               <Share2 size={14} /> Share
             </button>
-            {/* Mobile only, and here rather than in the page header: the top bar
-                carries the Me menu with Sign out on a desktop but is hidden on a
-                phone, which left the one at the foot of Settings — behind a tab
-                that scrolls off a 360px screen — as the only way out. The bottom
-                tab bar lands on this page, so sign-out is now two taps from
-                anywhere. */}
+            {/* The console used to be a rail at the foot of Settings — behind a
+                tab, below privacy switches, four screens down on a phone. It is
+                the thing staff open most, so it sits with the other identity
+                actions instead. */}
+            {user.isStaff && (
+              <Link href="/admin" className="btn">
+                <Wrench size={14} /> Admin
+              </Link>
+            )}
+            {/* Sign out belongs here on every width, not just a phone: the top
+                bar carries the Me menu on a desktop, but the only other copy was
+                at the foot of Settings, behind a tab that scrolls off a 360px
+                screen. One place, always reachable. */}
             <button
-              className="btn mobile-only"
+              className="btn"
               style={{ color: "hsl(var(--destructive))" }}
               onClick={() => {
                 logout();
@@ -797,55 +795,6 @@ export default function MePage() {
             </div>
           </div>
 
-          {/* sessions */}
-          <div className="rail">
-            <div className="section-head">
-              <h2>Sessions</h2>
-              {user.sessions.length > 1 && (
-                <button className="btn ghost" style={{ padding: 0, fontSize: 11 }} onClick={terminateAll}>
-                  Terminate all
-                </button>
-              )}
-            </div>
-            <div className="dark-panel dark-panel--pad-xs">
-              {user.sessions.map((s) => (
-                <div className="lesson" key={s.id}>
-                  <Check size={15} className="rating" />
-                  <span>
-                    {s.device ?? "Device"}
-                    <br />
-                    <small className="muted">{s.active ? "Active now" : "Signed out"} · {s.ip ?? "—"} · {formatDate(s.createdAt)}</small>
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {user.isStaff && (
-            <div className="rail">
-              <div className="section-head"><h2>Staff</h2></div>
-              <div className="dark-panel dark-panel--rows">
-                <Link href="/admin" className="lesson">
-                  <span>🛠️</span>
-                  <span>Admin CMS</span>
-                  <span className="muted" style={{ marginLeft: "auto" }}>›</span>
-                </Link>
-              </div>
-            </div>
-          )}
-
-          <div className="rail">
-            <button
-              className="btn"
-              style={{ width: "100%", color: "hsl(var(--destructive))" }}
-              onClick={() => {
-                logout();
-                router.push("/");
-              }}
-            >
-              <LogOut size={14} /> Log out
-            </button>
-          </div>
         </>
       )}
 

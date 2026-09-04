@@ -19,7 +19,13 @@ export interface ChartPoint {
   value: number;
 }
 
-const PAD = { t: 12, r: 12, b: 22, l: 48 };
+const PAD_WIDE = { t: 12, r: 12, b: 22, l: 48 };
+/**
+ * Phone geometry. A 48px left gutter is a seventh of the 358px a card gets at
+ * 390px, and the axis labels there are short enough ("1.2k") to live in 36 — the
+ * 12px it gives back go to the series, which is what the reader came for.
+ */
+const PAD_NARROW = { t: 10, r: 10, b: 22, l: 36 };
 
 export default function TimeChart({
   points,
@@ -50,6 +56,11 @@ export default function TimeChart({
   }, []);
 
   const n = points.length;
+  // Measured width, not a media query: these cards sit in a one- or two-column
+  // grid, so the same breakpoint can leave a chart wide on one page and narrow
+  // on another. What matters is the box this instance actually got.
+  const narrow = width < 430;
+  const PAD = narrow ? PAD_NARROW : PAD_WIDE;
   const iw = width - PAD.l - PAD.r;
   const ih = height - PAD.t - PAD.b;
   const top = niceMax(Math.max(0, ...points.map((p) => p.value)));
@@ -137,8 +148,10 @@ export default function TimeChart({
         )}
 
         {/* First, middle and last only — a label under every column collides at
-            any width narrower than a spreadsheet. */}
-        {[0, Math.floor((n - 1) / 2), n - 1]
+            any width narrower than a spreadsheet. On a phone even three collide
+            once the label is a date, so the middle one goes and the range is read
+            from the two ends. */}
+        {(narrow ? [0, n - 1] : [0, Math.floor((n - 1) / 2), n - 1])
           .filter((i, idx, arr) => i >= 0 && arr.indexOf(i) === idx)
           .map((i) => (
             <text
@@ -167,23 +180,27 @@ export default function TimeChart({
           </>
         )}
 
-        {/* One hit area over the whole plot, so the target is the column of space
-            above a mark rather than the mark itself. */}
+        {/* One hit area over the whole frame, so the target is the column of
+            space above a mark rather than the mark itself — and, on a phone, the
+            axis gutter and label band count too. It starts at the origin because
+            `pick` measures from there: a rect inset by PAD.l would have its own
+            left edge subtracted twice and report the column next door. */}
         <rect
-          x={PAD.l}
-          y={PAD.t}
-          width={Math.max(0, iw)}
-          height={ih}
+          x={0}
+          y={0}
+          width={width}
+          height={height}
           fill="transparent"
           onPointerMove={(e) => setHover(pick(e.clientX, e.currentTarget.getBoundingClientRect()))}
           onPointerLeave={() => setHover(null)}
+          onPointerCancel={() => setHover(null)}
         />
       </svg>
 
       {tipAt && (
         <div
           className="admin-chart-tip"
-          style={{ left: Math.min(width - 60, Math.max(60, centre(hover!))) }}
+          style={{ left: clamp(centre(hover!), narrow ? 46 : 60, width - (narrow ? 46 : 60)) }}
           aria-hidden
         >
           <strong>{format(tipAt.value)}</strong>
@@ -193,6 +210,9 @@ export default function TimeChart({
     </div>
   );
 }
+
+/** Keep the tooltip inside the card it is drawn over. */
+const clamp = (v: number, lo: number, hi: number) => Math.min(Math.max(v, lo), Math.max(lo, hi));
 
 /** Round the axis top up to something a person would have chosen. */
 function niceMax(v: number): number {

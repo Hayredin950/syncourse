@@ -9,6 +9,7 @@ import { bucketSeries, compactNumber, periodDelta, runningTotal, sumSince, windo
 import StatTile from "@/components/admin/StatTile";
 import TimeChart from "@/components/admin/TimeChart";
 import ChartCard from "@/components/admin/ChartCard";
+import AdminEmpty from "@/components/admin/AdminEmpty";
 import BarList from "@/components/admin/BarList";
 
 /**
@@ -359,7 +360,7 @@ export default function AdminAnalytics() {
           columns={["Course", "Students", "Rating"]}
           rows={topCourses.map((c) => [c.label, c.value, c.hint ?? "—"])}
         >
-          <BarList items={topCourses} empty="No downloads yet." />
+          <BarList items={topCourses} empty="No downloads yet" />
         </ChartCard>
 
         <ChartCard
@@ -368,7 +369,7 @@ export default function AdminAnalytics() {
           columns={["Publisher", "Courses"]}
           rows={topPublishers.map((p) => [p.label, p.value])}
         >
-          <BarList items={topPublishers} empty="No courses carry a publisher yet." />
+          <BarList items={topPublishers} empty="No course carries a publisher yet" />
         </ChartCard>
       </div>
       <div className="admin-grid-2" style={{ marginTop: 14 }}>
@@ -389,7 +390,7 @@ export default function AdminAnalytics() {
           columns={["Method", "Submissions"]}
           rows={methods.map((m) => [m.label, m.value])}
         >
-          <BarList items={methods} empty="No payments have been submitted yet." />
+          <BarList items={methods} empty="No payment has been submitted yet" />
         </ChartCard>
       </div>
 
@@ -400,7 +401,11 @@ export default function AdminAnalytics() {
 
       <div className="admin-card admin-card--flush">
         {cohorts.length === 0 ? (
-          <p className="admin-empty">No accounts to group yet.</p>
+          <AdminEmpty
+            icon={<Users size={18} />}
+            title="No accounts to group yet"
+            hint="Cohorts are cut from signup months, so the first row appears with the first signup."
+          />
         ) : (
           <table className="admin-table">
             <thead>
@@ -415,11 +420,21 @@ export default function AdminAnalytics() {
             <tbody>
               {cohorts.map((c) => (
                 <tr key={c.label}>
-                  <td className="admin-cell-title">{c.label}</td>
-                  <td className="admin-table__num">{c.total.toLocaleString("en-US")}</td>
-                  <td className="admin-table__num">{c.downloaded.toLocaleString("en-US")}</td>
-                  <td className="admin-table__num">{c.paid.toLocaleString("en-US")}</td>
-                  <td className="admin-table__num">{((c.downloaded / c.total) * 100).toFixed(0)}%</td>
+                  <td className="admin-cell-title" data-role="head">
+                    {c.label}
+                  </td>
+                  <td className="admin-table__num" data-label="Accounts">
+                    {c.total.toLocaleString("en-US")}
+                  </td>
+                  <td className="admin-table__num" data-label="Downloaded">
+                    {c.downloaded.toLocaleString("en-US")}
+                  </td>
+                  <td className="admin-table__num" data-label="Paid">
+                    {c.paid.toLocaleString("en-US")}
+                  </td>
+                  <td className="admin-table__num" data-label="Activation">
+                    {((c.downloaded / c.total) * 100).toFixed(0)}%
+                  </td>
                 </tr>
               ))}
             </tbody>

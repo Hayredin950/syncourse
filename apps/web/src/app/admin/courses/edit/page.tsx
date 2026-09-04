@@ -3,9 +3,10 @@
 import { Suspense, useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { ArrowLeft, ExternalLink } from "lucide-react";
+import { ArrowLeft, AlertTriangle, ExternalLink } from "lucide-react";
 import { get } from "@/lib/api";
 import type { AdminCourseDetail } from "@/lib/types";
+import AdminEmpty from "@/components/admin/AdminEmpty";
 import { CourseForm } from "@/components/admin/CourseForm";
 
 /**
@@ -60,7 +61,16 @@ function EditCourse() {
         )}
       </div>
 
-      {error && <p className="admin-empty">{error}</p>}
+      {error && (
+        <div className="admin-card">
+          <AdminEmpty
+            icon={<AlertTriangle size={18} />}
+            title={slug ? "Could not open that course" : "No course selected"}
+            hint={slug ? error : "This form edits one course at a time — pick one from the list."}
+            action={{ label: "Browse courses", href: "/admin/courses" }}
+          />
+        </div>
+      )}
       {!error && !course && (
         <div className="admin-stack">
           <span className="admin-skeleton" style={{ height: 140, display: "block" }} />

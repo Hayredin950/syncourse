@@ -12,36 +12,55 @@
 
    2. FUNCTIONAL COLOUR. Amber means "this is the primary action" and nothing
       else — never a tab, never a badge on a neutral row. Green means it
-      worked, red means it destroys data, grey means everything else. The active
-      nav item is *ink + a marker*, not a filled amber pill, so "New course"
-      stays the single loudest thing on any screen.
+      worked, red means it destroys data, amber-red means a human has to decide
+      something, violet and blue mark states (a plan, a staff flag), cool blue
+      is the data hue, and grey means everything else. The active nav item is
+      *ink + a marker*, not a filled amber pill, so "New course" stays the single
+      loudest thing on any screen.
 
-   3. DENSITY. An ops console is read in columns, not paragraphs: 19px page
-      titles, 12.5px table text, 10px tracked-uppercase field labels. Small
-      text is the point — it means more rows fit without shouting.
+   3. DENSITY. An ops console is read in columns, not paragraphs: 22px page
+      titles, 12.5px table text, 10px tracked-uppercase field labels, 30px hero
+      numbers. Small text is the point — it means more rows fit without shouting
+      — but the *numbers* have to win, because they are what you came for.
 
-   Sections: tokens · shell · sidebar · topbar · typography · cards · stat tiles
-   · sparkline · tables · rows · forms · buttons · badges · toasts · confirm ·
-   pager · bulk bar · palette · charts · detail · utilities · responsive.
+   4. TWO LAYOUTS, NOT ONE SHRUNK. Three breakpoints: phone (<700px), tablet
+      (700–1100px), desktop (>1100px). At phone width the sidebar becomes a
+      drawer and every data table becomes a list of cards — the component
+      changes, rather than eight columns being crushed into 390px.
+
+   Sections: tokens · shell · sidebar · drawer · topbar · typography · cards ·
+   stat tiles · sparkline · tables · rows · forms · buttons · badges · toasts ·
+   confirm · pager · bulk bar · palette · charts · detail · utilities ·
+   responsive.
    ========================================================================== */
 
 /* --- tokens ---------------------------------------------------------------- */
 .admin-shell {
-  /* Elevation ramp — warm neutrals, same hue family as the public site. */
-  --adm-plane: #0b0a09;
-  --adm-surface: #141210;
-  --adm-raised: #1c1917;
-  --adm-overlay: #221f1b;
+  /* Elevation ramp — warm neutrals, same hue family as the public site. Each
+     step is ~8/255 lighter than the last, which is the smallest gap that still
+     reads as depth on a dim phone screen; the old ramp moved in 4s and washed
+     out to one flat grey the moment brightness dropped. */
+  --adm-plane: #0a0908;
+  --adm-surface: #1a1714;
+  --adm-raised: #221f1b;
+  --adm-overlay: #2b2723;
 
   /* Hairlines. Two weights only: quiet dividers, and edges that need to read. */
-  --adm-line: rgba(255, 255, 255, 0.06);
-  --adm-line-strong: rgba(255, 255, 255, 0.11);
+  --adm-line: rgba(255, 255, 255, 0.07);
+  --adm-line-strong: rgba(255, 255, 255, 0.13);
+  /* A third, for the edge of something you are meant to type into. A form control
+     borrowing `--adm-line-strong` sat at 13% white on a #221f1b fill, which is
+     under 1.4:1 — the field read as a disabled one, and a screen of them read as a
+     read-only summary. These two are the resting and hover edges of every input,
+     select, textarea and combobox. */
+  --adm-field-line: rgba(255, 255, 255, 0.22);
+  --adm-field-line-hi: rgba(255, 255, 255, 0.34);
 
   /* Ink ramp. Four steps is enough; a fifth always ends up unreadable. */
   --adm-ink: #f8f7f5;
-  --adm-ink-2: #c6c1ba;
-  --adm-ink-3: #8e8981;
-  --adm-ink-4: #6a655e;
+  --adm-ink-2: #c9c4bd;
+  --adm-ink-3: #948f87;
+  --adm-ink-4: #726d66;
 
   /* Functional colour. One job each — see note 2 above. */
   --adm-accent: #f59e0b;
@@ -49,12 +68,23 @@
   --adm-accent-soft: rgba(245, 158, 11, 0.12);
   --adm-good: #22c55e;
   --adm-good-soft: rgba(34, 197, 94, 0.12);
-  --adm-warn: #fab219;
-  --adm-warn-soft: rgba(250, 178, 25, 0.12);
+  /* Attention is amber-*red*, not amber. At #fab219 it was three degrees of hue
+     from the primary-action amber, so "2 payments waiting" and "New course" were
+     the same colour and neither signal landed. */
+  --adm-warn: #f2683c;
+  --adm-warn-soft: rgba(242, 104, 60, 0.13);
   --adm-bad: #ef4444;
   --adm-bad-soft: rgba(239, 68, 68, 0.12);
+  /* States, not actions: a plan tier, a staff flag, an editorial pick. Amber is
+     unavailable to them by rule, so they get their own two hues. */
+  --adm-violet: #b58cf7;
+  --adm-violet-soft: rgba(181, 140, 247, 0.14);
+  --adm-blue: #6ea8fe;
+  --adm-blue-soft: rgba(110, 168, 254, 0.14);
 
-  /* Chart ink: one series, de-emphasised, with the current period in accent. */
+  /* Chart ink: one series, de-emphasised, with the current period picked out in
+     the data hue. Cool blue rather than amber so a chart never reads as a row of
+     buttons — the mark is data, and data is not clickable. */
   --adm-series: rgba(255, 255, 255, 0.24);
   --adm-series-fill: rgba(255, 255, 255, 0.07);
   /* Full-size charts get a stronger mark: at 0.24 a bar sits around 2.1:1 against
@@ -62,6 +92,17 @@
      where the value is printed right next to it, and not survivable when the mark
      *is* the number. 0.38 measures 3.6:1. */
   --adm-series-strong: rgba(255, 255, 255, 0.38);
+  --adm-data: #6ea8fe;
+
+  /* Type scale. Four rungs, each a clear step from the next, so a page has an
+     obvious reading order instead of one grey wall: hero numbers, page title,
+     body/table, then labels and meta. */
+  --adm-t-hero: 30px;
+  --adm-t-h1: 22px;
+  --adm-t-h2: 15px;
+  --adm-t-body: 12.5px;
+  --adm-t-meta: 11px;
+  --adm-t-label: 10px;
 
   --adm-r-sm: 6px;
   --adm-r: 9px;
@@ -70,6 +111,7 @@
 
   --adm-gutter: 28px;
   --adm-sidebar-w: 232px;
+  --adm-topbar-h: 50px;
 
   --adm-ease: cubic-bezier(0.32, 0.72, 0, 1);
   --adm-fast: 120ms var(--adm-ease);
@@ -82,9 +124,9 @@
   grid-template-columns: var(--adm-sidebar-w) minmax(0, 1fr);
   align-items: start;
   background: var(--adm-plane);
-  min-height: calc(100vh - 120px);
+  min-height: 100vh;
   color: var(--adm-ink-2);
-  font-size: 12.5px;
+  font-size: var(--adm-t-body);
   line-height: 1.5;
 }
 .admin-shell--collapsed { --adm-sidebar-w: 62px; }
@@ -235,6 +277,71 @@
 .admin-shell--collapsed .admin-nav-group { padding: 8px 0 2px; border-top: 1px solid var(--adm-line); }
 .admin-shell--collapsed .admin-nav-group:first-of-type { border-top: 0; }
 
+/* --- mobile drawer --------------------------------------------------------- */
+/* The same grouped list as the rail, in a sheet. Hidden entirely above 900px —
+   `visibility` rather than `display` so the panel can transition, and so nothing
+   inside it is reachable by Tab while it is closed. */
+.admin-drawer {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  visibility: hidden;
+  transition: visibility var(--adm-slow);
+}
+.admin-drawer--open { visibility: visible; }
+.admin-drawer__scrim {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.58);
+  opacity: 0;
+  transition: opacity var(--adm-slow);
+}
+.admin-drawer--open .admin-drawer__scrim { opacity: 1; }
+.admin-drawer__panel {
+  position: absolute;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  display: flex;
+  flex-direction: column;
+  width: min(292px, 86vw);
+  padding: 14px 10px 12px;
+  background: var(--adm-surface);
+  border-right: 1px solid var(--adm-line-strong);
+  box-shadow: var(--adm-shadow-lg);
+  transform: translateX(-100%);
+  transition: transform var(--adm-slow);
+  outline: none;
+}
+.admin-drawer--open .admin-drawer__panel { transform: none; }
+.admin-drawer__head { display: flex; align-items: flex-start; gap: 8px; }
+.admin-drawer__head .admin-sidebar__brand { flex: 1; min-width: 0; padding-bottom: 8px; }
+.admin-drawer__x {
+  display: grid;
+  place-items: center;
+  flex: 0 0 32px;
+  width: 32px;
+  height: 32px;
+  border: 1px solid var(--adm-line);
+  border-radius: var(--adm-r);
+  background: var(--adm-raised);
+  color: var(--adm-ink-3);
+  cursor: pointer;
+}
+.admin-drawer__x:hover { color: var(--adm-ink); }
+.admin-drawer__body { flex: 1; overflow-y: auto; overscroll-behavior: contain; margin: 0 -4px; padding: 0 4px; }
+.admin-drawer__foot { padding-top: 10px; border-top: 1px solid var(--adm-line); }
+/* Touch targets in the drawer are thumb-sized, not mouse-sized. */
+.admin-drawer .admin-nav-link { padding: 10px 11px; font-size: 13px; }
+.admin-drawer .admin-nav-link--active::before { left: -4px; }
+
+/* Hamburger — only ever visible once the rail is gone. */
+.admin-burger { display: none; }
+/* And with the rail present the drawer cannot be opened, so it does not exist. */
+@media (min-width: 901px) {
+  .admin-drawer { display: none; }
+}
+
 /* --- topbar ---------------------------------------------------------------- */
 .admin-main { min-width: 0; }
 .admin-topbar {
@@ -245,8 +352,8 @@
   align-items: center;
   gap: 12px;
   padding: 0 var(--adm-gutter);
-  height: 46px;
-  background: color-mix(in srgb, var(--adm-plane) 88%, transparent);
+  height: var(--adm-topbar-h);
+  background: color-mix(in srgb, var(--adm-plane) 86%, transparent);
   backdrop-filter: blur(12px);
   border-bottom: 1px solid var(--adm-line);
 }
@@ -313,9 +420,6 @@
 }
 .admin-topbar__exit:hover { background: var(--adm-raised); color: var(--adm-ink); border-color: rgba(255, 255, 255, 0.16); }
 
-/* Mobile-only nav strip; the sidebar hides below 900px. */
-.admin-tabs { display: none; }
-
 /* --- typography ------------------------------------------------------------ */
 .admin-content {
   padding: 22px var(--adm-gutter) 56px;
@@ -324,24 +428,32 @@
 }
 .admin-content h1 {
   margin: 0;
-  font-size: 19px;
-  font-weight: 650;
-  letter-spacing: -0.015em;
+  font-size: var(--adm-t-h1);
+  font-weight: 660;
+  letter-spacing: -0.022em;
+  line-height: 1.15;
   color: var(--adm-ink);
 }
 .admin-content h2 {
   margin: 0;
-  font-size: 14px;
+  font-size: var(--adm-t-h2);
   font-weight: 650;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.012em;
   color: var(--adm-ink);
 }
+/* Explanatory copy earns its own leading. Set at body line-height it read as
+   another dense row of the grid it was trying to explain. */
 .admin-content .page-desc {
-  margin: 4px 0 0;
-  font-size: 12px;
+  margin: 7px 0 0;
+  font-size: var(--adm-t-body);
+  line-height: 1.65;
   color: var(--adm-ink-3);
   max-width: 68ch;
 }
+/* Inside a card or a fold it is introducing the fields below it, so it needs a gap
+   under it — without one the last line of the explanation and the first label read
+   as one block. */
+.admin-card > .page-desc, .admin-fold__body > .page-desc { margin-bottom: 11px; }
 .admin-page-head {
   display: flex;
   align-items: flex-start;
@@ -436,22 +548,27 @@ a.admin-tile:hover {
   display: flex;
   align-items: center;
   gap: 6px;
-  font-size: 11px;
-  font-weight: 500;
-  color: var(--adm-ink-3);
+  font-size: var(--adm-t-label);
+  font-weight: 700;
+  letter-spacing: 0.085em;
+  text-transform: uppercase;
+  color: var(--adm-ink-4);
 }
 .admin-tile__label svg { color: var(--adm-ink-4); }
 .admin-tile__row { display: flex; align-items: flex-end; justify-content: space-between; gap: 10px; }
 /* Proportional figures on purpose — tabular-nums makes a big standalone number
    look gappy. Tabular is for columns (tables, axis ticks). */
 .admin-tile__value {
-  font-size: 25px;
-  font-weight: 650;
-  line-height: 1.05;
-  letter-spacing: -0.025em;
+  font-size: var(--adm-t-hero);
+  font-weight: 660;
+  line-height: 1.02;
+  letter-spacing: -0.03em;
   color: var(--adm-ink);
 }
-.admin-tile__spark { flex: 0 0 auto; opacity: 0.95; }
+/* The shape gives up width before the number does: at two tiles across a phone
+   there is not room for both a 30px figure and a fixed 76px sparkline. */
+.admin-tile__spark { flex: 0 1 auto; min-width: 40px; opacity: 0.95; }
+.admin-tile__spark svg { display: block; width: 100%; height: auto; }
 .admin-tile__foot {
   display: flex;
   align-items: center;
@@ -478,7 +595,7 @@ a.admin-tile:hover {
 .admin-spark { display: block; overflow: visible; }
 .admin-spark__line { fill: none; stroke: var(--adm-series); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 .admin-spark__area { fill: var(--adm-series-fill); stroke: none; }
-.admin-spark__tip { fill: var(--adm-accent); stroke: var(--adm-surface); stroke-width: 2; }
+.admin-spark__tip { fill: var(--adm-data); stroke: var(--adm-surface); stroke-width: 2; }
 
 /* --- tables ---------------------------------------------------------------- */
 .admin-table { width: 100%; border-collapse: collapse; }
@@ -526,21 +643,31 @@ a.admin-tile:hover {
 .admin-cell-link { color: var(--adm-ink); text-decoration: none; }
 .admin-cell-link:hover { color: var(--adm-accent-hi); }
 
+/* One size everywhere (detail heads override deliberately), and a hue hashed
+   from the name so a column of letter-fallbacks is scannable instead of being
+   thirty identical amber circles. */
 .admin-avatar {
   display: grid;
   place-items: center;
   flex: 0 0 auto;
-  width: 30px;
-  height: 30px;
+  width: 32px;
+  height: 32px;
   overflow: hidden;
   border-radius: 50%;
   background: var(--adm-raised);
-  color: var(--adm-accent);
-  font-size: 11px;
+  color: var(--adm-ink-2);
+  font-size: 12px;
   font-weight: 700;
+  line-height: 1;
 }
 .admin-avatar img { width: 100%; height: 100%; object-fit: cover; }
 .admin-avatar--sq { border-radius: var(--adm-r-sm); }
+.admin-avatar--h0 { background: rgba(110, 168, 254, 0.16); color: #9cc2ff; }
+.admin-avatar--h1 { background: rgba(181, 140, 247, 0.16); color: #c9adfa; }
+.admin-avatar--h2 { background: rgba(34, 197, 94, 0.14); color: #6ee7a0; }
+.admin-avatar--h3 { background: rgba(245, 158, 11, 0.15); color: #f7c069; }
+.admin-avatar--h4 { background: rgba(236, 106, 149, 0.16); color: #f59ab8; }
+.admin-avatar--h5 { background: rgba(45, 212, 191, 0.15); color: #7de3d4; }
 .admin-thumb {
   flex: 0 0 auto;
   width: 34px;
@@ -551,7 +678,30 @@ a.admin-tile:hover {
 }
 .admin-thumb img { width: 100%; height: 100%; object-fit: cover; }
 
-.admin-empty { padding: 34px 20px; text-align: center; color: var(--adm-ink-4); font-size: 12px; }
+/* Styled empty state — icon, one line, and the action that fills it. It replaced
+   `.admin-empty`, a centred grey sentence that named the form it did not link to;
+   every one of its twenty-odd call sites is now an <AdminEmpty>. */
+.admin-blank {
+  display: grid;
+  justify-items: center;
+  gap: 7px;
+  padding: 34px 20px;
+  text-align: center;
+}
+.admin-blank__icon {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  margin-bottom: 2px;
+  border: 1px solid var(--adm-line);
+  border-radius: var(--adm-r-lg);
+  background: var(--adm-raised);
+  color: var(--adm-ink-4);
+}
+.admin-blank__title { margin: 0; font-size: 12.5px; font-weight: 600; color: var(--adm-ink-2); }
+.admin-blank__hint { margin: 0; max-width: 44ch; font-size: 11.5px; line-height: 1.6; color: var(--adm-ink-4); }
+.admin-blank .admin-btn { margin-top: 5px; }
 .admin-skeleton {
   border-radius: var(--adm-r-sm);
   background: linear-gradient(90deg, var(--adm-raised) 25%, var(--adm-overlay) 50%, var(--adm-raised) 75%);
@@ -625,22 +775,41 @@ a.admin-tile:hover {
 .admin-search svg { position: absolute; left: 10px; color: var(--adm-ink-4); pointer-events: none; }
 .admin-search .admin-input { padding-left: 30px; }
 
+/* Nothing here may set a width floor. A `min-width: 200px` on every input is
+   what pushed the Telegram message link and the publisher logo URL out through
+   the right edge of their cards on a phone: a floor wider than the column wins
+   over the column, and the overflow has nowhere to go. Fields fill their grid
+   cell instead, and the one control that genuinely wants a floor — the toolbar
+   search — asks for it by name below. */
 .admin-input,
 .admin-select,
 .admin-textarea {
   background: var(--adm-raised);
-  border: 1px solid var(--adm-line-strong);
+  border: 1px solid var(--adm-field-line);
   border-radius: var(--adm-r);
   color: var(--adm-ink);
   font: inherit;
-  font-size: 12.5px;
+  font-size: var(--adm-t-body);
   padding: 7px 10px;
+  min-width: 0;
+  max-width: 100%;
   outline: none;
   transition: border-color var(--adm-fast), box-shadow var(--adm-fast), background var(--adm-fast);
 }
-.admin-input { min-width: 200px; }
+.admin-field > .admin-input,
+.admin-field > .admin-select,
+.admin-field > .admin-textarea,
+.admin-field > .admin-combo > .admin-input { width: 100%; }
 .admin-input::placeholder, .admin-textarea::placeholder { color: var(--adm-ink-4); }
-.admin-input:hover, .admin-select:hover, .admin-textarea:hover { border-color: rgba(255, 255, 255, 0.17); }
+.admin-input:hover, .admin-select:hover, .admin-textarea:hover { border-color: var(--adm-field-line-hi); }
+/* Disabled has to be the *quiet* one, which it could not be while the resting
+   border was already this faint. */
+.admin-input:disabled, .admin-select:disabled, .admin-textarea:disabled {
+  border-color: var(--adm-line-strong);
+  color: var(--adm-ink-4);
+  background: var(--adm-surface);
+  cursor: not-allowed;
+}
 .admin-input:focus-visible,
 .admin-select:focus-visible,
 .admin-textarea:focus-visible {
@@ -649,6 +818,10 @@ a.admin-tile:hover {
 }
 .admin-textarea { min-height: 74px; resize: vertical; line-height: 1.55; width: 100%; }
 .admin-select { padding-right: 26px; cursor: pointer; }
+/* Search is the one field that may claim room, and it gives it all back on a
+   phone by taking the whole toolbar row. */
+.admin-search { flex: 1 1 240px; max-width: 320px; }
+.admin-search .admin-input { width: 100%; }
 
 .admin-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; margin-bottom: 14px; }
 .admin-field { display: grid; gap: 5px; min-width: 0; }
@@ -659,6 +832,100 @@ a.admin-tile:hover {
 /* Fills its column and drops the 200px floor — for inputs inside narrow grid
    cells, where a min-width would blow the grid out sideways. */
 .admin-input--full { width: 100%; min-width: 0; }
+
+/* URL field + file picker (+ the lesson's "Free preview" box) as one row. They
+   stay on one line while there is room; the wrap rule is in the phone block,
+   because at 390px the input was 85 pixels of a URL. */
+.admin-uploadrow { display: flex; align-items: center; gap: 8px; flex-wrap: nowrap; }
+.admin-uploadrow > .admin-input { flex: 1 1 auto; }
+
+/* Editor layout: the thing being written on the left, everything *about* it in a
+   rail on the right. A 600-word markdown body and a "reading time" number field
+   were previously the same width, stacked, so the form read as fifteen equally
+   important boxes. Every serious CMS converged on this split for the same
+   reason. The rail sticks, so Save and the publishing switches stay on screen
+   while you scroll the body. */
+.admin-form-split { display: grid; grid-template-columns: minmax(0, 1.6fr) minmax(0, 1fr); gap: 16px; align-items: start; }
+.admin-form-split__main { min-width: 0; display: grid; gap: 14px; align-content: start; }
+.admin-form-split__aside {
+  min-width: 0;
+  display: grid;
+  gap: 14px;
+  align-content: start;
+  position: sticky;
+  top: calc(var(--adm-topbar-h) + 14px);
+  max-height: calc(100vh - var(--adm-topbar-h) - 28px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+.admin-form-split .admin-card { margin-bottom: 0; }
+/* The rail is ~400px at 1440. Two columns of fields inside it wraps every label
+   onto a second line, so metadata stacks even where the main grid does not. */
+.admin-form-split__aside .admin-form-grid { grid-template-columns: minmax(0, 1fr); }
+
+/* A card whose head is a toggle. Collapsed on a phone for the sections that are
+   metadata rather than content, so the scroll to Save is not fifteen fields
+   long; always open on desktop, where the rail has room for all of it. */
+.admin-fold { padding: 0; overflow: hidden; }
+.admin-fold__head {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 12px 14px;
+  border: 0;
+  background: transparent;
+  color: var(--adm-ink);
+  font: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-align: left;
+  cursor: pointer;
+}
+.admin-fold__head:hover { background: var(--adm-raised); }
+.admin-fold__hint { margin-left: auto; font-size: 10.5px; font-weight: 500; color: var(--adm-ink-4); }
+.admin-fold__chev { flex: 0 0 auto; color: var(--adm-ink-4); transition: transform var(--adm-fast); }
+.admin-fold[data-open='false'] .admin-fold__chev { transform: rotate(-90deg); }
+.admin-fold[data-open='true'] .admin-fold__head { border-bottom: 1px solid var(--adm-line); }
+.admin-fold__body { padding: 14px; }
+.admin-fold__body > :last-child { margin-bottom: 0; }
+/* A fold holding list rows rather than fields: the rows draw their own padding
+   and their dividers have to reach the card edge. */
+.admin-fold--flush > .admin-fold__body { padding: 0; }
+
+/* An attachment row is a disclosure of its own — a post can arrive as a dozen
+   files, and a dozen open rows is six phone screens of selects between the body
+   and Save. Collapsed it still names the file and its size, which is all you need
+   to check the order. The head cannot be one button: the reorder and delete
+   controls live in it, so the toggle is a button beside them, not around them. */
+.admin-media-row__head { display: flex; align-items: center; gap: 6px; }
+.admin-media-row__toggle {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+  min-width: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  font: inherit;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.admin-media-row__toggle .admin-fold__chev { transition: transform var(--adm-fast); }
+.admin-media-row[data-open='false'] .admin-fold__chev { transform: rotate(-90deg); }
+.admin-media-row__sum {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  font-size: 11px;
+  color: var(--adm-ink-4);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
 /* A box nested inside a card (a lesson inside a section): one step *down* the
    elevation ramp, so nesting reads as depth rather than another card. */
@@ -680,9 +947,35 @@ a.admin-tile:hover {
   font-size: 12px;
   line-height: 1.5;
 }
-.admin-alert--bad { border: 1px solid rgba(239, 68, 68, 0.3); background: rgba(239, 68, 68, 0.07); color: #fca5a5; }
-.admin-alert--warn { border: 1px solid rgba(245, 158, 11, 0.28); background: var(--adm-warn-soft); color: var(--adm-warn); }
+.admin-alert--bad { border: 1px solid rgba(239, 68, 68, 0.3); background: var(--adm-bad-soft); color: #fca5a5; }
+/* Amber-red, not the accent amber: the border used to be #f59e0b, which read as a
+   brand highlight sitting on a warning's own background. */
+.admin-alert--warn { border: 1px solid rgba(242, 104, 60, 0.32); background: var(--adm-warn-soft); color: var(--adm-warn); }
 .admin-alert--info { border: 1px solid var(--adm-line); background: var(--adm-raised); color: var(--adm-ink-3); }
+
+/* Inline notice — a standing fact about the screen you are on ("these fields are
+   not persisted yet"), as opposed to .admin-alert, which answers something you
+   just did. Coloured rule down the left so it reads as chrome from the system,
+   not as body copy someone forgot to delete. */
+.admin-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 10px 13px;
+  border: 1px solid var(--adm-line);
+  border-left: 2px solid var(--adm-ink-4);
+  border-radius: 0 var(--adm-r) var(--adm-r) 0;
+  background: var(--adm-raised);
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--adm-ink-3);
+}
+.admin-notice svg { flex: 0 0 auto; margin-top: 2px; color: var(--adm-ink-4); }
+.admin-notice strong { color: var(--adm-ink-2); font-weight: 650; }
+.admin-notice--warn { border-left-color: var(--adm-warn); background: var(--adm-warn-soft); color: var(--adm-ink-2); }
+.admin-notice--warn svg { color: var(--adm-warn); }
+.admin-notice--good { border-left-color: var(--adm-good); background: var(--adm-good-soft); color: var(--adm-ink-2); }
+.admin-notice--good svg { color: var(--adm-good); }
 
 /* Image preview with a corner remove button. */
 .admin-preview { position: relative; display: inline-flex; }
@@ -725,8 +1018,16 @@ a.admin-tile:hover {
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 14px;
+  /* Wraps rather than squeezing: at 390px the controls on the right used to be
+     compressed into their own icons instead of dropping to the next line. */
+  flex-wrap: wrap;
 }
 .admin-panel__title { font-size: 13px; font-weight: 650; color: var(--adm-ink); }
+/* A head titled with an <h3> keeps it on one line: at 390px "Attachments"
+   preceded by a paperclip broke the icon onto its own line and the buttons rode
+   up beside the orphan. Scoped to h3 so the longer `Edit <name>` titles on the
+   table pages — which use .admin-panel__title — can still wrap. */
+.admin-panel__head h3 { margin: 0; white-space: nowrap; }
 
 /* Checkbox — native input, restyled, so keyboard and a11y come for free. */
 .admin-check {
@@ -735,14 +1036,14 @@ a.admin-tile:hover {
   width: 15px;
   height: 15px;
   margin: 0;
-  border: 1px solid var(--adm-line-strong);
+  border: 1px solid var(--adm-field-line);
   border-radius: 4px;
   background: var(--adm-raised);
   cursor: pointer;
   position: relative;
   transition: background var(--adm-fast), border-color var(--adm-fast);
 }
-.admin-check:hover { border-color: rgba(255, 255, 255, 0.28); }
+.admin-check:hover { border-color: var(--adm-field-line-hi); }
 .admin-check:checked, .admin-check:indeterminate { background: var(--adm-accent); border-color: var(--adm-accent); }
 .admin-check:checked::after {
   content: '';
@@ -821,6 +1122,10 @@ a.admin-tile:hover {
   white-space: nowrap;
 }
 .admin-badge--accent { background: var(--adm-accent-soft); color: var(--adm-accent); }
+/* State badges. A plan tier and a staff flag are facts about a row, not things
+   to click, so they may not borrow the action colour. */
+.admin-badge--violet { background: var(--adm-violet-soft); color: var(--adm-violet); }
+.admin-badge--blue { background: var(--adm-blue-soft); color: var(--adm-blue); }
 .admin-badge--green { background: var(--adm-good-soft); color: var(--adm-good); }
 .admin-badge--warn { background: var(--adm-warn-soft); color: var(--adm-warn); }
 .admin-badge--red { background: var(--adm-bad-soft); color: var(--adm-bad); }
@@ -1034,20 +1339,24 @@ a.admin-tile:hover {
 .admin-chart { width: 100%; overflow: visible; display: block; }
 .admin-chart__grid { stroke: rgba(255, 255, 255, 0.05); stroke-width: 1; }
 .admin-chart__axis { fill: var(--adm-ink-4); font-size: 9.5px; font-family: var(--app-font-mono); }
-.admin-chart__line { fill: none; stroke: var(--adm-accent); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+.admin-chart__line { fill: none; stroke: var(--adm-data); stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
 /* Flat fallback: each chart supplies its own vertical gradient inline, because a
    gradient id has to be unique per document and there can be several charts. */
 .admin-chart__area { fill: var(--adm-series-fill); stroke: none; }
 /* Columns are paths with a rounded data-end and a square base, so no rx here. */
 .admin-chart__bar { fill: var(--adm-series-strong); transition: fill var(--adm-fast); }
-.admin-chart__bar:hover { fill: var(--adm-accent); }
-.admin-chart__bar--hi { fill: var(--adm-accent); }
-.admin-chart__dot { fill: var(--adm-accent); stroke: var(--adm-surface); stroke-width: 2; }
+.admin-chart__bar:hover { fill: var(--adm-data); }
+.admin-chart__bar--hi { fill: var(--adm-data); }
+.admin-chart__dot { fill: var(--adm-data); stroke: var(--adm-surface); stroke-width: 2; }
 .admin-chart:focus-visible { outline: 2px solid var(--adm-accent); outline-offset: 3px; border-radius: var(--adm-r-sm); }
 
 /* Hover readout. The crosshair is what ties the tooltip to a column; without it
    the number floats free of the thing it describes. */
-.admin-chart-wrap { position: relative; }
+/* The whole chart frame is a pointer target, so a finger dragged across it would
+   otherwise be claimed by the chart instead of scrolling the page. `pan-y` keeps
+   the vertical gesture with the document and leaves the horizontal one — the one
+   that reads values — with the chart. */
+.admin-chart-wrap { position: relative; touch-action: pan-y; }
 .admin-chart__cross { stroke: var(--adm-line-strong); stroke-width: 1; stroke-dasharray: 3 3; }
 .admin-chart-tip {
   position: absolute;
@@ -1080,7 +1389,7 @@ a.admin-tile:hover {
 .admin-bar-row__label { font-size: 12px; color: var(--adm-ink-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .admin-bar-row__track { height: 6px; margin-top: 5px; border-radius: 3px; background: rgba(255, 255, 255, 0.05); overflow: hidden; }
 .admin-bar-row__fill { display: block; height: 100%; border-radius: 3px; background: var(--adm-series-strong); transition: width var(--adm-slow); }
-.admin-bar-row:first-child .admin-bar-row__fill { background: var(--adm-accent); }
+.admin-bar-row:first-child .admin-bar-row__fill { background: var(--adm-data); }
 .admin-bar-row__val { text-align: right; font-family: var(--app-font-mono); font-size: 11.5px; font-variant-numeric: tabular-nums; color: var(--adm-ink-3); }
 
 /* --- entity detail -------------------------------------------------------- */
@@ -1259,12 +1568,12 @@ a.admin-tile:hover {
   min-height: 34px;
   padding: 5px 30px 5px 7px;
   background: var(--adm-raised);
-  border: 1px solid var(--adm-line-strong);
+  border: 1px solid var(--adm-field-line);
   border-radius: var(--adm-r);
   cursor: text;
   transition: border-color var(--adm-fast), box-shadow var(--adm-fast);
 }
-.admin-combo__box:hover { border-color: rgba(255, 255, 255, 0.17); }
+.admin-combo__box:hover { border-color: var(--adm-field-line-hi); }
 .admin-combo__box:focus-within { border-color: var(--adm-accent); box-shadow: 0 0 0 3px var(--adm-accent-soft); }
 .admin-combo__bare {
   flex: 1;
@@ -1395,66 +1704,223 @@ a.admin-tile:hover {
 }
 
 /* --- responsive ----------------------------------------------------------- */
+/* Tablet — the rail stays; every two-column grid gives up its second column. */
 @media (max-width: 1100px) {
   .admin-shell { --adm-gutter: 20px; }
   .admin-stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .admin-grid-2, .admin-grid-even, .admin-detail-grid { grid-template-columns: minmax(0, 1fr); }
+  .admin-grid-2, .admin-grid-even, .admin-detail-grid, .admin-form-split { grid-template-columns: minmax(0, 1fr); }
+  .admin-form-split__aside { position: static; max-height: none; overflow: visible; }
 }
+
+/* Rail → drawer. Below this width a 232px column costs a quarter of the screen
+   and shows twelve links you cannot read; the burger opens the same list. */
 @media (max-width: 900px) {
   .admin-shell { grid-template-columns: minmax(0, 1fr); }
   .admin-sidebar { display: none; }
-  /* Sidebar off → the tab strip becomes the nav, scrolling horizontally. */
-  .admin-tabs {
-    display: flex;
-    gap: 4px;
-    padding: 8px var(--adm-gutter);
-    overflow-x: auto;
-    border-bottom: 1px solid var(--adm-line);
-    scrollbar-width: none;
-  }
-  .admin-tabs::-webkit-scrollbar { display: none; }
-  .admin-tab {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 6px 11px;
-    border-radius: var(--adm-r-pill);
+  .admin-burger {
+    display: grid;
+    place-items: center;
+    flex: 0 0 34px;
+    width: 34px;
+    height: 34px;
+    margin-left: -6px;
     border: 1px solid var(--adm-line);
-    color: var(--adm-ink-3);
-    font-size: 11.5px;
-    font-weight: 600;
-    text-decoration: none;
-    white-space: nowrap;
+    border-radius: var(--adm-r);
+    background: var(--adm-surface);
+    color: var(--adm-ink-2);
+    cursor: pointer;
+    transition: background var(--adm-fast), color var(--adm-fast);
   }
-  .admin-tab--active { background: var(--adm-raised); border-color: var(--adm-line-strong); color: var(--adm-ink); }
+  .admin-burger:active { background: var(--adm-raised); color: var(--adm-ink); }
   .admin-form-grid { grid-template-columns: minmax(0, 1fr); }
   .admin-search-trigger { min-width: 0; }
   .admin-search-trigger span, .admin-topbar__exit span { display: none; }
 }
-@media (max-width: 600px) {
-  .admin-stat-grid { grid-template-columns: minmax(0, 1fr); }
-  .admin-minitiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .admin-kv { grid-template-columns: minmax(0, 1fr); gap: 2px; }
-  .admin-kv dt { margin-top: 8px; }
-  .admin-toast-stack { left: 16px; right: 16px; }
-  .admin-toast { max-width: none; }
+/* A keyboard shortcut hint on a device with no keyboard is furniture. */
+@media (hover: none), (max-width: 900px) {
+  .admin-kbd { display: none; }
 }
-
-/* Tables scroll sideways inside their card rather than dragging the page with
-   them. Every column here is a fact an operator came for — a title, a status, a
-   count, the row's actions — so none of them can be dropped at a narrow width;
-   the card's `overflow: hidden` becomes x-auto/y-hidden, which is the axis that
-   needed to move anyway. The min-width is what makes it scroll instead of
-   crushing eight columns into a phone's width. */
-@media (max-width: 760px) {
-  .admin-card--flush { overflow-x: auto; -webkit-overflow-scrolling: touch; }
-  .admin-table { min-width: 640px; }
-}
-
 /* No hover on touch, so a 55%-opacity row action was a control the phone could
    never reveal. */
 @media (hover: none) {
-  .admin-table__actions > * { opacity: 1; }
+  .admin-table__actions > *, .admin-row__actions > * { opacity: 1; }
+}
+/* ==========================================================================
+   PHONE (<700px) — the component changes, it does not shrink.
+
+   A data table sideways-scrolling inside a card was the single worst thing in
+   this console on a phone: /admin/users has seven facts per row, so five of them
+   sat off the right edge behind a scrollbar the browser does not draw, and the
+   header cut "ACCESS" in half with nothing to suggest there was more. Dropping
+   columns was not an option either — every one of them is a fact an operator
+   came for.
+
+   So the same <table> re-flows into one card per row: the identifying cell spans
+   the card as its heading, the facts pair off into a 2×n grid of label/value, and
+   the row's actions become a footer. Nothing is hidden, nothing is truncated,
+   and the markup stays a single table — which is what keeps the desktop view and
+   the phone view from drifting apart. Each <td> supplies its own `data-label`
+   (the column header it lost) and, where it needs to break the default 2-up
+   grid, a `data-role`.
+   ========================================================================== */
+@media (max-width: 700px) {
+  .admin-content { padding-top: 16px; }
+  .admin-page-head { flex-direction: column; align-items: stretch; gap: 12px; padding-bottom: 14px; margin-bottom: 14px; }
+  .admin-page-head__actions { flex-wrap: wrap; }
+  .admin-page-head__actions .admin-btn { flex: 1 1 auto; }
+  .admin-section-head { margin: 20px 0 9px; }
+
+  /* The picker and the "Free preview" box drop to their own line so the URL keeps
+     the whole column — nowrap left it 85px wide, which shows six characters of an
+     https:// link. */
+  .admin-uploadrow { flex-wrap: wrap; }
+  .admin-uploadrow > .admin-input { flex: 1 1 100%; }
+
+  /* Save, pinned. A course form is a title, a description and a curriculum that
+     can run to fifty fields; wherever you were typing, Save was a scroll away.
+     Sticky rather than fixed so it stops at the end of the form instead of
+     hovering over the next page, and a floating pill rather than a full-bleed bar
+     so it reads as the form's own footer. */
+  .admin-form-actions--sticky {
+    position: sticky;
+    bottom: 8px;
+    z-index: 4;
+    flex-wrap: wrap;
+    padding: 9px 11px;
+    border: 1px solid var(--adm-line-strong);
+    border-radius: var(--adm-r);
+    background: var(--adm-overlay);
+    box-shadow: var(--adm-shadow-lg);
+  }
+  .admin-form-actions--sticky .admin-btn { flex: 1 1 auto; justify-content: center; }
+  /* The caption drops below the buttons rather than competing with them for the
+     390px they need. */
+  .admin-form-actions--sticky .admin-field__hint { flex: 1 1 100%; margin-left: 0; }
+
+  /* Filters get their own line and the search field takes the rest of it. */
+  .admin-toolbar { gap: 7px; }
+  .admin-search { flex: 1 1 100%; max-width: none; order: -1; }
+  .admin-toolbar__count { margin-left: 0; }
+
+  /* Scrollable segmented control. The two "cover" layers scroll with the content
+     and only uncover the shadow layers underneath once the box actually
+     overflows, so a filter row that fits shows no affordance it does not need. */
+  .admin-seg {
+    max-width: 100%;
+    overflow-x: auto;
+    scrollbar-width: none;
+    scroll-snap-type: x proximity;
+    background-image:
+      linear-gradient(to right, var(--adm-surface), rgba(26, 23, 20, 0)),
+      linear-gradient(to left, var(--adm-surface), rgba(26, 23, 20, 0)),
+      linear-gradient(to right, rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0)),
+      linear-gradient(to left, rgba(0, 0, 0, 0.5), rgba(0, 0, 0, 0));
+    background-position: left center, right center, left center, right center;
+    background-size: 20px 100%, 20px 100%, 11px 100%, 11px 100%;
+    background-repeat: no-repeat;
+    background-attachment: local, local, scroll, scroll;
+  }
+  .admin-seg::-webkit-scrollbar { display: none; }
+  .admin-seg button { scroll-snap-align: start; }
+
+  /* --- table → cards --- */
+  .admin-card--flush { overflow: hidden; }
+  .admin-table { display: block; width: 100%; min-width: 0; }
+  .admin-table thead { display: none; }
+  .admin-table tbody { display: grid; gap: 8px; padding: 9px; }
+  .admin-table tbody tr {
+    position: relative;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 9px 12px;
+    padding: 11px 12px;
+    border: 1px solid var(--adm-line);
+    border-radius: var(--adm-r);
+    background: var(--adm-plane);
+  }
+  .admin-table tbody tr:hover { background: var(--adm-plane); }
+  .admin-table tr[data-selected='true'] { border-color: rgba(245, 158, 11, 0.4); background: var(--adm-accent-soft); }
+  .admin-table td { display: block; min-width: 0; padding: 0; border: 0; font-size: var(--adm-t-body); }
+  .admin-table td[data-label]::before {
+    content: attr(data-label);
+    display: block;
+    margin-bottom: 3px;
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--adm-ink-4);
+  }
+  /* The identifying cell is the card's heading, so it spans and keeps clear of
+     the select box parked in the corner. */
+  .admin-table td[data-role='head'] { grid-column: 1 / -1; padding-right: 26px; }
+  .admin-table td[data-role='wide'] { grid-column: 1 / -1; }
+  .admin-table td[data-role='select'] { position: absolute; top: 11px; right: 11px; }
+  /* A thumbnail identifies the row, it is not one of its facts. So it parks in
+     the corner and the heading indents past it, rather than stretching into a
+     banner that would triple the height of every card in the list. */
+  .admin-table td[data-role='media'] { position: absolute; top: 11px; left: 12px; width: 34px; }
+  .admin-table td[data-role='media']::before { content: none; }
+  .admin-table tbody tr:has(td[data-role='media']) td[data-role='head'] { padding-left: 46px; min-height: 46px; }
+  .admin-table td[colspan] { grid-column: 1 / -1; padding-right: 0; }
+  .admin-table td[colspan]::before { content: none; }
+  /* Actions become a footer bar, always visible — there is no hover to earn them. */
+  .admin-table td.admin-table__actions {
+    grid-column: 1 / -1;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin-top: 2px;
+    padding-top: 10px;
+    border-top: 1px solid var(--adm-line);
+    text-align: left;
+  }
+  .admin-table td.admin-table__actions > * { opacity: 1; }
+  /* Under a label, a right-aligned figure reads as detached from it. */
+  .admin-table__num { text-align: left; }
+  .admin-table__quiet { white-space: normal; }
+  /* An empty table is one panel, not a one-cell card. */
+  .admin-table tbody:has(td[colspan]) { padding: 0; gap: 0; }
+  .admin-table tbody tr:has(td[colspan]) { border: 0; border-radius: 0; background: transparent; padding: 0; }
+}
+/* Phone, continued: everything that is not a table. */
+@media (max-width: 700px) {
+  /* Two stat tiles across, not one. Eight tiles at full width made the dashboard
+     a 2,400px column of mostly empty card — the number is 30px, the card was
+     390. */
+  .admin-stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
+  .admin-tile { padding: 12px; gap: 8px; }
+  .admin-tile__value { font-size: 24px; }
+  .admin-tile__foot { font-size: 10px; }
+  .admin-minitiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .admin-kv { grid-template-columns: minmax(0, 1fr); gap: 2px; }
+  .admin-kv dt { margin-top: 8px; }
+  .admin-toast-stack { left: 12px; right: 12px; bottom: 12px; }
+  .admin-toast { max-width: none; }
+  .admin-card { padding: 13px; }
+  .admin-content h1 { font-size: 19px; }
+  /* What needs acting on comes before what merely happened: nobody scrolls a
+     phone past an activity feed to find the queue. */
+  .admin-grid-2 { display: flex; flex-direction: column; }
+  .admin-grid-2 > .admin-stack { order: -1; }
+  /* Legends sit under the chart they describe once there is no room beside it. */
+  .admin-legend { font-size: 10.5px; gap: 10px; }
+  .admin-bar-row { grid-template-columns: minmax(0, 1fr) 44px; }
+  .admin-pager { padding: 9px 12px; }
+  .admin-panel, .admin-danger-zone { padding: 13px; }
+  .admin-detail-head .admin-avatar { width: 40px; height: 40px; font-size: 15px; }
+  /* Non-tabular list rows get the same treatment as the tables: the actions drop
+     to their own line rather than competing with the title for 390px, and
+     `align-self: flex-start` stops obeying `--top` once they are the whole row. */
+  .admin-row { flex-wrap: wrap; gap: 10px 12px; padding: 12px 13px; }
+  .admin-row__actions { flex: 1 1 100%; padding-top: 9px; border-top: 1px solid var(--adm-line); }
+  .admin-row--top .admin-row__actions { align-self: stretch; }
+}
+
+/* Only below 360px does a single column beat two. */
+@media (max-width: 359px) {
+  .admin-stat-grid { grid-template-columns: minmax(0, 1fr); }
+  .admin-minitiles { grid-template-columns: minmax(0, 1fr); }
 }
 
 /* ---- markdown write/preview toggle ----
@@ -1463,5 +1929,7 @@ a.admin-tile:hover {
 .md-tabs { display: inline-flex; gap: 2px; padding: 2px; background: var(--adm-raised); border: 1px solid var(--adm-line-strong); border-radius: 999px; }
 .md-tab { padding: 4px 12px; border-radius: 999px; border: none; background: none; color: var(--adm-ink-3); font: inherit; font-size: 11px; font-weight: 700; cursor: pointer; transition: color var(--adm-fast), background var(--adm-fast); }
 .md-tab:hover { color: var(--adm-ink); }
-.md-tab.is-active { background: var(--adm-accent-soft); color: var(--adm-accent); }
+/* Write/preview is a view switch, not an action, so it takes ink and elevation
+   rather than the amber reserved for buttons that change something. */
+.md-tab.is-active { background: var(--adm-overlay); color: var(--adm-ink); box-shadow: var(--adm-shadow); }
 .md-preview { min-height: 320px; max-height: 60vh; overflow-y: auto; background: var(--adm-raised); border: 1px solid var(--adm-line-strong); border-radius: var(--adm-r); padding: 16px 18px; }

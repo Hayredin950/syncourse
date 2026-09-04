@@ -1,6 +1,8 @@
 "use client";
 
 import Link from "next/link";
+import { BarChart3 } from "lucide-react";
+import AdminEmpty from "./AdminEmpty";
 
 /**
  * Ranked magnitudes — bars against a shared track, sorted longest first.
@@ -22,14 +24,15 @@ export default function BarList({
   format = (v: number) => v.toLocaleString("en-US"),
   /** Denominator for the bar widths. Defaults to the largest value. */
   max,
-  empty = "Nothing to rank yet.",
+  /** Shown in place of the bars — phrase it as a title, not a sentence. */
+  empty = "Nothing to rank yet",
 }: {
   items: BarItem[];
   format?: (v: number) => string;
   max?: number;
   empty?: string;
 }) {
-  if (items.length === 0) return <p className="admin-empty">{empty}</p>;
+  if (items.length === 0) return <AdminEmpty icon={<BarChart3 size={18} />} title={empty} />;
   const top = max ?? Math.max(...items.map((i) => i.value), 1);
 
   return (

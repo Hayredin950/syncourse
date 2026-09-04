@@ -2,10 +2,12 @@
 
 import { Suspense, useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { Plus, Search, X } from "lucide-react";
+import { Plus, Search, Users, X } from "lucide-react";
 import { del, get, post, patch } from "@/lib/api";
 import type { AdminLecturerRow } from "@/lib/types";
 import { useAdminToast } from "@/components/admin/AdminToast";
+import AdminAvatar from "@/components/admin/AdminAvatar";
+import AdminEmpty from "@/components/admin/AdminEmpty";
 import ConfirmButton from "@/components/admin/ConfirmButton";
 import ExpandableText from "@/components/admin/ExpandableText";
 import UploadField from "@/components/admin/UploadField";
@@ -199,18 +201,24 @@ function AdminLecturers() {
             </div>
           ))}
         {!loading && filtered.length === 0 && (
-          <p className="admin-empty">{rows.length === 0 ? "No lecturers yet." : "No lecturer matches that search."}</p>
+          <AdminEmpty
+            icon={<Users size={18} />}
+            title={rows.length === 0 ? "No lecturers yet" : "No lecturer matches that search"}
+            hint={
+              rows.length === 0
+                ? "A lecturer profile is what a course page credits — add one and it becomes selectable on every course."
+                : "Search matches names, bios and credentials."
+            }
+            action={
+              rows.length === 0
+                ? { label: "New lecturer", onClick: () => open(null) }
+                : { label: "Clear search", onClick: () => setQuery("") }
+            }
+          />
         )}
         {filtered.map((l) => (
           <div key={l.id} className="admin-row admin-row--top">
-            <span className="admin-avatar">
-              {l.photoUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={l.photoUrl} alt="" />
-              ) : (
-                l.name.charAt(0).toUpperCase()
-              )}
-            </span>
+            <AdminAvatar src={l.photoUrl} name={l.name} />
             <div className="admin-row__main">
               <div className="admin-inline" style={{ gap: 7 }}>
                 <span className="admin-row__title">{l.name}</span>

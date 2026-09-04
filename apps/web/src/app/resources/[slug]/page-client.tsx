@@ -11,6 +11,7 @@ import {
   Download,
   ExternalLink,
   Eye,
+  ImageOff,
   Maximize2,
   Paperclip,
   Share2,
@@ -22,10 +23,77 @@ import { Markdown, markdownHeadings } from "@/components/Markdown";
 import { MobileHeader } from "@/components/Nav";
 import { SkHero } from "@/components/Skeleton";
 import { attachmentUrl, cloudinaryUrl } from "@/lib/cloudinary";
-import { compact, formatDate, plural } from "@/lib/format";
+import { compact, formatDate, mediaTitle, plural } from "@/lib/format";
 import { ResourceCard, mediaMeta, resourceTint, typeMeta } from "@/components/ResourceCard";
 import { useToast } from "@/lib/useToast";
 import { Toast } from "@/components/Toast";
+
+/** The host, for a link whose stored name is a storage key or missing entirely. */
+function hostOf(url: string | null): string {
+  if (!url) return "Link";
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return "Link";
+  }
+}
+
+/**
+ * One sheet in the gallery.
+ *
+ * The tile used to be a bare `<img width:100%; height:auto>`, which makes the
+ * button's height a function of a picture that may never paint — on a phone a
+ * stalled request collapsed the whole tile to a 2px hairline with nothing to
+ * click and nothing to explain why. The box now carries its own `aspect-ratio`
+ * and the image fills it, so the grid has its final shape before a single byte
+ * of image arrives; a failure swaps in a label rather than leaving a gap.
+ *
+ * Nothing stores the dimensions, so the box opens at the portrait ratio a
+ * scanned sheet almost always has and corrects itself from `naturalWidth` on
+ * load — a landscape diagram ends up in a landscape slot without being the
+ * thing that decides whether the slot exists.
+ */
+function Shot({ item, index, onOpen }: { item: ResourceMedia; index: number; onOpen: () => void }) {
+  const [failed, setFailed] = useState(false);
+  const [ratio, setRatio] = useState<string | null>(null);
+  const label = mediaTitle(item, `Sheet ${index + 1}`);
+  return (
+    <button
+      type="button"
+      className="res-shot"
+      onClick={onOpen}
+      aria-label={`Enlarge ${label}`}
+      style={ratio ? ({ "--shot-ratio": ratio } as React.CSSProperties) : undefined}
+    >
+      <span className="res-shot__frame">
+        {failed ? (
+          <span className="res-shot__fail">
+            <ImageOff size={17} />
+            <span className="res-shot__fail-name">{label}</span>
+            <small>Image did not load</small>
+          </span>
+        ) : (
+          /* eslint-disable-next-line @next/next/no-img-element */
+          <img
+            src={cloudinaryUrl(item.url, { width: 1000 }) ?? undefined}
+            alt={item.caption ?? label}
+            loading={index < 2 ? "eager" : "lazy"}
+            decoding="async"
+            onLoad={(e) => {
+              const el = e.currentTarget;
+              if (el.naturalWidth && el.naturalHeight) setRatio(`${el.naturalWidth} / ${el.naturalHeight}`);
+            }}
+            onError={() => setFailed(true)}
+          />
+        )}
+        <span className="res-shot__zoom">
+          <Maximize2 size={13} />
+        </span>
+      </span>
+      {item.caption && <span className="res-shot__caption">{item.caption}</span>}
+    </button>
+  );
+}
 
 /**
  * A resource, in full.
@@ -240,35 +308,26 @@ export function ResourceDetailView({ slug }: { slug: string }) {
               </div>
               <div className={`res-gallery ${images.length === 1 ? "res-gallery--one" : ""}`}>
                 {images.map((m, i) => (
-                  <button
-                    key={m.id}
-                    type="button"
-                    className="res-shot"
-                    onClick={() => setShot(i)}
-                    aria-label={`Enlarge ${m.fileName ?? `image ${i + 1}`}`}
-                  >
-                    {/* eslint-disable-next-line @next/next/no-img-element */}
-                    <img src={cloudinaryUrl(m.url, { width: 1000 }) ?? undefined} alt={m.caption ?? m.fileName ?? ""} />
-                    <span className="res-shot__zoom">
-                      <Maximize2 size={13} />
-                    </span>
-                    {m.caption && <span className="res-shot__caption">{m.caption}</span>}
-                  </button>
+                  <Shot key={m.id} item={m} index={i} onOpen={() => setShot(i)} />
                 ))}
               </div>
             </section>
           )}
 
-          {videos.map((m) => (
-            <section className="res-block" key={m.id}>
-              <div className="res-block__head">
-                <h2>{m.fileName ?? "Video"}</h2>
-              </div>
-              {/* Controls only — autoplay on a reference page is hostile. */}
-              <video className="res-player" src={m.url ?? undefined} controls preload="metadata" />
-              {m.caption && <p className="res-cap">{m.caption}</p>}
-            </section>
-          ))}
+          {videos.map((m) => {
+            const title = mediaTitle(m, "Video");
+            return (
+              <section className="res-block" key={m.id}>
+                <div className="res-block__head">
+                  <h2>{title}</h2>
+                </div>
+                {/* Controls only — autoplay on a reference page is hostile. */}
+                <video className="res-player" src={m.url ?? undefined} controls preload="metadata" />
+                {/* Only if the caption is not already serving as the heading. */}
+                {m.caption && m.caption.trim() !== title && <p className="res-cap">{m.caption}</p>}
+              </section>
+            );
+          })}
 
           {audio.length > 0 && (
             <section className="res-block">
@@ -276,13 +335,16 @@ export function ResourceDetailView({ slug }: { slug: string }) {
                 <h2>Audio</h2>
               </div>
               <div className="res-audio-list">
-                {audio.map((m) => (
-                  <div className="res-audio" key={m.id}>
-                    <span className="res-audio__name">{m.fileName ?? "Recording"}</span>
-                    <audio src={m.url ?? undefined} controls preload="none" />
-                    {m.caption && <span className="res-cap">{m.caption}</span>}
-                  </div>
-                ))}
+                {audio.map((m) => {
+                  const title = mediaTitle(m, "Recording");
+                  return (
+                    <div className="res-audio" key={m.id}>
+                      <span className="res-audio__name">{title}</span>
+                      <audio src={m.url ?? undefined} controls preload="none" />
+                      {m.caption && m.caption.trim() !== title && <span className="res-cap">{m.caption}</span>}
+                    </div>
+                  );
+                })}
               </div>
             </section>
           )}
@@ -348,7 +410,7 @@ export function ResourceDetailView({ slug }: { slug: string }) {
                         <ExternalLink size={13} />
                       </span>
                       <span className="file-row__body">
-                        <span className="file-row__name">{m.fileName ?? m.url}</span>
+                        <span className="file-row__name">{mediaTitle(m, hostOf(m.url))}</span>
                         <span className="file-row__meta mono">{m.caption ?? "External link"}</span>
                       </span>
                       <ChevronRight size={14} className="muted" />
@@ -475,8 +537,8 @@ export function ResourceDetailView({ slug }: { slug: string }) {
           )}
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src={images[shot].url ?? undefined}
-            alt={images[shot].caption ?? ""}
+            src={cloudinaryUrl(images[shot].url, { width: 1600 }) ?? undefined}
+            alt={images[shot].caption ?? mediaTitle(images[shot], `Sheet ${shot + 1}`)}
             onClick={(e) => e.stopPropagation()}
           />
           {images.length > 1 && (
@@ -526,6 +588,8 @@ export function ResourceDetailView({ slug }: { slug: string }) {
 function PdfReader({ item, onDownload }: { item: ResourceMedia; onDownload: () => void }) {
   const [open, setOpen] = useState(false);
   const Icon = mediaMeta(item.kind).icon;
+  const title = mediaTitle(item, "Document");
+  const cap = item.caption?.trim();
   return (
     <div className="res-pdf">
       <div className="res-pdf__head">
@@ -533,11 +597,11 @@ function PdfReader({ item, onDownload }: { item: ResourceMedia; onDownload: () =
           <Icon size={13} />
         </span>
         <span className="file-row__body">
-          <span className="file-row__name">{item.fileName ?? "Document.pdf"}</span>
+          <span className="file-row__name">{title}</span>
           <span className="file-row__meta mono">
             PDF
             {item.fileSizeMb ? ` · ${item.fileSizeMb} MB` : ""}
-            {item.caption ? ` · ${item.caption}` : ""}
+            {cap && cap !== title ? ` · ${cap}` : ""}
           </span>
         </span>
         <button type="button" className="btn ghost file-btn" onClick={() => setOpen((o) => !o)}>
@@ -558,7 +622,7 @@ function PdfReader({ item, onDownload }: { item: ResourceMedia; onDownload: () =
       </div>
       {open && (
         <div className="res-pdf__frame">
-          <iframe src={`${item.url}#view=FitH`} title={item.fileName ?? "PDF"} loading="lazy" />
+          <iframe src={`${item.url}#view=FitH`} title={title} loading="lazy" />
         </div>
       )}
     </div>
@@ -569,17 +633,19 @@ function PdfReader({ item, onDownload }: { item: ResourceMedia; onDownload: () =
 function FileRow({ item, onDownload }: { item: ResourceMedia; onDownload: () => void }) {
   const m = mediaMeta(item.kind);
   const Icon = m.icon;
+  const title = mediaTitle(item, m.label);
+  const cap = item.caption?.trim();
   return (
     <div className="file-row">
       <span className="file-row__num">
         <Icon size={13} />
       </span>
       <span className="file-row__body">
-        <span className="file-row__name">{item.fileName ?? m.label}</span>
+        <span className="file-row__name">{title}</span>
         <span className="file-row__meta mono">
           {m.label}
           {item.fileSizeMb ? ` · ${item.fileSizeMb} MB` : ""}
-          {item.caption ? ` · ${item.caption}` : ""}
+          {cap && cap !== title ? ` · ${cap}` : ""}
         </span>
       </span>
       <a

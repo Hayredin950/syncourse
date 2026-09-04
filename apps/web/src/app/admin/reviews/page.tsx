@@ -2,11 +2,13 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { AlertTriangle, Search } from "lucide-react";
+import { AlertTriangle, MessageSquare, Search } from "lucide-react";
 import { del, get } from "@/lib/api";
 import type { AdminReviewRow } from "@/lib/types";
 import { relativeTime } from "@/lib/metrics";
 import { useAdminToast } from "@/components/admin/AdminToast";
+import AdminAvatar from "@/components/admin/AdminAvatar";
+import AdminEmpty from "@/components/admin/AdminEmpty";
 import ConfirmButton from "@/components/admin/ConfirmButton";
 import ExpandableText from "@/components/admin/ExpandableText";
 import Pagination, { clampPage } from "@/components/admin/Pagination";
@@ -57,6 +59,12 @@ export default function AdminReviews() {
   };
 
   const spoilers = reviews.filter((r) => r.containsSpoilers).length;
+
+  const clearFilters = () => {
+    setQuery("");
+    setScope("all");
+    setPage(1);
+  };
 
   return (
     <div>
@@ -115,20 +123,20 @@ export default function AdminReviews() {
             </div>
           ))}
         {!loading && visible.length === 0 && (
-          <p className="admin-empty">
-            {reviews.length === 0 ? "No reviews yet." : "Nothing matches those filters."}
-          </p>
+          <AdminEmpty
+            icon={<MessageSquare size={18} />}
+            title={reviews.length === 0 ? "No reviews yet" : "Nothing matches those filters"}
+            hint={
+              reviews.length === 0
+                ? "Reviews arrive from course pages. Nothing to moderate is the good outcome."
+                : "Search matches the author, the course and the review body."
+            }
+            action={reviews.length === 0 ? undefined : { label: "Clear filters", onClick: clearFilters }}
+          />
         )}
         {visible.map((r) => (
           <div key={r.id} className="admin-row admin-row--top">
-            <span className="admin-avatar">
-              {r.author.avatarUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={r.author.avatarUrl} alt="" />
-              ) : (
-                r.author.name.charAt(0).toUpperCase()
-              )}
-            </span>
+            <AdminAvatar src={r.author.avatarUrl} name={r.author.name} />
             <div className="admin-row__main">
               <div className="admin-inline" style={{ gap: 7, flexWrap: "wrap" }}>
                 <Link href={`/admin/users/detail?id=${r.author.id}`} className="admin-row__title">

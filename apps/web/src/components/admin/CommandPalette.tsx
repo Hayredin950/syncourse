@@ -9,10 +9,12 @@ import {
   ExternalLink,
   Plus,
   Search,
+  SearchX,
   User,
 } from "lucide-react";
 import { get } from "@/lib/api";
 import type { AdminCourseRow, AdminUserRow } from "@/lib/types";
+import AdminEmpty from "./AdminEmpty";
 import { ADMIN_NAV } from "./nav";
 
 /**
@@ -197,7 +199,13 @@ export default function CommandPalette({ open, onClose }: { open: boolean; onClo
         </div>
 
         <div className="admin-palette__list" ref={listRef}>
-          {results.length === 0 && <div className="admin-empty">Nothing matches “{q.trim()}”.</div>}
+          {results.length === 0 && (
+            <AdminEmpty
+              icon={<SearchX size={18} />}
+              title={`Nothing matches “${q.trim()}”`}
+              hint="Pages, courses, resources, users and publishers are all searchable from here."
+            />
+          )}
           {results.map((c, i) => {
             const header = c.group !== lastGroup ? c.group : null;
             lastGroup = c.group;

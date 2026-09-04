@@ -8,6 +8,7 @@ import { Empty, Failed } from "../../components/Empty";
 import { Press } from "../../components/Press";
 import { Sheet } from "../../components/Sheet";
 import { Sk, SkGrid, SkRows } from "../../components/Skeleton";
+import { ResourceLibrary } from "../../components/ResourceLibrary";
 import { Text } from "../../components/Type";
 import * as api from "../../lib/api";
 import { colors, radius } from "../../lib/tokens";
@@ -41,7 +42,61 @@ interface Filters {
   minRating: string;
 }
 
+/**
+ * Browse — everything published, under one tab.
+ *
+ * Courses and resources were two separate destinations, which meant the shelf
+ * you wanted was behind a guess about which one held it. They are both "things
+ * to read or take", so they are two tabs of one screen now, and the switch sits
+ * above the toolbar where it does not scroll away.
+ *
+ * `?tab=resources` deep-links straight to the second one.
+ */
+const KINDS = [
+  { id: "courses", label: "Courses", icon: "school-outline" },
+  { id: "resources", label: "Resources", icon: "document-text-outline" },
+] as const;
+
+type Kind = (typeof KINDS)[number]["id"];
+
 export default function BrowseScreen() {
+  const params = useLocalSearchParams<{ tab?: string }>();
+  const [kind, setKind] = useState<Kind>(params.tab === "resources" ? "resources" : "courses");
+
+  // A deep link that arrives while the screen is already mounted still switches.
+  useEffect(() => {
+    if (params.tab === "resources" || params.tab === "courses") setKind(params.tab);
+  }, [params.tab]);
+
+  return (
+    <View style={styles.screen}>
+      <View style={styles.kindRow}>
+        {KINDS.map((k) => {
+          const on = kind === k.id;
+          return (
+            <Press
+              key={k.id}
+              style={[styles.kindTab, on && styles.kindTabOn]}
+              onPress={() => setKind(k.id)}
+              accessibilityLabel={k.label}
+              accessibilityState={{ selected: on }}
+            >
+              <Ionicons name={k.icon} size={15} color={on ? colors.accent : colors.dim} />
+              <Text style={[styles.kindLabel, on && styles.kindLabelOn]}>{k.label}</Text>
+            </Press>
+          );
+        })}
+      </View>
+      {kind === "courses" ? (
+        <CourseBrowse />
+      ) : (
+        <ResourceLibrary embedded onShowCourses={() => setKind("courses")} />
+      )}
+    </View>
+  );
+}
+
+function CourseBrowse() {
   const params = useLocalSearchParams<{ category?: string }>();
   const [sort, setSort] = useState<string>("top-rated");
   const [view, setView] = useState<"grid" | "list">("list");
@@ -412,6 +467,28 @@ function GridCard({ course }: { course: CourseSummary }) {
 
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: colors.bg },
+  /* Courses | Resources. Outside both lists so it cannot scroll away, and a
+     bottom rule under the whole row so the two tabs read as one control. */
+  kindRow: {
+    flexDirection: "row",
+    gap: 4,
+    paddingHorizontal: 12,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: colors.border,
+  },
+  kindTab: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 7,
+    flex: 1,
+    minHeight: 46,
+    borderBottomWidth: 2,
+    borderBottomColor: "transparent",
+  },
+  kindTabOn: { borderBottomColor: colors.accent },
+  kindLabel: { color: colors.dim, fontSize: 13, fontWeight: "700" },
+  kindLabelOn: { color: colors.text },
   toolbar: { flexDirection: "row", alignItems: "center", paddingHorizontal: 16, paddingTop: 12 },
   // 7px of padding on 13px type is a 27px-tall target. These two controls are
   // the whole toolbar and both sat well under the 44pt minimum.

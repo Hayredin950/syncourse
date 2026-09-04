@@ -7,6 +7,7 @@ import { LayoutGrid, Search, Sparkles, X } from "lucide-react";
 import { get } from "@/lib/api";
 import type { ResourceList, ResourceSummary } from "@/lib/types";
 import { MobileHeader } from "@/components/Nav";
+import { BrowseTabs } from "@/components/BrowseTabs";
 import { ResourceCard, ResourceFeature, typeMeta } from "@/components/ResourceCard";
 import { SkCards } from "@/components/Skeleton";
 
@@ -117,7 +118,8 @@ function ResourcesInner() {
 
   return (
     <main className="page">
-      <MobileHeader title="Resources" />
+      <MobileHeader title="Browse" />
+      <BrowseTabs />
 
       <header className="res-head">
         <span className="eyebrow">Library · reference</span>
