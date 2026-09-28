@@ -20,9 +20,22 @@ import {
   VerifyDto,
   VerifyResetDto,
 } from './dto';
+import { Throttle } from '@nestjs/throttler';
 import { Public } from '../common/public.decorator';
 import { CurrentUser } from '../common/current-user.decorator';
 import { AuthUser } from '../common/jwt-auth.guard';
+
+/**
+ * Tighter per-IP limits than the global 300/min.
+ *
+ * These are the only routes an unauthenticated stranger can drive: login and
+ * the code endpoints are where credential stuffing, password-reset floods and
+ * inbox bombing land. Registered per route rather than globally so ordinary
+ * browsing is never throttled by them.
+ */
+const LIMIT_LOGIN = { default: { limit: 10, ttl: 60_000 } };
+const LIMIT_SIGNUP = { default: { limit: 5, ttl: 60_000 } };
+const LIMIT_EMAIL = { default: { limit: 3, ttl: 60_000 } };
 
 /** The mobile app's deep-link scheme — see safeRedirect below. */
 const APP_SCHEME_PREFIX = 'syncourse://';
@@ -32,12 +45,14 @@ export class AuthController {
   constructor(private readonly auth: AuthService) {}
 
   @Public()
+  @Throttle(LIMIT_SIGNUP)
   @Post('register')
   register(@Body() dto: RegisterDto) {
     return this.auth.register(dto);
   }
 
   @Public()
+  @Throttle(LIMIT_LOGIN)
   @Post('login')
   @HttpCode(HttpStatus.OK)
   login(@Body() dto: LoginDto) {
@@ -45,6 +60,7 @@ export class AuthController {
   }
 
   @Public()
+  @Throttle(LIMIT_LOGIN)
   @Post('verify')
   @HttpCode(HttpStatus.OK)
   verify(@Body() dto: VerifyDto) {
@@ -52,6 +68,7 @@ export class AuthController {
   }
 
   @Public()
+  @Throttle(LIMIT_EMAIL)
   @Post('resend-verification')
   @HttpCode(HttpStatus.OK)
   resendVerification(@Body() dto: ResendVerificationDto) {
@@ -60,6 +77,7 @@ export class AuthController {
 
   /** Password reset, step 1: email a 6-digit code. */
   @Public()
+  @Throttle(LIMIT_EMAIL)
   @Post('forgot-password')
   @HttpCode(HttpStatus.OK)
   forgotPassword(@Body() dto: ResendVerificationDto) {
@@ -68,6 +86,7 @@ export class AuthController {
 
   /** Password reset, step 2: trade the code for a short-lived reset token. */
   @Public()
+  @Throttle(LIMIT_LOGIN)
   @Post('verify-reset')
   @HttpCode(HttpStatus.OK)
   verifyReset(@Body() dto: VerifyResetDto) {
@@ -76,6 +95,7 @@ export class AuthController {
 
   /** Password reset, step 3: set the new password using that token. */
   @Public()
+  @Throttle(LIMIT_LOGIN)
   @Post('reset-password')
   @HttpCode(HttpStatus.OK)
   resetPassword(@Body() dto: ResetPasswordDto) {
@@ -134,6 +154,7 @@ export class AuthController {
 
   /** Mobile flow: exchange the Google code for a session token directly. */
   @Public()
+  @Throttle(LIMIT_LOGIN)
   @Post('google/exchange')
   @HttpCode(HttpStatus.OK)
   googleExchange(@Body() dto: GoogleExchangeDto) {
