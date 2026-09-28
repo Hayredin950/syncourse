@@ -1,0 +1,21 @@
+# Vercel CLI deploys are run from the repository root and pick the project's
+# Root Directory (apps/api or apps/web) from its settings. Keep local secrets
+# and build artefacts out of the upload.
+.env
+.env.*
+!.env.example
+**/.env
+**/.env.*
+!**/.env.example
+
+**/node_modules
+**/dist
+**/.next
+**/out
+**/.wrangler
+**/.vercel
+**/*.tsbuildinfo
+**/*.log
+apps/mobile/build
+apps/mobile/.dart_tool
+apps/mobile/ios/Pods

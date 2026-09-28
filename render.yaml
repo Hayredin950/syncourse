@@ -1,4 +1,10 @@
 # Syncourse — Render Blueprint (infrastructure as code)
+#
+# NOTE: production now runs on Vercel — `apps/api` (NestJS, serverless) and
+# `apps/web` (Next.js). This blueprint is kept only as a fallback/self-host
+# path; the Telegram bot polls here but over a webhook on Vercel, and the web
+# app is no longer deployed to Cloudflare Pages.
+#
 # Deploys the NestJS API as a free web service. Secrets are injected via
 # Render's dashboard/API (marked sync: false below) — never committed.
 

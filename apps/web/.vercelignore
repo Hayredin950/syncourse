@@ -1,0 +1,11 @@
+# Never upload local secrets or build artefacts to Vercel — env vars live in
+# the Vercel project settings instead.
+.env
+.env.*
+!.env.example
+node_modules
+.next
+out
+.wrangler
+*.tsbuildinfo
+*.log

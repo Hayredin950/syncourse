@@ -21,7 +21,9 @@ async function bootstrap() {
       transformOptions: { enableImplicitConversion: true },
     }),
   );
-  const port = Number(process.env.API_PORT || 4000);
+  // Vercel injects PORT and supervises the listener; API_PORT stays the local
+  // default so `npm run start:dev` keeps working unchanged.
+  const port = Number(process.env.PORT || process.env.API_PORT || 4000);
   await app.listen(port);
   // eslint-disable-next-line no-console
   console.log(`Syncourse API listening on http://localhost:${port}/api`);

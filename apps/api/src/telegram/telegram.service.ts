@@ -1,4 +1,4 @@
-import { Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
+import { ForbiddenException, Injectable, Logger, OnModuleDestroy, OnModuleInit } from '@nestjs/common';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { TelegramCourseLink } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
@@ -38,7 +38,7 @@ export interface BotStatus {
   recent: { at: Date; kind: string; detail: string }[];
 }
 
-interface TelegramUpdate {
+export interface TelegramUpdate {
   update_id: number;
   message?: {
     message_id: number;
@@ -145,7 +145,7 @@ interface NavState {
 }
 
 const BOT_USERNAME = process.env.TELEGRAM_BOT_USERNAME || 'syncourse_bot';
-const APP_URL = process.env.PUBLIC_APP_URL || 'https://syncourse.pages.dev';
+const APP_URL = process.env.PUBLIC_APP_URL || 'https://syncourse-web.vercel.app';
 
 /**
  * What a Course may be. Cheat-sheets, roadmaps and notes are Resources now — one
@@ -416,9 +416,70 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     });
   }
 
+  /**
+   * Telegram delivery model.
+   *
+   * A Vercel Function only exists while a request is in flight — an in-process
+   * `getUpdates` loop would stall the moment the instance is frozen, so the bot
+   * would silently stop answering. When we're on Vercel (or TELEGRAM_MODE says
+   * so) updates arrive over the webhook instead and polling stays off. Set
+   * TELEGRAM_MODE=polling to force the old behaviour (Render, local dev).
+   */
+  private get webhookMode(): boolean {
+    const mode = (process.env.TELEGRAM_MODE || '').trim().toLowerCase();
+    if (mode === 'webhook') return true;
+    if (mode === 'polling') return false;
+    return Boolean(process.env.VERCEL);
+  }
+
+  /** Public https URL Telegram should POST updates to. */
+  private get webhookUrl(): string | null {
+    const configured = (process.env.TELEGRAM_WEBHOOK_URL || '').trim();
+    if (configured) return configured;
+    const base =
+      (process.env.TELEGRAM_WEBHOOK_BASE_URL || '').trim() ||
+      (process.env.VERCEL_PROJECT_PRODUCTION_URL
+        ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+        : '') ||
+      (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : '');
+    if (!base) return null;
+    return `${base.replace(/\/+$/, '')}/api/telegram/webhook`;
+  }
+
+  /** Register (or re-register) the webhook. Idempotent, so it is safe to call
+   *  on every cold start — it also self-heals a webhook Telegram dropped. */
+  private async syncWebhook() {
+    const url = this.webhookUrl;
+    if (!url) {
+      this.logger.warn('Telegram webhook mode, but no public URL — set TELEGRAM_WEBHOOK_URL');
+      return;
+    }
+    try {
+      const body: Record<string, unknown> = {
+        url,
+        allowed_updates: ['message', 'callback_query'],
+      };
+      const secret = (process.env.TELEGRAM_WEBHOOK_SECRET || '').trim();
+      if (secret) body.secret_token = secret;
+      const res = await this.api('setWebhook', body);
+      const json = (await res.json()) as { ok: boolean; description?: string };
+      if (json.ok) this.logger.log(`Telegram webhook registered → ${url}`);
+      else this.logger.error(`setWebhook failed: ${json.description}`);
+    } catch (err) {
+      this.logger.error(`setWebhook error: ${(err as Error).message}`);
+    }
+  }
+
   async onModuleInit() {
     if (!this.enabled) {
       this.logger.warn('TELEGRAM_BOT_TOKEN not set — bot disabled');
+      return;
+    }
+    if (this.webhookMode) {
+      this.polling = false;
+      this.logger.log('Telegram bot running in WEBHOOK mode');
+      // fire-and-forget: registering must not delay the first request
+      void this.syncWebhook();
       return;
     }
     this.polling = true;
@@ -428,6 +489,47 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
 
   onModuleDestroy() {
     this.stopped = true;
+  }
+
+  /** How many delivered update ids we remember to swallow Telegram webhook
+   *  retries (Telegram re-sends an update when it doesn't get a 2xx in time). */
+  private seenUpdates = new Set<number>();
+
+  private rememberUpdate(id: number) {
+    this.seenUpdates.add(id);
+    if (this.seenUpdates.size > 500) {
+      const oldest = this.seenUpdates.values().next().value;
+      if (oldest !== undefined) this.seenUpdates.delete(oldest);
+    }
+  }
+
+  /**
+   * One Telegram update, delivered by webhook (POST /api/telegram/webhook).
+   * Errors are swallowed and reported as ok so Telegram doesn't enter an
+   * infinite redelivery loop over a permanently failing update.
+   */
+  async handleWebhook(
+    update: TelegramUpdate,
+    secret?: string,
+  ): Promise<{ ok: boolean; status?: string }> {
+    const expected = (process.env.TELEGRAM_WEBHOOK_SECRET || '').trim();
+    if (expected && secret !== expected) {
+      throw new ForbiddenException('invalid webhook secret');
+    }
+    if (!this.enabled) return { ok: true, status: 'disabled' };
+    if (!update || typeof update.update_id !== 'number') return { ok: true, status: 'ignored' };
+    if (this.seenUpdates.has(update.update_id)) return { ok: true, status: 'duplicate' };
+    this.rememberUpdate(update.update_id);
+    this.lastUpdateAt = new Date();
+    try {
+      await this.handleUpdate(update);
+    } catch (err) {
+      const e = err as Error;
+      this.pollErrors++;
+      this.lastError = { at: new Date().toISOString(), message: e.message, stack: e.stack };
+      this.logger.error(`webhook update ${update.update_id} failed: ${e.message}\n${e.stack ?? ''}`);
+    }
+    return { ok: true };
   }
 
   private async pollLoop() {
@@ -2774,7 +2876,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
         `${DIV}\n` +
         (f.fileSizeMb ? `📦 ${esc(f.fileName ?? 'file')} · ${f.fileSizeMb} MB\n` : '') +
         `${DIV}\n` +
-        `More at <a href="${APP_URL}/courses/${course.slug}">syncourse.pages.dev</a>`;
+        `More at <a href="${APP_URL}/courses/${course.slug}">syncourse-web.vercel.app</a>`;
       const ok = await this.sendOneFile(chatId, f, caption, threadId);
       if (ok) sent++;
       else this.logger.error(`delivery failed for ${f.fileName} (course ${course.slug})`);
@@ -3966,6 +4068,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     return {
       enabled: this.enabled,
       polling: this.polling,
+      mode: this.webhookMode ? 'webhook' : 'polling',
       botUsername: `@${BOT_USERNAME}`,
       lastPollAt: this.lastPollAt ? this.lastPollAt.toISOString() : null,
       lastUpdateAt: this.lastUpdateAt ? this.lastUpdateAt.toISOString() : null,

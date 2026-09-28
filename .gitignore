@@ -1,6 +1,9 @@
 # Dependencies
 node_modules/
 
+# Vercel CLI link metadata
+.vercel/
+
 # Build outputs
 dist/
 build/

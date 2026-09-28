@@ -4,7 +4,7 @@ import { AuthProvider } from "@/lib/auth";
 import Shell from "@/components/Shell";
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://syncourse.pages.dev"),
+  metadataBase: new URL(process.env.NEXT_PUBLIC_APP_URL ?? "https://syncourse-web.vercel.app"),
   title: "Syncourse — Discover Courses & Learn",
   description:
     "Discover, track, and enjoy courses, mini-courses, cheat-sheets and roadmaps. Browse trending content, manage your learning, and explore by category on Syncourse.",

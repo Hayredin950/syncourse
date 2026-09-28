@@ -33,10 +33,10 @@ import type {
 } from "./types";
 
 export const API_URL =
-  process.env.EXPO_PUBLIC_API_URL ?? "https://syncourse-api.onrender.com";
+  process.env.EXPO_PUBLIC_API_URL ?? "https://syncourse-api.vercel.app";
 
 /** The public site. Used for share links — a resource page reads fine without the app. */
-export const WEB_URL = process.env.EXPO_PUBLIC_WEB_URL ?? "https://syncourse.pages.dev";
+export const WEB_URL = process.env.EXPO_PUBLIC_WEB_URL ?? "https://syncourse-web.vercel.app";
 
 const TOKEN_KEY = "syncourse_token";
 

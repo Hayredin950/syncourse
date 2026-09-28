@@ -286,7 +286,7 @@ export default function LessonPage() {
                           waiting for the day the early return above changes. */}
                       <a
                         href={`https://t.me/share/url?url=${encodeURIComponent(
-                          `https://syncourse.pages.dev/courses/${slug}/lessons/${lessonId}`,
+                          `${process.env.NEXT_PUBLIC_APP_URL ?? "https://syncourse-web.vercel.app"}/courses/${slug}/lessons/${lessonId}`,
                         )}`}
                         target="_blank"
                         rel="noreferrer"

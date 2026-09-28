@@ -12,7 +12,7 @@ export class AppController {
   @Public()
   @Get()
   root() {
-    return { status: 'ok', service: 'syncourse-api', docs: 'https://syncourse.pages.dev' };
+    return { status: 'ok', service: 'syncourse-api', docs: 'https://syncourse-web.vercel.app' };
   }
 
   @Public()

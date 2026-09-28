@@ -159,7 +159,7 @@ export class ContentService {
     await this.recordDownload(lessonId, userId, 'telegram', 'bot');
 
     const best = lesson.files[0];
-    const appUrl = process.env.PUBLIC_APP_URL || 'https://syncourse.pages.dev';
+    const appUrl = process.env.PUBLIC_APP_URL || 'https://syncourse-web.vercel.app';
     const link = `${appUrl}/courses/${lesson.course.slug}/lessons/${lesson.id}`;
     const sizeText = best ? ` · ${best.sizeMb.toFixed(1)} MB ${best.label}` : '';
     const text = `📚 Syncourse download\n\n${lesson.course.title}\n${lesson.title}${sizeText}\n\n${link}`;
