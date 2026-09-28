@@ -24,7 +24,22 @@ function Gate({ icon, title, children }: { icon: React.ReactNode; title: string;
   );
 }
 
+/**
+ * The console is a client component, so it can't `export const metadata`.
+ * Rendering the meta tag is the supported way to set it from here — React
+ * hoists it into <head>. robots.txt already asks crawlers to stay out; this is
+ * the part that actually keeps an already-known URL out of an index.
+ */
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
+  return (
+    <>
+      <meta name="robots" content="noindex, nofollow" />
+      <AdminGate>{children}</AdminGate>
+    </>
+  );
+}
+
+function AdminGate({ children }: { children: React.ReactNode }) {
   const { user, token } = useAuth();
 
   if (!token) {

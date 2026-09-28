@@ -33,7 +33,8 @@ const ids = (json: unknown): { id: string }[] => (Array.isArray(json) ? json : (
 const STATIC_PATHS: [string, number][] = [
   ["", 1],
   ["/browse", 0.9],
-  ["/courses", 0.9],
+  // NOTE: there is no `/courses` index — the catalogue lives at /browse, and
+  // /courses/<slug> is the only real route, so listing it advertised a 404.
   ["/resources", 0.8],
   ["/paths", 0.7],
   ["/organizations", 0.6],
