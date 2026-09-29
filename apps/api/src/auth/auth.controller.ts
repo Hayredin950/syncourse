@@ -123,9 +123,20 @@ export class AuthController {
     if (redirect.startsWith(APP_SCHEME_PREFIX)) return redirect;
     try {
       const target = new URL(redirect);
-      const allowed = [process.env.PUBLIC_APP_URL, 'http://localhost:3000'].filter(
-        (u): u is string => !!u,
-      );
+      // `PUBLIC_APP_URL` is the canonical app; `PUBLIC_WEB_ORIGINS` honours any
+      // other host serving the same build (the Cloudflare Pages mirror). It is
+      // not cosmetic: the session token is appended to whichever origin answers
+      // this redirect, and browser storage is per-origin — so a sign-in started
+      // on the mirror used to bounce to the canonical host and leave the tab it
+      // came from signed out. Still an allowlist: anything not named here keeps
+      // falling back to `PUBLIC_APP_URL`.
+      const allowed = [
+        process.env.PUBLIC_APP_URL,
+        ...(process.env.PUBLIC_WEB_ORIGINS ?? '').split(','),
+        'http://localhost:3000',
+      ]
+        .map((u) => u?.trim())
+        .filter((u): u is string => !!u);
       if (allowed.some((u) => new URL(u).origin === target.origin)) return redirect;
     } catch {
       // not a parseable URL — fall through to the app's own origin
