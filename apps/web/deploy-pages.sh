@@ -10,7 +10,9 @@ cd "$(dirname "$0")"
 
 echo "→ Building static export (clean — env vars like NEXT_PUBLIC_* are inlined at build time)..."
 rm -rf .next out
-npx next build
+# STATIC_EXPORT=1 is what turns on `output: "export"`; without it next.config.mjs
+# builds the server app that Vercel deploys, and there is no out/ to upload.
+STATIC_EXPORT=1 npx next build
 
 # The static export already generates out/404.html from app/not-found.tsx —
 # a "smart 404" that renders course pages for /courses/<slug> URLs created
