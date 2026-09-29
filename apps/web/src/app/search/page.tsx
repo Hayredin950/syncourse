@@ -10,7 +10,7 @@ import { CourseRow } from "@/components/CourseCard";
 import { MobileHeader } from "@/components/Nav";
 import { SkRows } from "@/components/Skeleton";
 import { LoadError } from "@/components/LoadError";
-import { cloudinaryUrl } from "@/lib/cloudinary";
+import { CoverImage } from "@/components/CoverImage";
 
 interface SearchData {
   total: number;
@@ -54,14 +54,10 @@ function EntityHit({
   return (
     <Link href={href} className="s-hit">
       <span className={`s-hit__art ${kind === "Channel" ? "s-hit__art--org" : ""}`}>
-        {imageUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={cloudinaryUrl(imageUrl, { width: 72, height: 72 }) ?? undefined} alt="" loading="lazy" />
-        ) : kind === "Channel" ? (
-          <Building2 size={15} />
-        ) : (
-          name.charAt(0).toUpperCase()
-        )}
+        {/* Glyph or initial always; the picture lies over it. A hit whose avatar is
+            blocked or slow then keeps its plate instead of going blank. */}
+        {kind === "Channel" ? <Building2 size={15} /> : name.charAt(0).toUpperCase()}
+        <CoverImage src={imageUrl} transform={{ width: 72, height: 72 }} />
       </span>
       <span className="s-hit__name">{name}</span>
       <span className="s-hit__kind">{kind}</span>

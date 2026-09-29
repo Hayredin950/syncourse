@@ -20,7 +20,7 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import type { ResourceMediaKind, ResourceSummary } from "@/lib/types";
-import { cloudinaryUrl } from "@/lib/cloudinary";
+import { CoverImage } from "@/components/CoverImage";
 import { compact, plural } from "@/lib/format";
 import { hueFromString } from "@/components/CourseCard";
 
@@ -88,10 +88,7 @@ export function ResourceCard({ resource: r }: { resource: ResourceSummary }) {
             of them. So a card whose image is still in flight — or never arrives —
             shows the placeholder rather than a hole. */}
         <Glyph className="res-card__glyph" size={38} strokeWidth={1.4} />
-        {r.coverUrl && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={cloudinaryUrl(r.coverUrl, { width: 520, height: 320, gravity: "north" }) ?? undefined} alt="" loading="lazy" decoding="async" />
-        )}
+        <CoverImage src={r.coverUrl} transform={{ width: 520, height: 320, gravity: "north" }} />
         <span className="res-card__type">
           <Glyph size={11} /> {meta.label}
         </span>
@@ -134,10 +131,7 @@ export function ResourceFeature({ resource: r }: { resource: ResourceSummary }) 
     <Link href={`/resources/${r.slug}`} className="res-feature">
       <span className="res-feature__art" style={resourceTint(r.slug)}>
         <Glyph className="res-card__glyph" size={46} strokeWidth={1.3} />
-        {r.coverUrl && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={cloudinaryUrl(r.coverUrl, { width: 640, height: 640, gravity: "north" }) ?? undefined} alt="" decoding="async" />
-        )}
+        <CoverImage src={r.coverUrl} transform={{ width: 640, height: 640, gravity: "north" }} eager />
       </span>
       <span className="res-feature__body">
         <span className="res-feature__kicker">

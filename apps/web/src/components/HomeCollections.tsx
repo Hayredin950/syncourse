@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowRight, Bookmark, Layers, Plus } from "lucide-react";
 import { get } from "@/lib/api";
-import { cloudinaryUrl } from "@/lib/cloudinary";
+import { CoverImage } from "@/components/CoverImage";
+import { hueFromString } from "@/components/CourseCard";
 import type { CollectionSummary } from "@/lib/types";
 
 /**
@@ -74,19 +75,26 @@ export function HomeCollections() {
  */
 function CollectionCard({ list: l }: { list: CollectionSummary }) {
   const covers = l.covers.slice(0, 3);
+  // An empty shelf still gets one pane so the strip keeps its 16:9 shape.
+  const panes: (string | null)[] = covers.length > 0 ? covers : [null];
   return (
     <Link href={`/lists/detail?id=${l.id}`} className="col-card">
       <span className="col-card__strip">
-        {covers.length > 0 ? (
-          covers.map((c, i) => (
-            // eslint-disable-next-line @next/next/no-img-element
-            <img key={i} src={cloudinaryUrl(c, { width: 220, height: 300 }) ?? undefined} alt="" loading="lazy" />
-          ))
-        ) : (
-          <span className="col-card__blank" />
-        )}
+        {panes.map((c, i) => (
+          // The tinted pane sits *behind* its cover rather than instead of it, so
+          // a sliver whose image is blocked or still in flight keeps its colour
+          // instead of punching a hole in the strip. Seeded per cover, so three
+          // unloaded panes still read as three different courses.
+          <span
+            key={i}
+            className="col-card__pane"
+            style={{ "--pane-h": hueFromString(c ?? `${l.id}${i}`) } as React.CSSProperties}
+          >
+            <CoverImage src={c} transform={{ width: 220, height: 300 }} />
+          </span>
+        ))}
         <span className="col-card__count">
-          <Layers size={9} style={{ display: "inline", verticalAlign: "middle", marginRight: 4 }} />
+          <Layers size={9} />
           {l.itemCount}
         </span>
       </span>

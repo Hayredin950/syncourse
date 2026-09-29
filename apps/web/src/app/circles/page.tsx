@@ -9,6 +9,7 @@ import { del, get, patch, post } from "@/lib/api";
 import type { ActivityFeed, CircleDetail, CircleLite, CirclePost, CourseSummary } from "@/lib/types";
 import { useAuth } from "@/lib/auth";
 import { compact, formatDate } from "@/lib/format";
+import { CoverImage } from "@/components/CoverImage";
 import { MobileHeader } from "@/components/Nav";
 import { SkRows } from "@/components/Skeleton";
 import Confirm from "@/components/Confirm";
@@ -509,12 +510,10 @@ function CirclePane({
             />
             {attached && (
               <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 10, padding: 8, borderRadius: "var(--r-sm)", background: "rgba(255,255,255,.04)" }}>
-                {attached.thumbnailUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={attached.thumbnailUrl} alt="" style={{ width: 30, height: 44, borderRadius: "var(--r-2xs)", objectFit: "cover" }} />
-                ) : (
-                  <span className="icon-badge icon-badge--gray" style={{ width: 30, height: 44 }}><Star size={12} /></span>
-                )}
+                <span className="thumb-plate" style={{ width: 30, height: 44 }}>
+                  <Star size={12} />
+                  <CoverImage src={attached.thumbnailUrl} transform={{ width: 90, height: 132 }} />
+                </span>
                 <span style={{ flex: 1, minWidth: 0, fontSize: 12 }}>
                   <strong style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{attached.title}</strong>
                   <small className="muted">recommended with this post</small>
@@ -560,13 +559,13 @@ function CirclePane({
           <div className="dark-panel feed" style={{ marginTop: 12 }}>
             {circle.posts.map((p) => (
               <div className="feed-item" key={p.id}>
-                <span className="avatar-sm" style={{ width: 32, height: 32, borderRadius: "50%", display: "grid", placeItems: "center", overflow: "hidden", background: "hsl(var(--accent) / .14)", color: "hsl(var(--accent))", fontWeight: 800, fontSize: 12, flexShrink: 0 }}>
-                  {p.author.avatarUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={p.author.avatarUrl} alt="" style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                  ) : (
-                    p.author.name.charAt(0)
-                  )}
+                <span className="avatar-sm" style={{ position: "relative", width: 32, height: 32, borderRadius: "50%", display: "grid", placeItems: "center", overflow: "hidden", background: "hsl(var(--accent) / .14)", color: "hsl(var(--accent))", fontWeight: 800, fontSize: 12, flexShrink: 0 }}>
+                  {p.author.name.charAt(0)}
+                  <CoverImage
+                    src={p.author.avatarUrl}
+                    transform={{ width: 96, height: 96 }}
+                    style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }}
+                  />
                 </span>
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: 12 }}>
@@ -581,12 +580,10 @@ function CirclePane({
                       href={`/courses/${p.course.slug}`}
                       style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 8, padding: 8, borderRadius: "var(--r-sm)", background: "rgba(255,255,255,.04)" }}
                     >
-                      {p.course.thumbnailUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={p.course.thumbnailUrl} alt="" style={{ width: 28, height: 40, borderRadius: "var(--r-2xs)", objectFit: "cover" }} />
-                      ) : (
-                        <span className="icon-badge icon-badge--gray" style={{ width: 28, height: 40 }}><Star size={11} /></span>
-                      )}
+                      <span className="thumb-plate" style={{ width: 28, height: 40 }}>
+                        <Star size={11} />
+                        <CoverImage src={p.course.thumbnailUrl} transform={{ width: 84, height: 120 }} />
+                      </span>
                       <span style={{ minWidth: 0, fontSize: 12 }}>
                         <strong style={{ display: "block", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{p.course.title}</strong>
                         <small className="muted">open course</small>
@@ -611,12 +608,8 @@ function CirclePane({
           {circle.members.map((m) => (
             <div className="avatar-cell" key={m.id} style={{ position: "relative" }}>
               <div className="avatar-sm">
-                {m.avatarUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={m.avatarUrl} alt="" />
-                ) : (
-                  m.name.charAt(0)
-                )}
+                {m.name.charAt(0)}
+                <CoverImage src={m.avatarUrl} transform={{ width: 96, height: 96 }} />
               </div>
               <span className="avatar-name" style={{ display: "block" }}>
                 {m.name}{m.role === "owner" ? " · owner" : ""}

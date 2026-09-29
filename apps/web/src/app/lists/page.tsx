@@ -8,6 +8,8 @@ import { ListPlus, Lock, Pencil, Plus, Trash2, Users } from "lucide-react";
 import { del, get, post } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { formatDate, plural } from "@/lib/format";
+import { hueFromString } from "@/components/CourseCard";
+import { CoverImage } from "@/components/CoverImage";
 import { MobileHeader } from "@/components/Nav";
 import Confirm from "@/components/Confirm";
 import Modal from "@/components/Modal";
@@ -182,11 +184,19 @@ export default function ListsPage() {
             <div key={l.id} className="list-card">
               <Link href={`/lists/detail?id=${l.id}`} className="dark-panel dark-panel--pad" style={{ display: "block" }}>
                 <div className="list-card__strip">
-                  {l.covers.slice(0, 3).map((c, i) => (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img key={i} src={c} alt="" className="h-full w-full rounded-md object-cover" loading="lazy" />
+                  {/* One tinted pane per cover, always three wide, with the picture
+                      laid over it — the strip used to be the covers themselves, so
+                      a shelf whose thumbnails did not arrive was three empty cells.
+                      A shelf with no covers at all still fills its three. */}
+                  {[0, 1, 2].map((i) => (
+                    <span
+                      key={i}
+                      className="col-card__pane"
+                      style={{ "--pane-h": hueFromString(l.covers[i] ?? `${l.id}${i}`) } as React.CSSProperties}
+                    >
+                      <CoverImage src={l.covers[i]} transform={{ width: 220, height: 300 }} />
+                    </span>
                   ))}
-                  {l.covers.length === 0 && [0, 1, 2].map((i) => <div key={i} style={{ borderRadius: "var(--r-2xs)", background: "linear-gradient(135deg, hsl(32 42% 18%), hsl(20 50% 9%))" }} />)}
                 </div>
                 <h3 style={{ margin: "16px 0 7px", fontSize: 14 }}>{l.name}</h3>
                 {l.description && <p className="muted" style={{ fontSize: 11 }}>{l.description}</p>}

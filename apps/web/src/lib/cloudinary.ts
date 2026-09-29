@@ -26,9 +26,11 @@ const UPLOAD = /^(https:\/\/res\.cloudinary\.com\/[^/]+\/image\/upload\/)(.*)$/;
  * centre crop takes a 16:10 slice out of its middle, which is a band of text cut
  * off mid-sentence at both ends. `north` keeps the top, where the heading is.
  */
+export type CloudinaryOpts = { width?: number; height?: number; gravity?: "north" | "auto" | "face" };
+
 export function cloudinaryUrl(
   url: string | null | undefined,
-  opts: { width?: number; height?: number; gravity?: "north" | "auto" | "face" } = {},
+  opts: CloudinaryOpts = {},
 ): string | null {
   if (!url) return null;
 

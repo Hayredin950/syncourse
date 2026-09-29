@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { cloudinaryUrl } from "@/lib/cloudinary";
+import { CoverImage } from "@/components/CoverImage";
 import { compact, plural } from "@/lib/format";
 
 /**
@@ -31,12 +31,11 @@ function EntityCard({
   return (
     <Link href={href} className={`entity-card entity-card--${variant}`}>
       <span className="entity-card__avatar">
-        {imageUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={cloudinaryUrl(imageUrl, { width: 160, height: 160 }) ?? undefined} alt="" />
-        ) : (
-          name.charAt(0).toUpperCase()
-        )}
+        {/* The initial stays put and the photo covers it, rather than one or the
+            other by whether a URL exists: a blocked or missing avatar then reads
+            as a monogram instead of an empty circle. */}
+        {name.charAt(0).toUpperCase()}
+        <CoverImage src={imageUrl} transform={{ width: 160, height: 160 }} />
       </span>
       <span className="entity-card__body">
         <span className="entity-card__name">{name}</span>

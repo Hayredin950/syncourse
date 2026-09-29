@@ -32,6 +32,7 @@ import type { UserProfile, UserStats } from "@/lib/types";
 import { useAuth } from "@/lib/auth";
 import { formatDate } from "@/lib/format";
 import Modal from "@/components/Modal";
+import { CoverImage } from "@/components/CoverImage";
 import { MobileHeader } from "@/components/Nav";
 import { SkCards, SkEntityPage } from "@/components/Skeleton";
 import { LoadError } from "@/components/LoadError";
@@ -306,12 +307,9 @@ export default function MePage() {
         <div className="profile-head">
           <div className="profile-row">
             <div className="avatar">
-              {user.avatarUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={user.avatarUrl} alt="" className="h-full w-full rounded-[20px] object-cover" />
-              ) : (
-                (user.name || "?").charAt(0).toUpperCase()
-              )}
+              {/* Initial always, photo over it — see CoverImage. */}
+              {(user.name || "?").charAt(0).toUpperCase()}
+              <CoverImage src={user.avatarUrl} eager />
             </div>
             <div>
               <span className="eyebrow">Your profile</span>

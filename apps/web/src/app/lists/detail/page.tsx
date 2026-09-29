@@ -8,8 +8,8 @@ import { ArrowLeft, Bookmark, Check, Layers, Lock, Pencil, Plus, Trash2, Users, 
 import { del, get, post } from "@/lib/api";
 import { useAuth } from "@/lib/auth";
 import { formatDate, plural } from "@/lib/format";
-import { cloudinaryUrl } from "@/lib/cloudinary";
 import { CourseCard } from "@/components/CourseCard";
+import { CoverImage } from "@/components/CoverImage";
 import { MobileHeader } from "@/components/Nav";
 import { SkCards, SkHero } from "@/components/Skeleton";
 import { CoursePickerSheet } from "@/components/CoursePickerSheet";
@@ -191,8 +191,7 @@ function ListDetail() {
         {art.length > 0 && (
           <div className="col-hero__art" aria-hidden>
             {art.map((src, i) => (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img key={i} src={cloudinaryUrl(src, { width: 420, height: 560 }) ?? undefined} alt="" loading="lazy" />
+              <CoverImage key={i} src={src} transform={{ width: 420, height: 560 }} eager />
             ))}
           </div>
         )}
@@ -207,12 +206,8 @@ function ListDetail() {
                 your own page only — so a link here would 404 on the static export. */}
             <span className="col-chip col-chip--owner">
               <span className="col-chip__avatar">
-                {list.ownerAvatarUrl ? (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={cloudinaryUrl(list.ownerAvatarUrl, { width: 42, height: 42 }) ?? undefined} alt="" />
-                ) : (
-                  (list.ownerName ?? "?").charAt(0).toUpperCase()
-                )}
+                {(list.ownerName ?? "?").charAt(0).toUpperCase()}
+                <CoverImage src={list.ownerAvatarUrl} transform={{ width: 42, height: 42 }} />
               </span>
               {list.ownerName}
             </span>

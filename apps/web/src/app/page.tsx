@@ -6,6 +6,7 @@ import { ArrowRight, ChevronRight, Play, Star } from "lucide-react";
 import { get } from "@/lib/api";
 import type { CourseSummary, HomeData, LibraryData } from "@/lib/types";
 import { CourseCard } from "@/components/CourseCard";
+import { CoverImage } from "@/components/CoverImage";
 import { LecturerCard, PublisherCard } from "@/components/EntityCard";
 import { HomeCollections } from "@/components/HomeCollections";
 import { HomeResources } from "@/components/HomeResources";
@@ -356,12 +357,9 @@ export default function HomePage() {
                   <div className="path-card__strip">
                     {p.courses.slice(0, 4).map((c) => (
                       <div key={c.id} className="cover" style={{ aspectRatio: "0.8", borderRadius: "var(--r-xs)", margin: 0 }}>
-                        {c.thumbnailUrl ? (
-                          // eslint-disable-next-line @next/next/no-img-element
-                          <img src={c.thumbnailUrl} alt={c.title} loading="lazy" className="absolute inset-0 h-full w-full object-cover" style={{ zIndex: 0 }} />
-                        ) : (
-                          <span className="cover-mark" style={{ fontSize: 16 }}>🎓</span>
-                        )}
+                        {/* Glyph behind the poster, not instead of it — see CoverImage. */}
+                        <span className="cover__ph" style={{ fontSize: 16 }} aria-hidden>🎓</span>
+                        <CoverImage src={c.thumbnailUrl} transform={{ width: 200, height: 250 }} alt={c.title} />
                       </div>
                     ))}
                   </div>

@@ -9,7 +9,7 @@ import { ArrowRight, Check, CreditCard, MessageCircle, Wallet, Zap } from "lucid
 import { get, post } from "@/lib/api";
 import type { HomeData, Plan } from "@/lib/types";
 import { useAuth } from "@/lib/auth";
-import { cloudinaryUrl } from "@/lib/cloudinary";
+import { CoverImage } from "@/components/CoverImage";
 import { MobileHeader } from "@/components/Nav";
 import { Sk } from "@/components/Skeleton";
 import { LoadError } from "@/components/LoadError";
@@ -111,8 +111,7 @@ export default function PremiumPage() {
         {heroImages.length > 0 && (
           <div className="premium-hero__bg">
             {heroImages.map((url, i) => (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img key={i} src={cloudinaryUrl(url, { width: 320 }) ?? undefined} alt="" aria-hidden />
+              <CoverImage key={i} src={url} transform={{ width: 320 }} eager />
             ))}
           </div>
         )}

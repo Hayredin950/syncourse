@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { Bookmark, Check, Download, LayoutGrid, List, Play } from "lucide-react";
 import { useAuth } from "@/lib/auth";
-import { cloudinaryUrl } from "@/lib/cloudinary";
+import { CoverImage } from "@/components/CoverImage";
 import { compact, formatDuration, plural } from "@/lib/format";
 import { hueFromString } from "@/components/CourseCard";
 
@@ -74,12 +74,9 @@ export function TitleRow({ course, index }: { course: EntityCourse; index: numbe
     <Link href={`/courses/${course.slug}`} className="title-row">
       <span className="title-row__index">{String(index).padStart(2, "0")}</span>
       <div className="title-row__thumb" style={{ background: `linear-gradient(145deg, hsl(${hue} 42% 20%), hsl(${(hue + 55) % 360} 50% 10%))` }}>
-        {course.thumbnailUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={cloudinaryUrl(course.thumbnailUrl, { width: 220, height: 140 }) ?? undefined} alt={course.title} loading="lazy" />
-        ) : (
-          <span className="muted">{typeLabel.charAt(0)}</span>
-        )}
+        {/* Letter first, thumbnail over it — see CoverImage. */}
+        <span className="muted">{typeLabel.charAt(0)}</span>
+        <CoverImage src={course.thumbnailUrl} transform={{ width: 220, height: 140 }} alt={course.title} />
       </div>
       <div className="title-row__main">
         <div className="title-row__title">{course.title}</div>

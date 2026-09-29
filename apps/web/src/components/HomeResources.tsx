@@ -6,7 +6,7 @@ import { ArrowRight, Clock3, Eye, LayoutGrid, Paperclip } from "lucide-react";
 import { get } from "@/lib/api";
 import type { ResourceList, ResourceSummary } from "@/lib/types";
 import { compact, plural } from "@/lib/format";
-import { cloudinaryUrl } from "@/lib/cloudinary";
+import { CoverImage } from "@/components/CoverImage";
 import { ResourceCard, ResourceFeature, resourceTint, typeMeta } from "@/components/ResourceCard";
 
 /**
@@ -140,10 +140,7 @@ function Spotlight({ resource: r }: { resource: ResourceSummary }) {
             is the widest crop of the lot — 16:8.2 out of a portrait page — so it
             also takes the top of the document, where the heading is. */}
         <Glyph className="res-card__glyph" size={52} strokeWidth={1.3} />
-        {r.coverUrl && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img src={cloudinaryUrl(r.coverUrl, { width: 900, height: 560, gravity: "north" }) ?? undefined} alt="" />
-        )}
+        <CoverImage src={r.coverUrl} transform={{ width: 900, height: 560, gravity: "north" }} eager />
         <span className="home-res__kicker">
           <Glyph size={11} /> {meta.label}
         </span>

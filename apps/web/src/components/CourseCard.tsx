@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { Bookmark, Check, Download, Eye, Star, Play } from "lucide-react";
 import type { CourseSummary } from "@/lib/types";
 import { compact, formatDuration } from "@/lib/format";
-import { cloudinaryUrl } from "@/lib/cloudinary";
+import { CoverImage } from "@/components/CoverImage";
 import { useAuth } from "@/lib/auth";
 
 export function hueFromString(s: string): number {
@@ -16,9 +16,14 @@ export function hueFromString(s: string): number {
 }
 
 /**
- * Course cover — real image when available (badges overlay cleanly at the
- * corners), branded gradient + icon fallback when a cover hasn't been
- * uploaded yet. No internal type/level codes ever reach the UI.
+ * Course cover — the branded gradient and its glyph always render, and the real
+ * image sits on top of them when one arrives.
+ *
+ * It used to be `thumbnailUrl ? <img> : <mark>`, which decided from whether a
+ * URL exists rather than whether the picture loaded: a cover that was blocked,
+ * slow or gone took the mark away with it and left a flat coloured box. That is
+ * the state every card on the site fell into when Cloudinary could not be
+ * reached. See `CoverImage` — it removes itself on failure, uncovering this.
  */
 export function CoverArt({
   course,
@@ -43,20 +48,16 @@ export function CoverArt({
         } as React.CSSProperties
       }
     >
-      {course.thumbnailUrl ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={cloudinaryUrl(course.thumbnailUrl, { width: large ? 420 : 280, height: large ? 350 : 420 }) ?? undefined}
-          alt={course.title}
-          loading="lazy"
-          className="absolute inset-0 h-full w-full object-cover"
-          style={{ zIndex: 0 }}
-        />
-      ) : (
-        <span className="cover-mark" style={{ fontSize: 30, fontWeight: 800 }}>
-          {icon}
-        </span>
-      )}
+      <span className="cover__ph" aria-hidden>
+        {icon}
+      </span>
+      <CoverImage
+        src={course.thumbnailUrl}
+        transform={{ width: large ? 420 : 280, height: large ? 350 : 420 }}
+        alt={course.title}
+        className="absolute inset-0 h-full w-full object-cover"
+        style={{ zIndex: 0 }}
+      />
       {badges && (
         <>
           {course.isNew && <span className="cover-badge added">Added</span>}

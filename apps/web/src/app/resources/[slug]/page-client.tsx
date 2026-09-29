@@ -22,7 +22,8 @@ import type { ResourceDetail, ResourceMedia } from "@/lib/types";
 import { Markdown, markdownHeadings } from "@/components/Markdown";
 import { MobileHeader } from "@/components/Nav";
 import { SkHero } from "@/components/Skeleton";
-import { attachmentUrl, cloudinaryUrl } from "@/lib/cloudinary";
+import { attachmentUrl } from "@/lib/cloudinary";
+import { CoverImage } from "@/components/CoverImage";
 import { compact, formatDate, mediaTitle, plural } from "@/lib/format";
 import { ResourceCard, mediaMeta, resourceTint, typeMeta } from "@/components/ResourceCard";
 import { useToast } from "@/lib/useToast";
@@ -66,26 +67,25 @@ function Shot({ item, index, onOpen }: { item: ResourceMedia; index: number; onO
       style={ratio ? ({ "--shot-ratio": ratio } as React.CSSProperties) : undefined}
     >
       <span className="res-shot__frame">
-        {failed ? (
+        {/* The failure panel and the picture are siblings, not branches of a
+            ternary on `item.url`: the panel shows only once `CoverImage` has
+            exhausted both the transformed URL and the original, so a screenshot
+            that is merely slow is not pre-emptively declared broken. */}
+        {failed && (
           <span className="res-shot__fail">
             <ImageOff size={17} />
             <span className="res-shot__fail-name">{label}</span>
             <small>Image did not load</small>
           </span>
-        ) : (
-          /* eslint-disable-next-line @next/next/no-img-element */
-          <img
-            src={cloudinaryUrl(item.url, { width: 1000 }) ?? undefined}
-            alt={item.caption ?? label}
-            loading={index < 2 ? "eager" : "lazy"}
-            decoding="async"
-            onLoad={(e) => {
-              const el = e.currentTarget;
-              if (el.naturalWidth && el.naturalHeight) setRatio(`${el.naturalWidth} / ${el.naturalHeight}`);
-            }}
-            onError={() => setFailed(true)}
-          />
         )}
+        <CoverImage
+          src={item.url}
+          transform={{ width: 1000 }}
+          alt={item.caption ?? label}
+          eager={index < 2}
+          onSettled={(ok) => setFailed(!ok)}
+          onNaturalSize={(w, h) => setRatio(`${w} / ${h}`)}
+        />
         <span className="res-shot__zoom">
           <Maximize2 size={13} />
         </span>
@@ -117,6 +117,8 @@ export function ResourceDetailView({ slug }: { slug: string }) {
   const [r, setR] = useState<ResourceDetail | null>(null);
   const [error, setError] = useState(false);
   const [shot, setShot] = useState<number | null>(null);
+  /** The URL of the sheet whose full-size fetch gave up, so the viewer can say so. */
+  const [shotFailed, setShotFailed] = useState<string | null>(null);
   const { toast, setToast } = useToast();
 
   useEffect(() => {
@@ -229,10 +231,9 @@ export function ResourceDetailView({ slug }: { slug: string }) {
       </Link>
 
       <header className="res-hero" style={resourceTint(r.slug)}>
-        {r.coverUrl && (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img className="res-hero__wash" src={cloudinaryUrl(r.coverUrl, { width: 1200, height: 600 }) ?? undefined} alt="" />
-        )}
+        {/* The tint above is the hero; the cover is a wash laid over it at 17%.
+            Nothing to fall back to, so it simply removes itself. */}
+        <CoverImage className="res-hero__wash" src={r.coverUrl} transform={{ width: 1200, height: 600 }} eager />
         <div className="res-hero__inner">
           <span className="res-kicker">
             <Glyph size={12} /> {meta.label}
@@ -535,12 +536,27 @@ export function ResourceDetailView({ slug }: { slug: string }) {
               <ChevronLeft size={22} />
             </button>
           )}
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={cloudinaryUrl(images[shot].url, { width: 1600 }) ?? undefined}
-            alt={images[shot].caption ?? mediaTitle(images[shot], `Sheet ${shot + 1}`)}
-            onClick={(e) => e.stopPropagation()}
-          />
+          {/* Nothing behind a lightbox but the scrim, so a picture that cannot be
+              fetched at full size says so and points at the download — an empty
+              black overlay with working arrows reads as the viewer being broken.
+              Keyed by URL rather than a boolean, so paging to the next sheet
+              clears it without an effect. */}
+          {shotFailed === images[shot].url ? (
+            <span className="res-lightbox__fail" onClick={(e) => e.stopPropagation()}>
+              <ImageOff size={24} />
+              <b>This image did not load</b>
+              <small>Download opens the original file instead.</small>
+            </span>
+          ) : (
+            <CoverImage
+              src={images[shot].url}
+              transform={{ width: 1600 }}
+              alt={images[shot].caption ?? mediaTitle(images[shot], `Sheet ${shot + 1}`)}
+              eager
+              onSettled={(ok) => { if (!ok) setShotFailed(images[shot].url); }}
+              onClick={(e) => e.stopPropagation()}
+            />
+          )}
           {images.length > 1 && (
             <button
               type="button"

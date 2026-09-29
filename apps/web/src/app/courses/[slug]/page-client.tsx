@@ -24,8 +24,8 @@ import type { CourseDetail, CourseSummary, ReviewRow, TelegramFile } from "@/lib
 import { useAuth } from "@/lib/auth";
 import { StarPicker } from "@/components/StarRating";
 import { formatDuration, formatSec, compact, formatDate, plural, isOpaqueFileName, mediaTitle } from "@/lib/format";
-import { cloudinaryUrl } from "@/lib/cloudinary";
 import { hueFromString, CourseCard } from "@/components/CourseCard";
+import { CoverImage } from "@/components/CoverImage";
 import Modal from "@/components/Modal";
 import { AddToListSheet } from "@/components/AddToListSheet";
 import { MobileHeader } from "@/components/Nav";
@@ -382,14 +382,16 @@ export function CourseDetailView({ slug }: { slug: string }) {
           background: `linear-gradient(135deg, hsl(${(hue + 40) % 360} 42% 16%), hsl(${hue} 50% 9%) 47%, #201712)`,
         }}
       >
-        {course.bannerUrl || course.thumbnailUrl ? (
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            className="detail-hero__img"
-            src={cloudinaryUrl(course.bannerUrl || course.thumbnailUrl, { width: 840, height: 472 }) ?? undefined}
-            alt={course.title}
-          />
-        ) : null}
+        {/* The gradient above is the hero's backstop: the banner lies over it and
+            takes itself away if it never loads, rather than the page deciding by
+            whether a URL exists. See CoverImage. */}
+        <CoverImage
+          className="detail-hero__img"
+          src={course.bannerUrl || course.thumbnailUrl}
+          transform={{ width: 840, height: 472 }}
+          alt={course.title}
+          eager
+        />
         <div className="hero-content">
           <span className="eyebrow">
             {course.categoryNames.join(" · ") || "Course"} · {course.level}
@@ -497,12 +499,8 @@ export function CourseDetailView({ slug }: { slug: string }) {
                 {teachers.map((l) => (
                   <Link key={l.id} href={`/lecturers/${l.slug}`} className="instructor-card">
                     <div className="instructor-card__avatar">
-                      {l.photoUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={cloudinaryUrl(l.photoUrl, { width: 120, height: 120 }) ?? undefined} alt={l.name} />
-                      ) : (
-                        l.name.charAt(0)
-                      )}
+                      {l.name.charAt(0)}
+                      <CoverImage src={l.photoUrl} transform={{ width: 120, height: 120 }} alt={l.name} />
                     </div>
                     <span className="instructor-card__name">{l.name}</span>
                     <span className="instructor-card__role">Instructor</span>
@@ -519,12 +517,8 @@ export function CourseDetailView({ slug }: { slug: string }) {
               <div className="publisher-grid">
                 <Link href={`/publishers/${course.organization.slug}`} className="publisher-row">
                   <span className="publisher-row__logo">
-                    {course.organization.logoUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={cloudinaryUrl(course.organization.logoUrl, { width: 64, height: 64 }) ?? undefined} alt={course.organization.name} />
-                    ) : (
-                      course.organization.name.charAt(0)
-                    )}
+                    {course.organization.name.charAt(0)}
+                    <CoverImage src={course.organization.logoUrl} transform={{ width: 64, height: 64 }} alt={course.organization.name} />
                   </span>
                   <span>
                     <strong>{course.organization.name}</strong>

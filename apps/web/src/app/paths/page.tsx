@@ -5,6 +5,7 @@ import Link from "next/link";
 import { get } from "@/lib/api";
 import { plural } from "@/lib/format";
 import type { LearningPathRow } from "@/lib/types";
+import { CoverImage } from "@/components/CoverImage";
 import { MobileHeader } from "@/components/Nav";
 import { SkCards } from "@/components/Skeleton";
 import { LoadError } from "@/components/LoadError";
@@ -63,12 +64,9 @@ export default function PathsPage() {
                 <div className="path-card__strip">
                   {p.courses.slice(0, 4).map((c) => (
                     <div key={c.id} className="cover" style={{ aspectRatio: "0.8", borderRadius: "var(--r-xs)", margin: 0 }}>
-                      {c.thumbnailUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={c.thumbnailUrl} alt={c.title} loading="lazy" className="absolute inset-0 h-full w-full object-cover" style={{ zIndex: 0 }} />
-                      ) : (
-                        <span className="cover-mark" style={{ fontSize: 16 }}>🎓</span>
-                      )}
+                      {/* Glyph behind the poster, not instead of it — see CoverImage. */}
+                      <span className="cover__ph" style={{ fontSize: 16 }} aria-hidden>🎓</span>
+                      <CoverImage src={c.thumbnailUrl} transform={{ width: 200, height: 250 }} alt={c.title} />
                     </div>
                   ))}
                 </div>
