@@ -5,15 +5,21 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { get } from "@/lib/api";
 import type { LecturerDetail } from "@/lib/types";
-import { cloudinaryUrl } from "@/lib/cloudinary";
 import { CourseCard } from "@/components/CourseCard";
+import { CoverImage } from "@/components/CoverImage";
 import { MobileHeader } from "@/components/Nav";
 import { ShareButton } from "@/components/ShareButton";
 import { SkEntityPage } from "@/components/Skeleton";
 import { TitleRow, TitleToolbar, type EntityCourse, type SortMode, type ViewMode } from "@/components/TitleList";
 
-export default function LecturerPage() {
-  const { slug } = useParams<{ slug: string }>();
+/**
+ * The lecturer page is driven by a slug prop so both the static route and the
+ * smart 404 can render it — `useParams` is empty inside `not-found.tsx`, which
+ * is why a lecturer created after the last build used to dead-end there.
+ */
+export default function LecturerPage({ slug: slugProp }: { slug?: string } = {}) {
+  const params = useParams<{ slug: string }>();
+  const slug = slugProp ?? params?.slug ?? "";
   const [l, setL] = useState<LecturerDetail | null>(null);
   const [error, setError] = useState(false);
   const [sort, setSort] = useState<SortMode>("top");
@@ -21,6 +27,7 @@ export default function LecturerPage() {
   const [filterQ, setFilterQ] = useState("");
 
   useEffect(() => {
+    if (!slug) return;
     get<LecturerDetail>(`/lecturers/${slug}`)
       .then(setL)
       .catch(() => setError(true));
@@ -69,12 +76,9 @@ export default function LecturerPage() {
       <div className="profile-head">
         <div className="profile-row">
           <div className="avatar">
-            {l.photoUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={cloudinaryUrl(l.photoUrl, { width: 192, height: 192 }) ?? undefined} alt={l.name} className="h-full w-full rounded-[20px] object-cover" />
-            ) : (
-              l.name.charAt(0)
-            )}
+            {/* Initial always, photo over it — see CoverImage. */}
+            {l.name.charAt(0)}
+            <CoverImage src={l.photoUrl} transform={{ width: 192, height: 192 }} alt={l.name} eager />
           </div>
           <div>
             <span className="eyebrow">Lecturer</span>

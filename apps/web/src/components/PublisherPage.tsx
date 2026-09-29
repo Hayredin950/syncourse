@@ -6,16 +6,28 @@ import { useParams } from "next/navigation";
 import { ArrowLeft } from "lucide-react";
 import { get } from "@/lib/api";
 import type { OrganizationDetail } from "@/lib/types";
-import { cloudinaryUrl } from "@/lib/cloudinary";
 import { compact } from "@/lib/format";
 import { CourseCard } from "@/components/CourseCard";
+import { CoverImage } from "@/components/CoverImage";
 import { MobileHeader } from "@/components/Nav";
 import { ShareButton } from "@/components/ShareButton";
 import { SkEntityPage } from "@/components/Skeleton";
 import { TitleRow, TitleToolbar, type EntityCourse, type SortMode, type ViewMode } from "@/components/TitleList";
 
-export default function PublisherPage({ backHref = "/" }: { backHref?: string }) {
-  const { slug } = useParams<{ slug: string }>();
+/**
+ * `slug` is optional only so the smart 404 can render this view for a channel
+ * created since the last build: inside `not-found.tsx` there is no dynamic
+ * route, so `useParams` comes back empty.
+ */
+export default function PublisherPage({
+  backHref = "/",
+  slug: slugProp,
+}: {
+  backHref?: string;
+  slug?: string;
+}) {
+  const params = useParams<{ slug: string }>();
+  const slug = slugProp ?? params?.slug ?? "";
   const [o, setO] = useState<OrganizationDetail | null>(null);
   const [error, setError] = useState(false);
   const [sort, setSort] = useState<SortMode>("top");
@@ -23,6 +35,7 @@ export default function PublisherPage({ backHref = "/" }: { backHref?: string })
   const [filterQ, setFilterQ] = useState("");
 
   useEffect(() => {
+    if (!slug) return;
     get<OrganizationDetail>(`/organizations/${slug}`)
       .then(setO)
       .catch(() => setError(true));
@@ -77,12 +90,9 @@ export default function PublisherPage({ backHref = "/" }: { backHref?: string })
       <div className="profile-head" style={{ paddingTop: 18 }}>
         <div className="profile-row">
           <div className="avatar">
-            {o.logoUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={cloudinaryUrl(o.logoUrl, { width: 160, height: 160 }) ?? undefined} alt={o.name} className="h-full w-full rounded-[20px] object-cover" />
-            ) : (
-              o.name.charAt(0)
-            )}
+            {/* Initial always, logo over it — see CoverImage. */}
+            {o.name.charAt(0)}
+            <CoverImage src={o.logoUrl} transform={{ width: 160, height: 160 }} alt={o.name} eager />
           </div>
           <div>
             <span className="eyebrow">Publisher</span>
