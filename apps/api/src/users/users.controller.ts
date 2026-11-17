@@ -73,7 +73,7 @@ export class UsersController {
 
   @Post('me/change-password')
   changePassword(@CurrentUser() user: AuthUser, @Body() dto: ChangePasswordDto) {
-    return this.users.changePassword(user.id, dto.currentPassword, dto.newPassword);
+    return this.users.changePassword(user.id, user.sessionId, dto.currentPassword, dto.newPassword);
   }
 
   @Post('sessions/:id/terminate')

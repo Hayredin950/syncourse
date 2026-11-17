@@ -2,11 +2,23 @@ import { CanActivate, ExecutionContext, Injectable, UnauthorizedException } from
 import { Reflector } from '@nestjs/core';
 import { JwtService } from '@nestjs/jwt';
 import { IS_PUBLIC_KEY } from './public.decorator';
+import { PrismaService } from '../prisma/prisma.service';
 
 export interface AuthUser {
   id: string;
   email: string;
   username: string;
+  /** The session row this token was issued for. Absent on legacy tokens. */
+  sessionId?: string;
+}
+
+/** The claims an access token carries. `purpose` marks reset tokens. */
+interface AccessTokenPayload {
+  sub?: string;
+  email?: string;
+  username?: string;
+  sid?: string;
+  purpose?: string;
 }
 
 @Injectable()
@@ -14,7 +26,32 @@ export class JwtAuthGuard implements CanActivate {
   constructor(
     private readonly reflector: Reflector,
     private readonly jwtService: JwtService,
+    private readonly prisma: PrismaService,
   ) {}
+
+  /**
+   * Turn a valid token into a viewer, but only while its session is live.
+   *
+   * Without this check every "Sign out this device", "sign out everywhere" and
+   * the session revocation after a password reset were cosmetic: the JWT kept
+   * opening the API for its full 7-day life. Tokens minted before `sid` existed
+   * no longer resolve, so that deploy signs everyone out once and starts from
+   * a state where revocation actually works.
+   */
+  private async viewerFrom(payload: AccessTokenPayload): Promise<AuthUser | null> {
+    if (!payload?.sub || !payload?.sid) return null;
+    const session = await this.prisma.session.findUnique({
+      where: { id: payload.sid },
+      select: { userId: true, active: true },
+    });
+    if (!session || !session.active || session.userId !== payload.sub) return null;
+    return {
+      id: payload.sub,
+      email: payload.email ?? '',
+      username: payload.username ?? '',
+      sessionId: payload.sid,
+    };
+  }
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC_KEY, [
@@ -34,13 +71,10 @@ export class JwtAuthGuard implements CanActivate {
     if (isPublic) {
       if (token) {
         try {
-          const payload = await this.jwtService.verifyAsync(token);
-          if (payload?.sub && !payload?.purpose) {
-            request.user = {
-              id: payload.sub,
-              email: payload.email,
-              username: payload.username,
-            } as AuthUser;
+          const payload = await this.jwtService.verifyAsync<AccessTokenPayload>(token);
+          if (!payload?.purpose) {
+            const viewer = await this.viewerFrom(payload);
+            if (viewer) request.user = viewer;
           }
         } catch {
           // An invalid token on a public route is simply an anonymous request.
@@ -53,15 +87,18 @@ export class JwtAuthGuard implements CanActivate {
       throw new UnauthorizedException('Missing bearer token');
     }
     try {
-      const payload = await this.jwtService.verifyAsync(token);
+      const payload = await this.jwtService.verifyAsync<AccessTokenPayload>(token);
       // Password-reset tokens are signed with the same secret but are not
       // access tokens. `purpose` marks them, and they must never open a route.
       if (!payload?.sub || payload?.purpose) {
         throw new UnauthorizedException('Invalid or expired token');
       }
-      request.user = { id: payload.sub, email: payload.email, username: payload.username } as AuthUser;
+      const viewer = await this.viewerFrom(payload);
+      if (!viewer) throw new UnauthorizedException('Your session has ended — sign in again');
+      request.user = viewer;
       return true;
-    } catch {
+    } catch (err) {
+      if (err instanceof UnauthorizedException) throw err;
       throw new UnauthorizedException('Invalid or expired token');
     }
   }

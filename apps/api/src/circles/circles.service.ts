@@ -162,13 +162,28 @@ export class CirclesService {
     if (!circle) throw new NotFoundException('Circle not found');
 
     const memberIds = circle.members.map((m) => m.userId);
+    const joined = !!userId && circle.members.some((m) => m.userId === userId);
+    // Circle pages are public, so a "friends only" activity item can only be
+    // shown once we know the viewer is actually a friend. Followers and people
+    // who share this circle are the two definitions used everywhere else.
+    const friendIds = new Set<string>();
+    if (userId) {
+      friendIds.add(userId);
+      const follows = await this.prisma.follow.findMany({
+        where: { followerId: userId },
+        select: { followeeId: true },
+      });
+      for (const f of follows) friendIds.add(f.followeeId);
+      if (joined) memberIds.forEach((id) => friendIds.add(id));
+    }
+
     const [reviews, downloads] = await Promise.all([
       this.prisma.review.findMany({
         where: { userId: { in: memberIds }, parentId: null },
         orderBy: { createdAt: 'desc' },
         take: 15,
         include: {
-          user: { select: { name: true, avatarUrl: true, username: true } },
+          user: { select: { name: true, avatarUrl: true, username: true, privacy: true } },
           course: { select: { id: true, title: true, slug: true, thumbnailUrl: true } },
         },
       }),
@@ -185,21 +200,20 @@ export class CirclesService {
     ]);
 
     const activity = [
-      ...reviews.map((r) => ({
-        type: 'review' as const,
-        id: r.id,
-        userName: r.user.name,
-        userAvatar: r.user.avatarUrl,
-        username: r.user.username,
-        course: r.course,
-        body: r.body.slice(0, 160),
-        createdAt: r.createdAt,
-      })),
+      ...reviews
+        .filter((r) => this.canSeeActivity(r.userId, r.user.privacy, 'reviews', friendIds))
+        .map((r) => ({
+          type: 'review' as const,
+          id: r.id,
+          userName: r.user.name,
+          userAvatar: r.user.avatarUrl,
+          username: r.user.username,
+          course: r.course,
+          body: r.body.slice(0, 160),
+          createdAt: r.createdAt,
+        })),
       ...downloads
-        // "Download history → Only me" in privacy settings. The feed only ever
-        // shows people you follow or share a circle with, so "friends" is
-        // already the default audience and needs no extra filtering.
-        .filter((d) => d.user && (d.user.privacy as Record<string, string> | null)?.downloadHistory !== 'nobody')
+        .filter((d) => d.user && this.canSeeActivity(d.userId, d.user.privacy, 'downloadHistory', friendIds))
         .map((d) => ({
           type: 'download' as const,
           id: d.id,
@@ -212,7 +226,6 @@ export class CirclesService {
     ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
     const myId = userId;
-    const joined = !!userId && circle.members.some((m) => m.userId === myId);
     return {
       id: circle.id,
       name: circle.name,
@@ -263,6 +276,10 @@ export class CirclesService {
     });
     const ids = new Set<string>([...following.map((f) => f.followeeId), ...circleMembers.map((m) => m.userId)]);
     ids.delete(userId);
+    // Everyone in this feed is a follower or a circle mate, so "friends" is
+    // the baseline audience; only "nobody" items need filtering out.
+    const friendIds = new Set<string>(ids);
+    friendIds.add(userId);
 
     const [reviews, downloads] = await Promise.all([
       this.prisma.review.findMany({
@@ -270,7 +287,7 @@ export class CirclesService {
         orderBy: { createdAt: 'desc' },
         take: 25,
         include: {
-          user: { select: { name: true, avatarUrl: true, username: true } },
+          user: { select: { name: true, avatarUrl: true, username: true, privacy: true } },
           course: { select: { id: true, title: true, slug: true, thumbnailUrl: true } },
         },
       }),
@@ -287,21 +304,20 @@ export class CirclesService {
     ]);
 
     const items = [
-      ...reviews.map((r) => ({
-        type: 'review' as const,
-        id: r.id,
-        userName: r.user.name,
-        userAvatar: r.user.avatarUrl,
-        username: r.user.username,
-        course: r.course,
-        body: r.body.slice(0, 200),
-        createdAt: r.createdAt,
-      })),
+      ...reviews
+        .filter((r) => this.canSeeActivity(r.userId, r.user.privacy, 'reviews', friendIds))
+        .map((r) => ({
+          type: 'review' as const,
+          id: r.id,
+          userName: r.user.name,
+          userAvatar: r.user.avatarUrl,
+          username: r.user.username,
+          course: r.course,
+          body: r.body.slice(0, 200),
+          createdAt: r.createdAt,
+        })),
       ...downloads
-        // "Download history → Only me" in privacy settings. The feed only ever
-        // shows people you follow or share a circle with, so "friends" is
-        // already the default audience and needs no extra filtering.
-        .filter((d) => d.user && (d.user.privacy as Record<string, string> | null)?.downloadHistory !== 'nobody')
+        .filter((d) => d.user && this.canSeeActivity(d.userId, d.user.privacy, 'downloadHistory', friendIds))
         .map((d) => ({
           type: 'download' as const,
           id: d.id,
@@ -314,5 +330,23 @@ export class CirclesService {
     ].sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 
     return { followingCount: following.length, items: items.slice(0, 30) };
+  }
+
+  /**
+   * Whether one member's activity belongs in a listing this viewer can see.
+   *
+   * `everyone` is always visible, `nobody` never is, and `friends` requires the
+   * viewer to be that person, follow them, or share a circle with them. Circle
+   * pages are public, so this is what stops an anonymous visitor from reading
+   * a member's friends-only download history.
+   */
+  private canSeeActivity(authorId: string | null, privacy: unknown, key: string, friendIds: Set<string>): boolean {
+    // Download rows can exist without a user (anonymous delivery); there is no
+    // privacy setting to honour and no person to name, so leave them off.
+    if (!authorId) return false;
+    const audience = ((privacy ?? {}) as Record<string, string>)[key] ?? 'everyone';
+    if (audience === 'everyone') return true;
+    if (audience === 'nobody') return false;
+    return friendIds.has(authorId);
   }
 }

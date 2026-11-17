@@ -159,8 +159,12 @@ export class AuthController {
   async googleCallback(@Query('code') code?: string, @Query('state') state?: string) {
     if (!code) throw new UnauthorizedException('Missing Google authorization code');
     const { redirect, token } = await this.auth.googleCallback(code, state ?? '');
-    const separator = redirect.includes('?') ? '&' : '?';
-    return { url: `${redirect}${separator}token=${encodeURIComponent(token)}` };
+    // `state` comes back from the browser and is not signed, so a crafted one
+    // could point the token at another origin. Run it through the same
+    // allowlist used when the flow started before appending the token.
+    const safe = this.safeRedirect(redirect);
+    const separator = safe.includes('?') ? '&' : '?';
+    return { url: `${safe}${separator}token=${encodeURIComponent(token)}` };
   }
 
   /** Mobile flow: exchange the Google code for a session token directly. */

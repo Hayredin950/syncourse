@@ -195,8 +195,11 @@ class Api {
 
   // --- circles ---
   static Future<List<ActivityItem>> circlesActivity() async {
-    final d = await get('/circles/activity');
-    return ((d['activity'] as List?) ?? [])
+    // The feed lives at /activity and returns { followingCount, items }.
+    // The old /circles/activity path 404'd and the parser read a key that was
+    // never sent, so the Circles tab always claimed you followed nobody.
+    final d = await get('/activity');
+    return ((d['items'] as List?) ?? [])
         .map((e) => ActivityItem.fromJson(e as Map<String, dynamic>))
         .toList();
   }

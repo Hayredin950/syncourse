@@ -437,7 +437,12 @@ class ActivityItem {
   ActivityItem.fromJson(Map<String, dynamic> j)
       : id = j['id'] as String? ?? '',
         userName = j['userName'] as String? ?? '',
-        verb = j['verb'] as String? ?? '',
-        targetTitle = j['targetTitle'] as String? ?? '',
+        // The API names the action `type` and nests the course, so derive the
+        // sentence pieces here instead of expecting fields it never sends.
+        verb = j['verb'] as String? ??
+            (j['type'] == 'download' ? 'downloaded' : 'reviewed'),
+        targetTitle = j['targetTitle'] as String? ??
+            ((j['course'] as Map?)?['title'] as String?) ??
+            '',
         createdAt = j['createdAt'] as String? ?? '';
 }

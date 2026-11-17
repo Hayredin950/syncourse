@@ -201,7 +201,11 @@ export class CollectionsService {
 
   async saveList(userId: string, listId: string) {
     const list = await this.prisma.collectionList.findUnique({ where: { id: listId } });
-    if (!list) throw new NotFoundException('List not found');
+    // Private lists are not saveable by anyone else. Answering "not found"
+    // keeps the endpoint from confirming that a guessed id exists.
+    if (!list || (list.visibility === 'private' && list.userId !== userId)) {
+      throw new NotFoundException('List not found');
+    }
     const existing = await this.prisma.savedList.findUnique({
       where: { userId_listId: { userId, listId } },
     });

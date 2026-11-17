@@ -158,6 +158,7 @@ export class ContentService {
   async recordDownload(lessonId: string, userId: string | undefined, quality?: string, method = 'app') {
     const lesson = await this.prisma.lesson.findUnique({ where: { id: lessonId }, include: { course: true } });
     if (!lesson) throw new NotFoundException('Lesson not found');
+    await this.assertCanDownload(lesson, userId);
     const event = await this.prisma.downloadEvent.create({
       data: {
         lessonId,
@@ -174,6 +175,20 @@ export class ContentService {
     return { id: event.id, recorded: true };
   }
 
+  /** Preview lessons are open; the rest need sign-in, and premium courses a plan. */
+  private async assertCanDownload(
+    lesson: { isPreview: boolean; course: { isPremium: boolean } },
+    userId: string | undefined,
+  ): Promise<void> {
+    if (lesson.isPreview) return;
+    if (!userId) throw new ForbiddenException('Sign in to download this lesson');
+    if (lesson.course.isPremium) {
+      const user = await this.prisma.user.findUnique({ where: { id: userId } });
+      const premiumActive = user?.planType === 'premium' && (!user.planExpiresAt || user.planExpiresAt > new Date());
+      if (!premiumActive) throw new ForbiddenException('This course requires Premium');
+    }
+  }
+
   /**
    * "Download to Telegram" — sends the lesson file link to the user's linked
    * Telegram via the bot. Requires the user to have started the bot (telegramId).
@@ -184,6 +199,7 @@ export class ContentService {
       include: { course: true, files: { orderBy: { isBest: 'desc' } } },
     });
     if (!lesson) throw new NotFoundException('Lesson not found');
+    await this.assertCanDownload(lesson, userId);
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found');
 

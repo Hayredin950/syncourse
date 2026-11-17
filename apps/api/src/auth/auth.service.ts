@@ -11,7 +11,7 @@ import {
 import { ConfigService } from '@nestjs/config';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcryptjs';
-import { createHash } from 'node:crypto';
+import { createHash, randomInt } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
 import { RegisterDto } from './dto';
@@ -80,7 +80,7 @@ export class AuthService {
     }
     const profile = await this.exchangeGoogleCode(code, this.googleRedirectUri);
     const auth = await this.upsertGoogleUser(profile);
-    const token = this.signToken(auth.user);
+    const token = this.signToken(auth.user, auth.sessionId);
     return { redirect, token };
   }
 
@@ -88,7 +88,7 @@ export class AuthService {
   async googleExchange(code: string, redirectUri: string) {
     const profile = await this.exchangeGoogleCode(code, redirectUri || this.googleRedirectUri);
     const auth = await this.upsertGoogleUser(profile);
-    const token = this.signToken(auth.user);
+    const token = this.signToken(auth.user, auth.sessionId);
     return { accessToken: token, user: auth.user };
   }
 
@@ -155,14 +155,16 @@ export class AuthService {
         },
       });
     }
-    await this.prisma.session.create({
+    const session = await this.prisma.session.create({
       data: { userId: user.id, device: 'google-oauth', ip: 'n/a', active: true },
     });
-    return { user: this.publicUser(user), raw: user };
+    return { user: this.publicUser(user), raw: user, sessionId: session.id };
   }
 
-  private signToken(user: { id: string; email: string; username: string }) {
-    return this.jwt.sign({ sub: user.id, email: user.email, username: user.username });
+  private signToken(user: { id: string; email: string; username: string }, sessionId: string) {
+    // `sid` is what makes revocation real: the guard refuses a token whose
+    // session row is missing or inactive.
+    return this.jwt.sign({ sub: user.id, email: user.email, username: user.username, sid: sessionId });
   }
 
   private publicUser(user: {
@@ -227,10 +229,10 @@ export class AuthService {
         where: { id: user.id },
         data: { isVerified: true, verifyCode: null, verifyExpiresAt: null, verifyAttempts: 0, verifySentAt: null },
       });
-      await this.prisma.session.create({
+      const session = await this.prisma.session.create({
         data: { userId: user.id, device: 'registration', ip: 'n/a', active: true },
       });
-      return this.buildAuthResponse(user);
+      return this.buildAuthResponse(user, session.id);
     }
 
     return { requiresVerification: true, email: user.email.toLowerCase() };
@@ -248,10 +250,10 @@ export class AuthService {
         'Please verify your email first — check your inbox for the 6-digit code.',
       );
     }
-    await this.prisma.session.create({
+    const session = await this.prisma.session.create({
       data: { userId: user.id, device: 'login', ip: 'n/a', active: true },
     });
-    return this.buildAuthResponse(user);
+    return this.buildAuthResponse(user, session.id);
   }
 
   /** Confirm a registration with the emailed 6-digit code, then sign in. */
@@ -287,10 +289,10 @@ export class AuthService {
       where: { id: user.id },
       data: { isVerified: true, verifyCode: null, verifyExpiresAt: null, verifyAttempts: 0, verifySentAt: null },
     });
-    await this.prisma.session.create({
+    const session = await this.prisma.session.create({
       data: { userId: user.id, device: 'verify', ip: 'n/a', active: true },
     });
-    return this.buildAuthResponse(verified);
+    return this.buildAuthResponse(verified, session.id);
   }
 
   /** Re-send the verification code, rate-limited to one per minute. */
@@ -319,7 +321,9 @@ export class AuthService {
   }
 
   private newVerificationCode(): string {
-    return String(Math.floor(100000 + Math.random() * 900000));
+    // Math.random is not a CSPRNG: its output stream is predictable once a
+    // handful of values are observed. Use the OS entropy source.
+    return String(randomInt(100000, 1000000));
   }
 
   async me(userId: string) {
@@ -356,7 +360,9 @@ export class AuthService {
     const message = 'If that account exists, a 6-digit code is on its way.';
     const user = await this.prisma.user.findUnique({ where: { email: email.toLowerCase() } });
     // No password hash means a Google/Telegram-only account: nothing to reset.
-    if (!user || !user.passwordHash) return { sent: false, message };
+    // Answer exactly like a real send — returning `sent: false` here told an
+    // unauthenticated caller which addresses have accounts.
+    if (!user || !user.passwordHash) return { sent: true, message };
 
     if (user.resetSentAt && Date.now() - user.resetSentAt.getTime() < RESEND_MIN_MS) {
       throw new HttpException(
@@ -472,15 +478,18 @@ export class AuthService {
     return { linked: true, telegramUsername: username };
   }
 
-  private buildAuthResponse(user: {
-    id: string;
-    email: string;
-    username: string;
-    name: string;
-    planType: string;
-    planExpiresAt: Date | null;
-  }) {
-    const token = this.signToken(user);
+  private buildAuthResponse(
+    user: {
+      id: string;
+      email: string;
+      username: string;
+      name: string;
+      planType: string;
+      planExpiresAt: Date | null;
+    },
+    sessionId: string,
+  ) {
+    const token = this.signToken(user, sessionId);
     return {
       accessToken: token,
       user: {

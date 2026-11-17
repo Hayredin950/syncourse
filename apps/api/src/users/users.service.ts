@@ -324,7 +324,12 @@ export class UsersService {
     return { unlinked: true };
   }
 
-  async changePassword(userId: string, currentPassword: string | undefined, newPassword: string) {
+  async changePassword(
+    userId: string,
+    currentSessionId: string | undefined,
+    currentPassword: string | undefined,
+    newPassword: string,
+  ) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     if (!user) throw new NotFoundException('User not found');
     if (newPassword.length < 8) throw new BadRequestException('Password must be at least 8 characters');
@@ -336,6 +341,12 @@ export class UsersService {
     await this.prisma.user.update({
       where: { id: userId },
       data: { passwordHash: bcrypt.hashSync(newPassword, 10) },
+    });
+    // A password change must end every other session. The device doing the
+    // change stays signed in, which matches what the settings screen promises.
+    await this.prisma.session.updateMany({
+      where: { userId, ...(currentSessionId ? { id: { not: currentSessionId } } : {}) },
+      data: { active: false },
     });
     return { changed: true };
   }
