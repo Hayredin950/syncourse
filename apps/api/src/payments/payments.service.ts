@@ -141,7 +141,8 @@ export class PaymentsService {
       throw new BadRequestException('That payment has already been approved');
     }
     if (approved) {
-      await this.activate(sub.userId, sub);
+      const activated = await this.activate(sub.userId, sub);
+      if (!activated) throw new BadRequestException('That payment has already been approved');
     } else {
       await this.prisma.subscription.update({
         where: { id: subscriptionId },
@@ -170,7 +171,8 @@ export class PaymentsService {
     if (sub.status !== 'pending') {
       return { ok: true, provider, ignored: true };
     }
-    await this.activate(sub.userId, sub);
+    const activated = await this.activate(sub.userId, sub);
+    if (!activated) return { ok: true, provider, duplicate: true };
     return { ok: true, provider };
   }
 
@@ -200,30 +202,49 @@ export class PaymentsService {
     });
   }
 
-  private async activate(userId: string, sub: { id: string; planName: string }) {
+  /**
+   * Move a subscription to approved and extend the user's plan.
+   *
+   * The status claim is a single conditional UPDATE inside the transaction:
+   * two webhook retries landing together used to read `pending` at the same
+   * time and each add a full plan period. The loser now claims nothing and
+   * reports a duplicate instead.
+   */
+  private async activate(userId: string, sub: { id: string; planName: string }): Promise<boolean> {
     const plan = PLANS.find((p) => p.id === sub.planName);
     const days = plan?.durationDays ?? 30;
     const now = new Date();
-    // stacking: if a pass is running, add to what's left
-    const current = await this.prisma.user.findUnique({ where: { id: userId } });
-    const base = current?.planExpiresAt && current.planExpiresAt > now ? current.planExpiresAt : now;
-    const stacked = new Date(base.getTime() + days * 24 * 60 * 60 * 1000);
-    await this.prisma.subscription.update({
-      where: { id: sub.id },
-      data: { status: 'approved', periodStart: now, periodEnd: stacked },
-    });
-    await this.prisma.user.update({
-      where: { id: userId },
-      data: { planType: 'premium', planExpiresAt: stacked },
-    });
-    // Best-effort receipt — skipped until BREVO_API_KEY is configured
-    const user = await this.prisma.user.findUnique({ where: { id: userId } });
-    if (user) {
-      void this.email.sendReceipt(user.email, user.name, {
-        plan: plan?.name ?? sub.planName,
-        amount: `${(plan?.priceEtb ?? 0).toLocaleString()} ETB`,
-        method: 'Syncourse premium',
+
+    const activated = await this.prisma.$transaction(async (tx) => {
+      const claim = await tx.subscription.updateMany({
+        where: { id: sub.id, status: { not: 'approved' } },
+        data: { status: 'approved', periodStart: now },
       });
+      if (claim.count === 0) return false;
+
+      const current = await tx.user.findUnique({ where: { id: userId } });
+      // stacking: if a pass is running, add to what's left
+      const base = current?.planExpiresAt && current.planExpiresAt > now ? current.planExpiresAt : now;
+      const stacked = new Date(base.getTime() + days * 24 * 60 * 60 * 1000);
+      await tx.subscription.update({ where: { id: sub.id }, data: { periodEnd: stacked } });
+      await tx.user.update({
+        where: { id: userId },
+        data: { planType: 'premium', planExpiresAt: stacked },
+      });
+      return true;
+    });
+
+    if (activated) {
+      // Best-effort receipt — skipped until BREVO_API_KEY is configured
+      const user = await this.prisma.user.findUnique({ where: { id: userId } });
+      if (user) {
+        void this.email.sendReceipt(user.email, user.name, {
+          plan: plan?.name ?? sub.planName,
+          amount: `${(plan?.priceEtb ?? 0).toLocaleString()} ETB`,
+          method: 'Syncourse premium',
+        });
+      }
     }
+    return activated;
   }
 }

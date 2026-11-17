@@ -564,9 +564,11 @@ export class CatalogService {
 
   /** Latest app versions for the in-app update/changelog card. */
   async appVersions(limit = 5) {
+    // /app-versions?limit=abc used to hand NaN straight to Prisma.
+    const safeLimit = Number.isFinite(limit) ? Math.min(Math.max(Math.trunc(limit), 1), 20) : 5;
     const rows = await this.prisma.appVersion.findMany({
       orderBy: { releasedAt: 'desc' },
-      take: Math.min(limit, 20),
+      take: safeLimit,
     });
     return rows.map((v) => ({
       id: v.id,

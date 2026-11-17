@@ -236,13 +236,21 @@ export class CollectionsService {
         : filters.sort === 'newest'
           ? [{ createdAt: 'desc' as const }]
           : [{ updatedAt: 'desc' as const }];
+    // Same guards as the course/resource browsers: `?limit=abc` must not become
+    // NaN, and a negative offset is not a skip.
+    const limit = Number.isFinite(filters.limit)
+      ? Math.min(Math.max(Math.trunc(filters.limit as number), 1), 100)
+      : 30;
+    const offset = Number.isFinite(filters.offset)
+      ? Math.max(Math.trunc(filters.offset as number), 0)
+      : 0;
     const [total, lists] = await Promise.all([
       this.prisma.collectionList.count({ where }),
       this.prisma.collectionList.findMany({
         where,
         orderBy,
-        take: Math.min(filters.limit ?? 30, 100),
-        skip: filters.offset ?? 0,
+        take: limit,
+        skip: offset,
         include: {
           user: { select: { name: true, username: true, avatarUrl: true } },
           items: { include: { course: true } },

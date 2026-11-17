@@ -160,7 +160,10 @@ export class ReviewsService {
     if (!course) throw new NotFoundException('Course not found');
     const courseId = course.id;
     const take = 10;
-    const skip = (page - 1) * take;
+    // `?page=abc` used to become NaN and reach Prisma as a negative/NaN skip,
+    // turning a bad query string into a 500. Clamp like the other listings.
+    const safePage = Number.isFinite(page) ? Math.max(Math.trunc(page), 1) : 1;
+    const skip = (safePage - 1) * take;
     const where = { courseId, parentId: null };
     const [rows, total] = await Promise.all([
       this.prisma.review.findMany({
@@ -184,7 +187,7 @@ export class ReviewsService {
     ]);
     return {
       total,
-      page,
+      page: safePage,
       reviews: rows.map((r) => ({
         id: r.id,
         userName: r.user.name,

@@ -1,6 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { createHash } from 'node:crypto';
+import { lookup } from 'node:dns/promises';
+import { BlockList, isIP } from 'node:net';
 
 export interface CloudinaryUpload {
   url: string;
@@ -29,6 +31,45 @@ const KINDS = {
 } as const;
 
 export type UploadKind = keyof typeof KINDS;
+
+/** Avatars/covers are small images; anything near this is not a cover any more. */
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+
+/**
+ * Ranges a user-supplied image URL must never reach. The API fetches the URL
+ * from the server, so without this a signed-in caller could ask it to read
+ * cloud metadata (169.254.169.254) or an internal service and receive the
+ * response back as a Cloudinary URL.
+ */
+const BLOCKED_V4 = new BlockList();
+for (const [network, prefix] of [
+  ['0.0.0.0', 8],
+  ['10.0.0.0', 8],
+  ['100.64.0.0', 10],
+  ['127.0.0.0', 8],
+  ['169.254.0.0', 16],
+  ['172.16.0.0', 12],
+  ['192.0.0.0', 24],
+  ['192.0.2.0', 24],
+  ['192.168.0.0', 16],
+  ['198.18.0.0', 15],
+  ['198.51.100.0', 24],
+  ['203.0.113.0', 24],
+  ['224.0.0.0', 4],
+  ['240.0.0.0', 4],
+] as const) {
+  BLOCKED_V4.addSubnet(network, prefix, 'ipv4');
+}
+const BLOCKED_V6 = new BlockList();
+for (const [network, prefix] of [
+  ['::', 128],
+  ['::1', 128],
+  ['fc00::', 7],
+  ['fe80::', 10],
+  ['ff00::', 8],
+] as const) {
+  BLOCKED_V6.addSubnet(network, prefix, 'ipv6');
+}
 
 /**
  * Cloudinary integration — course covers, banners, lecturer avatars, note
@@ -151,16 +192,64 @@ export class CloudinaryService {
   async uploadDataUrl(dataUrl: string, folder = 'syncourse'): Promise<CloudinaryUpload> {
     const match = /^data:([^;,]+);base64,(.+)$/s.exec(dataUrl);
     if (!match) throw new Error('Expected a base64 data URL (data:image/...;base64,...)');
+    if (!match[1].startsWith('image/')) throw new Error('Only image uploads are supported here');
     const buffer = Buffer.from(match[2], 'base64');
+    if (buffer.length > MAX_IMAGE_BYTES) throw new Error('Image is too large');
     return this.uploadBuffer(buffer, match[1], folder);
   }
 
-  /** Upload an image by fetching it from a remote URL (mirrors to Cloudinary). */
+  /**
+   * Upload an image by fetching it from a remote URL (mirrors to Cloudinary).
+   *
+   * This is a server-side fetch of a caller-supplied URL, so it validates the
+   * scheme, resolves the host, and refuses private/link-local/mapped addresses.
+   * Redirects are not followed: a public URL that 302s to 169.254.169.254 would
+   * otherwise slip past the check.
+   */
   async uploadFromUrl(imageUrl: string, folder = 'syncourse'): Promise<CloudinaryUpload> {
-    const res = await fetch(imageUrl);
-    if (!res.ok) throw new Error(`Failed to fetch image (${res.status}): ${imageUrl}`);
+    let url: URL;
+    try {
+      url = new URL(imageUrl);
+    } catch {
+      throw new Error('That is not a valid URL');
+    }
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') {
+      throw new Error('Only http(s) image URLs are supported');
+    }
+    if (url.username || url.password) throw new Error('Image URLs must not contain credentials');
+
+    const host = url.hostname.replace(/^\[|\]$/g, '');
+    const addresses = isIP(host)
+      ? [host]
+      : (await lookup(host, { all: true }).catch(() => [])).map((a) => a.address);
+    if (addresses.length === 0 || addresses.some((address) => this.isBlockedAddress(address))) {
+      throw new Error('That URL points to a private or unresolvable address');
+    }
+
+    const res = await fetch(url, { redirect: 'manual' });
+    if (res.status >= 300 && res.status < 400) {
+      throw new Error('Image URLs that redirect are not supported');
+    }
+    if (!res.ok) throw new Error(`Failed to fetch image (${res.status})`);
+
+    const mime = (res.headers.get('content-type') ?? '').split(';')[0].trim();
+    if (!mime.startsWith('image/')) throw new Error('That URL did not return an image');
+
+    const declared = Number(res.headers.get('content-length') ?? 0);
+    if (declared > MAX_IMAGE_BYTES) throw new Error('Image is too large');
+
     const buffer = Buffer.from(new Uint8Array(await res.arrayBuffer()));
-    const mime = res.headers.get('content-type') ?? 'image/jpeg';
+    if (buffer.length > MAX_IMAGE_BYTES) throw new Error('Image is too large');
     return this.uploadBuffer(buffer, mime, folder);
+  }
+
+  /** True for loopback, private, link-local, multicast and IPv4-mapped equivalents. */
+  private isBlockedAddress(address: string): boolean {
+    const mapped = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/i.exec(address);
+    const ip = mapped ? mapped[1] : address;
+    const family = isIP(ip);
+    if (family === 4) return BLOCKED_V4.check(ip, 'ipv4');
+    if (family === 6) return BLOCKED_V6.check(ip, 'ipv6');
+    return true;
   }
 }
