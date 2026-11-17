@@ -357,35 +357,44 @@ class HomeFeed {
 
 class MyLearningItem {
   final String id, title, slug;
-  final String? thumbnailUrl;
-  final int progressPct;
-  final String status;
+  final String? thumbnailUrl, level;
+  final bool isPremium;
+  final int lessonCount;
+  final double durationMin;
+  final DateTime? savedAt, likedAt, downloadedAt, addedAt;
   MyLearningItem.fromJson(Map<String, dynamic> j)
       : id = j['id'] as String,
         title = j['title'] as String,
         slug = j['slug'] as String,
         thumbnailUrl = j['thumbnailUrl'] as String?,
-        progressPct = (j['progressPct'] as num?)?.toInt() ?? 0,
-        status = j['status'] as String? ?? 'in_progress';
+        level = j['level'] as String?,
+        isPremium = j['isPremium'] as bool? ?? false,
+        lessonCount = (j['lessonCount'] as num?)?.toInt() ?? 0,
+        durationMin = (j['durationMin'] as num?)?.toDouble() ?? 0,
+        savedAt = DateTime.tryParse(j['savedAt'] as String? ?? ''),
+        likedAt = DateTime.tryParse(j['likedAt'] as String? ?? ''),
+        downloadedAt = DateTime.tryParse(j['downloadedAt'] as String? ?? ''),
+        addedAt = DateTime.tryParse(j['addedAt'] as String? ?? '');
 }
 
+/// GET /me/learning — a reader's saved, liked and downloaded courses.
+///
+/// There is no enrolment and no lesson progress: a course is a Telegram
+/// archive, so "downloaded" is the closest thing to having taken it.
 class MyLearning {
-  final List<MyLearningItem> inProgress, completed, watchlist, liked;
-  MyLearning({required this.inProgress, required this.completed, required this.watchlist, required this.liked});
+  final List<MyLearningItem> saved, liked, downloaded;
+  MyLearning({required this.saved, required this.liked, required this.downloaded});
 
   factory MyLearning.fromJson(Map<String, dynamic> j) {
     List<MyLearningItem> parse(String key) => ((j[key] as List?) ?? [])
         .map((e) => MyLearningItem.fromJson(e as Map<String, dynamic>))
         .toList();
     return MyLearning(
-      inProgress: parse('inProgress'),
-      completed: parse('completed'),
-      watchlist: parse('watchlist'),
+      saved: parse('saved'),
       liked: parse('liked'),
+      downloaded: parse('downloaded'),
     );
   }
-
-  List<MyLearningItem> get enrolled => [...inProgress, ...completed];
 }
 
 class CourseCollection {

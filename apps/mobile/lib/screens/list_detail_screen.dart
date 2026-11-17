@@ -19,7 +19,7 @@ class _ListDetailScreenState extends State<ListDetailScreen> {
   @override
   void initState() {
     super.initState();
-    _list = Api.instance.listDetail(widget.listId);
+    _list = Api.listDetail(widget.listId);
   }
 
   @override
@@ -57,7 +57,14 @@ class _ListDetailScreenState extends State<ListDetailScreen> {
                           errorBuilder: (_, __, ___) => Container(width: 48, height: 48, color: AppColors.surface)),
                 ),
                 title: Text(c.title, maxLines: 1, overflow: TextOverflow.ellipsis),
-                subtitle: Text('${c.progressPct}% · ${c.status}', style: const TextStyle(fontSize: 12)),
+                subtitle: Text(
+                  [
+                    if (c.isPremium) 'Premium',
+                    if (c.level != null) c.level!,
+                    if (c.lessonCount > 0) '${c.lessonCount} lessons',
+                  ].join(' · '),
+                  style: const TextStyle(fontSize: 12),
+                ),
                 onTap: () => Navigator.pushNamed(context, '/courses/${c.slug}'),
               );
             },

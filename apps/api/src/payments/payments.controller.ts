@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Headers, Param, Post, Query } from '@nestjs/common';
 import { PaymentsService } from './payments.service';
 import { CurrentUser } from '../common/current-user.decorator';
 import { AuthUser } from '../common/jwt-auth.guard';
@@ -44,15 +44,22 @@ export class PaymentsController {
   }
 
   @Post('subscriptions/:id/verify')
-  verify(@Param('id') id: string, @Query('approved') approved?: string) {
-    return this.payments.verifySubscription(id, approved !== 'false');
+  verify(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthUser,
+    @Query('approved') approved?: string,
+  ) {
+    return this.payments.verifySubscription(user.id, id, approved !== 'false');
   }
 
   @Public()
   @Post('webhook/:provider/:subscriptionId')
-  webhook(@Param('provider') provider: string, @Param('subscriptionId') subscriptionId: string) {
-    // Production: verify provider signature (Stripe signature header, etc.)
-    return this.payments.webhookActivate(subscriptionId, provider);
+  webhook(
+    @Param('provider') provider: string,
+    @Param('subscriptionId') subscriptionId: string,
+    @Headers('x-webhook-secret') secret?: string,
+  ) {
+    return this.payments.webhookActivate(subscriptionId, provider, secret);
   }
 
   @Get('me')

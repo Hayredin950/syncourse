@@ -131,7 +131,16 @@ async function request<T>(
     );
   }
   const text = await res.text();
-  const data = text ? JSON.parse(text) : null;
+  // Hosting/proxy failures return HTML. Parsing it as JSON replaced the HTTP
+  // status with "Unexpected token '<'" and hid what actually happened.
+  let data: any = null;
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      if (res.ok) throw new ApiError(res.status, "The server returned an unreadable response");
+    }
+  }
   if (!res.ok) {
     const message =
       typeof data?.message === "string"
@@ -240,15 +249,21 @@ export const toggleLike = (slug: string) => post<{ liked: boolean; likeCount: nu
 export const myLibrary = () => get<LibraryData>("/me/learning");
 
 // --- search ---
-export const search = (q: string) =>
-  get<{
+export const search = (q: string, opts: { limit?: number; offset?: number } = {}) => {
+  const parts = [`q=${encodeURIComponent(q)}`];
+  if (opts.limit !== undefined) parts.push(`limit=${opts.limit}`);
+  if (opts.offset !== undefined) parts.push(`offset=${opts.offset}`);
+  return get<{
     query: string;
     total: number;
+    limit: number;
+    offset: number;
     courses: CourseSummary[];
     lecturers: unknown[];
     organizations: unknown[];
     trending: string[];
-  }>(`/search?q=${encodeURIComponent(q)}`);
+  }>(`/search?${parts.join("&")}`);
+};
 export const trendingSearches = () =>
   get<{ trending: string[] }>("/search/trending");
 

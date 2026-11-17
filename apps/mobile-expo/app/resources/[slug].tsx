@@ -302,7 +302,24 @@ export default function ResourceScreen() {
           </Press>
         </View>
 
-        {!hasBody && media.length === 0 && (
+        {r.locked && (
+          <View style={styles.panel}>
+            <Text style={styles.lockTitle}>This {meta.label.toLowerCase()} is part of Premium</Text>
+            <Text style={styles.lockBody}>
+              Upgrade to read the full body and download the attached files.
+            </Text>
+            <Press
+              style={styles.primaryBtn}
+              onPress={() => router.push("/premium" as never)}
+              accessibilityLabel="Go Premium"
+            >
+              <Ionicons name="star" size={14} color={colors.onAccent} />
+              <Text style={styles.primaryLabel}>Go Premium</Text>
+            </Press>
+          </View>
+        )}
+
+        {!r.locked && !hasBody && media.length === 0 && (
           <View style={styles.panel}>
             <Text style={styles.muted}>
               This one is still being written — nothing has been attached to it yet.
@@ -580,9 +597,12 @@ export default function ResourceScreen() {
  * page is hostile.
  */
 function ResourceVideo({ item }: { item: ResourceMedia }) {
-  const player = useVideoPlayer(item.url ?? "", (p) => {
+  // `null` is a valid empty source. Passing "" made expo-video construct a
+  // player for a malformed URI, so a video row with no URL crashed the screen.
+  const player = useVideoPlayer(item.url ?? null, (p) => {
     p.loop = false;
   });
+  if (!item.url) return null;
   // A Cloudinary public id is not a title. Falls through to the caption, then to
   // the generic noun, so the caption under the player never reads
   // "hsjghfs0im0k6l1p2fzj.mp4".
@@ -815,6 +835,8 @@ const styles = StyleSheet.create({
     padding: 14,
     gap: 8,
   },
+  lockTitle: { color: colors.text, fontSize: 15, fontWeight: "800" },
+  lockBody: { color: colors.muted, fontSize: 13, lineHeight: 18 },
 
   gallery: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
   shot: {

@@ -259,7 +259,15 @@ export default function LessonScreen() {
       )}
 
       <Text style={styles.heading}>Notes</Text>
-      {l.notes.length === 0 && <Text style={styles.muted}>No notes for this lesson yet.</Text>}
+      {l.notes.length === 0 &&
+        (l.locked ? (
+          <Note
+            text="Notes and downloadable files are part of Premium. The lesson outline stays free."
+            style={styles.notice}
+          />
+        ) : (
+          <Text style={styles.muted}>No notes for this lesson yet.</Text>
+        ))}
       {l.notes.map((n) => (
         <View key={n.id} style={styles.note}>
           <View style={styles.noteTop}>

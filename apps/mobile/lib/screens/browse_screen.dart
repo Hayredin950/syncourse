@@ -26,7 +26,7 @@ class _BrowseScreenState extends State<BrowseScreen> {
   }
 
   Future<List<CourseSummary>> _load() {
-    return Api.instance.browse(
+    return Api.browse(
       sort: _sort,
       category: _category,
       tags: _tags,

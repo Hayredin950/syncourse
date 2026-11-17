@@ -46,6 +46,22 @@ export class ReviewsService {
     if (parentId) {
       const parent = await this.prisma.review.findUnique({ where: { id: parentId } });
       if (!parent) throw new NotFoundException('Parent review not found');
+      if (parent.courseId !== courseId) throw new BadRequestException('That review belongs to another course');
+      // Threads are one level deep. Allowing a reply to a reply made the list
+      // render replies-to-replies that no client indents.
+      if (parent.parentId) throw new BadRequestException('Reply to the main review instead');
+      const duplicate = await this.prisma.review.findFirst({ where: { userId, parentId } });
+      if (duplicate) throw new BadRequestException('You have already replied here');
+    } else {
+      // Postgres treats NULLs as distinct in a unique index, so a constraint on
+      // (userId, courseId, parentId) would not stop a second top-level review.
+      // Check it where the intent is unambiguous.
+      const duplicate = await this.prisma.review.findFirst({
+        where: { userId, courseId, parentId: null },
+      });
+      if (duplicate) {
+        throw new BadRequestException('You already reviewed this course — edit your review instead');
+      }
     }
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
     const review = await this.prisma.review.create({
@@ -149,7 +165,10 @@ export class ReviewsService {
     const [rows, total] = await Promise.all([
       this.prisma.review.findMany({
         where,
-        orderBy: sort === 'top' ? [{ createdAt: 'desc' }] : [{ createdAt: 'desc' }],
+        orderBy:
+          sort === 'top'
+            ? [{ upvotes: 'desc' }, { createdAt: 'desc' }]
+            : [{ createdAt: 'desc' }],
         skip,
         take,
         include: {

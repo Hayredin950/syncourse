@@ -18,7 +18,7 @@ class _MyLearningScreenState extends State<MyLearningScreen> {
   @override
   void initState() {
     super.initState();
-    _learning = Api.instance.myLearning();
+    _learning = Api.myLearning();
   }
 
   @override
@@ -50,10 +50,9 @@ class _MyLearningScreenState extends State<MyLearningScreen> {
           }
           final data = snapshot.data!;
           final lists = [
-            ('In progress', data.inProgress),
-            ('Completed', data.completed),
-            ('Wishlist', data.watchlist),
+            ('Saved', data.saved),
             ('Liked', data.liked),
+            ('Downloaded', data.downloaded),
           ];
           final items = lists[_tab].$2;
           return Column(
@@ -112,24 +111,21 @@ class _ItemCard extends StatelessWidget {
                   errorBuilder: (_, __, ___) => Container(width: 48, height: 48, color: Colors.black26)),
         ),
         title: Text(item.title, maxLines: 1, overflow: TextOverflow.ellipsis),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const SizedBox(height: 4),
-            ClipRRect(
-              borderRadius: BorderRadius.circular(4),
-              child: LinearProgressIndicator(
-                value: item.progressPct / 100,
-                minHeight: 4,
-                backgroundColor: Colors.white12,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text('${item.progressPct}% complete', style: const TextStyle(fontSize: 11)),
-          ],
+        subtitle: Text(
+          [
+            if (item.isPremium) 'Premium',
+            if (item.downloadedAt != null) 'Downloaded ${_date(item.downloadedAt!)}',
+            if (item.savedAt != null) 'Saved ${_date(item.savedAt!)}',
+            if (item.likedAt != null) 'Liked ${_date(item.likedAt!)}',
+          ].join(' · '),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontSize: 11, color: AppColors.muted),
         ),
         onTap: () => Navigator.pushNamed(context, '/courses/${item.slug}'),
       ),
     );
   }
+
+  static String _date(DateTime d) => '${d.day}/${d.month}/${d.year}';
 }

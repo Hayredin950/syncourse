@@ -23,6 +23,11 @@ import { CurrentUser } from '../common/current-user.decorator';
 import { AuthUser } from '../common/jwt-auth.guard';
 
 class AdminLessonDto {
+  /** Existing lesson id, so an edit can update that row in place. */
+  @IsOptional()
+  @IsString()
+  id?: string;
+
   @IsString()
   title: string;
 
@@ -56,6 +61,11 @@ class AdminLessonDto {
 }
 
 class AdminSectionDto {
+  /** Existing section id, so an edit can update that row in place. */
+  @IsOptional()
+  @IsString()
+  id?: string;
+
   @IsString()
   title: string;
 

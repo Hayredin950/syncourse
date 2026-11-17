@@ -11,7 +11,7 @@ export class ContentService {
   ) {}
 
   /** Lesson detail — mirrors the file metadata card from the reference. */
-  async lessonDetail(lessonId: string) {
+  async lessonDetail(lessonId: string, userId?: string) {
     const lesson = await this.prisma.lesson.findUnique({
       where: { id: lessonId },
       include: {
@@ -24,6 +24,21 @@ export class ContentService {
     });
     if (!lesson) throw new NotFoundException('Lesson not found');
 
+    // Premium payloads (notes, attachments, note images) are gated exactly like
+    // the video: previews open, otherwise an active premium plan is required.
+    // This endpoint is public, so without this check the raw storage URLs in
+    // `attachments` / `notes` bypassed the signed-URL entitlement entirely.
+    let premiumActive = false;
+    if (lesson.course.isPremium && !lesson.isPreview) {
+      if (userId) {
+        const user = await this.prisma.user.findUnique({ where: { id: userId } });
+        premiumActive = !!user && user.planType === 'premium' && (!user.planExpiresAt || user.planExpiresAt > new Date());
+      }
+    }
+    const locked = lesson.course.isPremium && !lesson.isPreview && !premiumActive;
+    const secret = process.env.JWT_SECRET || 'dev-only-secret-change-me';
+    const sign = (url: string | null) => (url ? signMediaUrl(url, secret).url : null);
+
     return {
       id: lesson.id,
       title: lesson.title,
@@ -33,14 +48,27 @@ export class ContentService {
       isPreview: lesson.isPreview,
       sectionTitle: lesson.section?.title ?? null,
       course: { id: lesson.course.id, title: lesson.course.title, slug: lesson.course.slug },
-      notes: lesson.notes.map((n) => ({
-        id: n.id,
-        title: n.title,
-        richText: n.richText,
-        imageUrls: JSON.parse(n.imageUrls || '[]'),
-        pdfUrl: n.pdfUrl,
-        isCheatsheet: n.isCheatsheet,
-      })),
+      /** True when the viewer needs Premium to see the notes/attachments. */
+      locked,
+      notes: locked
+        ? []
+        : lesson.notes.map((n) => {
+            let imageUrls: string[] = [];
+            try {
+              const parsed = JSON.parse(n.imageUrls || '[]');
+              if (Array.isArray(parsed)) imageUrls = parsed.filter((u): u is string => typeof u === 'string');
+            } catch {
+              imageUrls = [];
+            }
+            return {
+              id: n.id,
+              title: n.title,
+              richText: n.richText,
+              imageUrls: imageUrls.map((u) => sign(u) as string),
+              pdfUrl: sign(n.pdfUrl),
+              isCheatsheet: n.isCheatsheet,
+            };
+          }),
       files: lesson.files.map((f) => ({
         id: f.id,
         label: f.label,
@@ -52,13 +80,16 @@ export class ContentService {
         audio: f.audio,
         isBest: f.isBest,
       })),
-      attachments: lesson.attachments.map((a) => ({
-        id: a.id,
-        fileUrl: a.fileUrl,
-        fileType: a.fileType,
-        sizeMb: a.sizeMb,
-        fileName: fileNameFromUrl(a.fileUrl),
-      })),
+      // No raw `fileUrl` here: every download must go through
+      // GET /lessons/:id/file-url, which checks entitlement and signs the URL.
+      attachments: locked
+        ? []
+        : lesson.attachments.map((a) => ({
+            id: a.id,
+            fileType: a.fileType,
+            sizeMb: a.sizeMb,
+            fileName: fileNameFromUrl(a.fileUrl),
+          })),
     };
   }
 

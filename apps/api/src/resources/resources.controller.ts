@@ -1,6 +1,8 @@
 import { Controller, Get, Param, Post, Query } from '@nestjs/common';
 import { ResourcesService } from './resources.service';
 import { Public } from '../common/public.decorator';
+import { CurrentUser } from '../common/current-user.decorator';
+import { AuthUser } from '../common/jwt-auth.guard';
 
 /**
  * Public reads for cheat-sheets, roadmaps and notes. Authoring lives in
@@ -37,8 +39,8 @@ export class ResourcesController {
   }
 
   @Get(':slug')
-  detail(@Param('slug') slug: string) {
-    return this.resources.detailBySlug(slug);
+  detail(@Param('slug') slug: string, @CurrentUser() user?: AuthUser) {
+    return this.resources.detailBySlug(slug, user?.id);
   }
 
   @Post(':slug/download')

@@ -21,8 +21,11 @@ export default function HomePage() {
   const [error, setError] = useState(false);
   const { user } = useAuth();
 
-  // Trending period tabs — Day / Week / Month (PhonoFilm pattern)
-  const [trendTab, setTrendTab] = useState<"day" | "week" | "month">("day");
+  // Ranking tabs. These were labelled Day / Week / Month but did not measure
+  // time at all — they switched between the trending, top-rated and newest
+  // rails, so "Week" could show a course added five minutes ago. Name what each
+  // one actually sorts by.
+  const [trendTab, setTrendTab] = useState<"popular" | "top" | "newest">("popular");
 
   // "Best of" — one row with a dropdown to switch organizations
   const [bestOfOrgId, setBestOfOrgId] = useState("");
@@ -134,7 +137,7 @@ export default function HomePage() {
 
   const featured = home.latest[0] ?? home.trending[0] ?? home.topRated[0];
   const trendSource =
-    trendTab === "day" ? home.trending : trendTab === "week" ? home.topRated : home.latest;
+    trendTab === "popular" ? home.trending : trendTab === "top" ? home.topRated : home.latest;
 
   const downloaded = library?.counts?.downloaded ?? 0;
   const saved = library?.counts?.saved ?? 0;
@@ -173,18 +176,18 @@ export default function HomePage() {
         </div>
       )}
 
-      {/* Trending — ranked, with Day/Week/Month tabs */}
+      {/* Trending — ranked, with Popular / Top rated / Newest tabs */}
       <section className="rail">
         <div className="section-head">
           <h2>Trending</h2>
           <div className="pills">
-            {(["day", "week", "month"] as const).map((p) => (
+            {(["popular", "top", "newest"] as const).map((p) => (
               <button
                 key={p}
                 className={`badge ${trendTab === p ? "primary" : ""}`}
                 onClick={() => setTrendTab(p)}
               >
-                {p === "day" ? "Day" : p === "week" ? "Week" : "Month"}
+                {p === "popular" ? "Popular" : p === "top" ? "Top rated" : "Newest"}
               </button>
             ))}
           </div>

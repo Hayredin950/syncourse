@@ -29,7 +29,7 @@ class _SearchScreenState extends State<SearchScreen> {
 
   Future<void> _loadTrending() async {
     try {
-      final t = await Api.instance.trendingSearches();
+      final t = await Api.trendingSearches();
       if (mounted) setState(() => _trending = t);
     } catch (_) {}
   }
@@ -44,7 +44,7 @@ class _SearchScreenState extends State<SearchScreen> {
     }
     setState(() => _loading = true);
     try {
-      final r = await Api.instance.search(q.trim());
+      final r = await Api.search(q.trim());
       if (mounted) {
         setState(() {
           _results = r;

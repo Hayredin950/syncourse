@@ -17,7 +17,7 @@ class _CirclesScreenState extends State<CirclesScreen> {
   @override
   void initState() {
     super.initState();
-    _activity = Api.instance.circlesActivity();
+    _activity = Api.circlesActivity();
   }
 
   @override

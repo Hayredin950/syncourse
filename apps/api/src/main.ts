@@ -33,7 +33,23 @@ function allowedOrigins(): string[] {
 /** `syncourse-web-<hash>-<team>.vercel.app` — preview builds of the web app. */
 const PREVIEW_ORIGIN = /^https:\/\/syncourse-web-[a-z0-9]+-[a-z0-9-]+\.vercel\.app$/;
 
+/**
+ * Refuse to boot production on the development fallbacks.
+ *
+ * JWT_SECRET signs access tokens, password-reset tokens and the media URLs.
+ * The code falls back to a public literal so `npm run start:dev` works with
+ * no .env — fine on a laptop, catastrophic on a public host, where anyone could
+ * mint a token for any account. Fail closed instead of starting up forgeable.
+ */
+function assertProductionSecrets() {
+  if (process.env.NODE_ENV !== 'production') return;
+  if (!process.env.JWT_SECRET || process.env.JWT_SECRET === 'dev-only-secret-change-me') {
+    throw new Error('Refusing to start: set JWT_SECRET in production');
+  }
+}
+
 async function bootstrap() {
+  assertProductionSecrets();
   const app = await NestFactory.create(AppModule);
   // Images are uploaded as base64 data URLs — the default 100kb body limit
   // rejected them with "request entity too large". 15mb covers photos/banners.

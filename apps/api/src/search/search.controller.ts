@@ -8,8 +8,15 @@ export class SearchController {
   constructor(private readonly searchService: SearchService) {}
 
   @Get()
-  doSearch(@Query('q') q?: string, @Query('limit') limit?: string) {
-    return this.searchService.search(q ?? '', { limit: limit ? Number(limit) : undefined });
+  doSearch(
+    @Query('q') q?: string,
+    @Query('limit') limit?: string,
+    @Query('offset') offset?: string,
+  ) {
+    return this.searchService.search(q ?? '', {
+      limit: limit !== undefined ? Number(limit) : undefined,
+      offset: offset !== undefined ? Number(offset) : undefined,
+    });
   }
 
   @Get('trending')

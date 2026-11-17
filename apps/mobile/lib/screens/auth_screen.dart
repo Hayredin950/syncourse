@@ -31,9 +31,9 @@ class _AuthScreenState extends State<AuthScreen> {
     setState(() => _loading = true);
     try {
       if (_register) {
-        await Api.instance.register(_name.text, _email.text, _password.text);
+        await Api.register(_name.text, _email.text, _password.text);
       } else {
-        await Api.instance.login(_email.text, _password.text);
+        await Api.login(_email.text, _password.text);
       }
       if (mounted) {
         Navigator.pop(context);

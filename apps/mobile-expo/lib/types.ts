@@ -148,7 +148,9 @@ export interface LessonDetail {
   course: { id: string; title: string; slug: string };
   notes: Note[];
   files: LessonFile[];
-  attachments: { id: string; fileUrl: string; fileType: string; sizeMb: number; fileName: string }[];
+  attachments: { id: string; fileType: string; sizeMb: number; fileName: string }[];
+  /** True when Premium is required to see notes/attachments on this lesson. */
+  locked?: boolean;
 }
 
 export interface UserProfile {
@@ -589,6 +591,8 @@ export interface ResourceDetail extends ResourceSummary {
   updatedAt: string;
   media: ResourceMedia[];
   related: ResourceSummary[];
+  /** True when the body/media require Premium and the viewer has none. */
+  locked?: boolean;
 }
 
 export interface ResourceList {

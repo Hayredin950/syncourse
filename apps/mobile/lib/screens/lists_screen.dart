@@ -17,7 +17,7 @@ class _ListsScreenState extends State<ListsScreen> {
   @override
   void initState() {
     super.initState();
-    _lists = Api.instance.myLists();
+    _lists = Api.myLists();
   }
 
   Future<void> _createList() async {
@@ -39,8 +39,8 @@ class _ListsScreenState extends State<ListsScreen> {
       },
     );
     if (name != null && name.trim().isNotEmpty) {
-      await Api.instance.createList(name.trim());
-      if (mounted) setState(() => _lists = Api.instance.myLists());
+      await Api.createList(name.trim());
+      if (mounted) setState(() => _lists = Api.myLists());
     }
   }
 

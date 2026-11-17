@@ -13,12 +13,16 @@ import { LoadError } from "@/components/LoadError";
 import { CoverImage } from "@/components/CoverImage";
 
 interface SearchData {
+  query?: string;
   total: number;
   courses: CourseSummary[];
   lecturers: { id: string; name: string; slug: string; photoUrl: string | null }[];
   organizations: { id: string; name: string; slug: string; logoUrl: string | null }[];
   trending: string[];
 }
+
+/** Matches the API's default page size. */
+const SEARCH_PAGE = 20;
 
 type SpeechRecognitionLike = {
   lang: string;
@@ -79,6 +83,8 @@ function SearchInner() {
   const [trending, setTrending] = useState<string[]>([]);
   const [listening, setListening] = useState(false);
   const [voiceUnsupported, setVoiceUnsupported] = useState(false);
+  const [moreBusy, setMoreBusy] = useState(false);
+  const [moreFailed, setMoreFailed] = useState(false);
   const debounce = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   // Holding the live recogniser matters: the stop path used to build a second
   // instance and stop *that*, so the microphone stayed open and the button
@@ -121,7 +127,9 @@ function SearchInner() {
   useEffect(() => {
     clearTimeout(debounce.current);
     setFailed(false);
-    if (!q.trim()) {
+    setMoreFailed(false);
+    const query = q.trim();
+    if (!query) {
       setData(null);
       setBusy(false);
       return;
@@ -130,20 +138,49 @@ function SearchInner() {
     // instead of the previous query's hits — the old build left stale results on
     // screen for as long as the request took.
     setBusy(true);
+    let cancelled = false;
     debounce.current = setTimeout(() => {
-      get<SearchData>(`/search?q=${encodeURIComponent(q)}`)
+      get<SearchData>(`/search?q=${encodeURIComponent(query)}&limit=${SEARCH_PAGE}&offset=0`)
         .then((d) => {
+          if (cancelled) return;
           setData(d);
           setFailed(false);
         })
         .catch(() => {
+          if (cancelled) return;
           setData(null);
           setFailed(true);
         })
-        .finally(() => setBusy(false));
+        .finally(() => {
+          if (!cancelled) setBusy(false);
+        });
     }, 250);
-    return () => clearTimeout(debounce.current);
+    return () => {
+      cancelled = true;
+      clearTimeout(debounce.current);
+    };
   }, [q, retry]);
+
+  const loadMore = () => {
+    if (!data || moreBusy) return;
+    const query = q.trim();
+    if (!query) return;
+    const offset = data.courses.length;
+    setMoreBusy(true);
+    setMoreFailed(false);
+    get<SearchData>(`/search?q=${encodeURIComponent(query)}&limit=${SEARCH_PAGE}&offset=${offset}`)
+      .then((d) => {
+        setData((prev) => {
+          if (!prev) return d;
+          // A late page from the previous query must not be appended to the
+          // current one — the user may have typed while it was in flight.
+          if (prev.query && d.query && prev.query !== d.query) return prev;
+          return { ...prev, total: d.total, courses: [...prev.courses, ...d.courses] };
+        });
+      })
+      .catch(() => setMoreFailed(true))
+      .finally(() => setMoreBusy(false));
+  };
 
   const empty =
     !!data && data.courses.length === 0 && data.lecturers.length === 0 && data.organizations.length === 0;
@@ -246,6 +283,28 @@ function SearchInner() {
                   {data.courses.map((c) => (
                     <CourseRow key={c.id} course={c} />
                   ))}
+                </div>
+                <div className="s-more">
+                  {moreFailed && (
+                    <span className="s-more__note">Couldn’t load the next page — check your connection.</span>
+                  )}
+                  {data.courses.length < data.total ? (
+                    <button
+                      type="button"
+                      className="btn"
+                      onClick={loadMore}
+                      disabled={moreBusy}
+                      style={{ minHeight: 40 }}
+                    >
+                      {moreBusy
+                        ? "Loading…"
+                        : `Load ${Math.min(SEARCH_PAGE, data.total - data.courses.length)} more · ${data.total - data.courses.length} left`}
+                    </button>
+                  ) : (
+                    <span className="s-more__note">
+                      {data.total === 1 ? "The only match." : `All ${data.total} matches shown.`}
+                    </span>
+                  )}
                 </div>
               </section>
             )}

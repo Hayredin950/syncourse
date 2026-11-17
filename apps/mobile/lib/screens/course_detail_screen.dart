@@ -20,7 +20,7 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
   @override
   void initState() {
     super.initState();
-    _detail = Api.instance.courseDetail(widget.slug);
+    _detail = Api.courseDetail(widget.slug);
   }
 
   @override
@@ -210,24 +210,19 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
 
   Future<void> _openFirstLesson(CourseDetail c) async {
     if (c.sections.isEmpty || c.sections.first.lessons.isEmpty) return;
-    try {
-      await Api.instance.enroll(c.slug);
-    } catch (_) {
-      // Already enrolled or anonymous — the lesson endpoint handles entitlements.
-    }
     if (!mounted) return;
     Navigator.pushNamed(context, '/courses/${c.slug}/lessons/${c.sections.first.lessons.first.id}');
   }
 
   Future<void> _toggleSave(CourseDetail c) async {
-    await Api.instance.toggleSave(c.slug);
+    await Api.toggleSave(c.slug);
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Saved list updated')));
     }
   }
 
   Future<void> _toggleLike(CourseDetail c) async {
-    await Api.instance.toggleLike(c.slug);
+    await Api.toggleLike(c.slug);
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Liked')));
     }

@@ -1,8 +1,8 @@
 import { Ionicons } from "@expo/vector-icons";
-import { keepPreviousData, useQuery } from "@tanstack/react-query";
+import { keepPreviousData, useInfiniteQuery, useQuery } from "@tanstack/react-query";
 import { useRouter } from "expo-router";
 import React, { useEffect, useState } from "react";
-import { FlatList, Image, Platform, RefreshControl, StyleSheet, View } from "react-native";
+import { ActivityIndicator, FlatList, Image, Platform, RefreshControl, StyleSheet, View } from "react-native";
 import { Empty, Failed } from "../../components/Empty";
 import { Press } from "../../components/Press";
 import { SkRows } from "../../components/Skeleton";
@@ -32,6 +32,9 @@ function getSpeechRecognition(): SpeechRecognitionLike | null {
     | undefined;
   return Ctor ? new Ctor() : null;
 }
+
+/** Matches the API's default page size; the footer shows how many remain. */
+const SEARCH_PAGE = 20;
 
 export default function SearchScreen() {
   const [query, setQuery] = useState("");
@@ -78,9 +81,16 @@ export default function SearchScreen() {
     return () => clearTimeout(t);
   }, [query]);
 
-  const results = useQuery({
+  const results = useInfiniteQuery({
     queryKey: ["search", term],
-    queryFn: () => api.search(term),
+    queryFn: ({ pageParam }) => api.search(term, { limit: SEARCH_PAGE, offset: pageParam }),
+    initialPageParam: 0,
+    // The API reports the real match count now, so "load more" knows when to
+    // stop instead of paging forever against a page-sized total.
+    getNextPageParam: (lastPage, allPages) => {
+      const loaded = allPages.reduce((n, p) => n + p.courses.length, 0);
+      return loaded < lastPage.total ? loaded : undefined;
+    },
     enabled: term.length > 0,
     // Keep the last list on screen while the next one loads: swapping results
     // for a skeleton on every accepted keystroke made the page strobe.
@@ -88,7 +98,8 @@ export default function SearchScreen() {
   });
 
   const typing = query.trim() !== term;
-  const courses = results.data?.courses ?? [];
+  const courses = results.data?.pages.flatMap((p) => p.courses) ?? [];
+  const total = results.data?.pages[0]?.total ?? 0;
 
   return (
     <View style={styles.screen}>
@@ -190,6 +201,36 @@ export default function SearchScreen() {
               action={{ label: "Browse everything", href: "/browse" }}
             />
           }
+          ListHeaderComponent={
+            total > 0 ? (
+              <Text style={styles.count}>
+                {courses.length} of {total} course{total === 1 ? "" : "s"}
+              </Text>
+            ) : null
+          }
+          ListFooterComponent={
+            courses.length > 0 ? (
+              <View style={styles.footer}>
+                {results.isFetchingNextPage ? (
+                  <ActivityIndicator color={colors.accent} />
+                ) : results.hasNextPage ? (
+                  <Press
+                    style={styles.more}
+                    onPress={() => results.fetchNextPage()}
+                    accessibilityLabel="Load more results"
+                  >
+                    <Text style={styles.moreText}>Load more · {total - courses.length} left</Text>
+                  </Press>
+                ) : (
+                  <Text style={styles.footerEnd}>That’s everything.</Text>
+                )}
+              </View>
+            ) : null
+          }
+          onEndReached={() => {
+            if (results.hasNextPage && !results.isFetchingNextPage) results.fetchNextPage();
+          }}
+          onEndReachedThreshold={0.4}
           renderItem={({ item }) => <SearchRow course={item} />}
         />
       )}
@@ -305,4 +346,17 @@ const styles = StyleSheet.create({
   rowTitle: { color: colors.text, fontSize: 14, fontWeight: "600", lineHeight: 19 },
   rowMetaRow: { flexDirection: "row", alignItems: "center", gap: 5, marginTop: 3 },
   rowMeta: { color: colors.muted, fontSize: 12, flexShrink: 1 },
+  count: { color: colors.dim, fontSize: 11, paddingTop: 4, paddingBottom: 8 },
+  footer: { paddingVertical: 18, alignItems: "center" },
+  more: {
+    minHeight: 42,
+    paddingHorizontal: 18,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: colors.accent,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  moreText: { color: colors.accent, fontSize: 12, fontWeight: "800" },
+  footerEnd: { color: colors.dim, fontSize: 11 },
 });

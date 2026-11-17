@@ -1,4 +1,11 @@
-import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+  UnauthorizedException,
+} from '@nestjs/common';
+import { timingSafeEqual } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
 
@@ -114,12 +121,25 @@ export class PaymentsService {
   }
 
   /**
-   * Admin verification (manual reference review) — used by the CMS.
-   * In production, wire this behind an admin role guard + audit log.
+   * Staff verification (manual reference review) — used by the CMS.
+   *
+   * The caller is authorised here, not in the controller: this endpoint used to
+   * have no guard at all, so any signed-in reader could approve their own
+   * subscription by id. Only a pending payment may be approved, and only once —
+   * a second approval would extend the same payment twice.
    */
-  async verifySubscription(subscriptionId: string, approved: boolean) {
+  async verifySubscription(actorId: string, subscriptionId: string, approved: boolean) {
+    const actor = await this.prisma.user.findUnique({
+      where: { id: actorId },
+      select: { isStaff: true },
+    });
+    if (!actor?.isStaff) throw new ForbiddenException('Staff access required');
+
     const sub = await this.prisma.subscription.findUnique({ where: { id: subscriptionId } });
     if (!sub) throw new NotFoundException('Subscription not found');
+    if (sub.status === 'approved') {
+      throw new BadRequestException('That payment has already been approved');
+    }
     if (approved) {
       await this.activate(sub.userId, sub);
     } else {
@@ -133,13 +153,44 @@ export class PaymentsService {
 
   /**
    * Webhook handler (Stripe/Chapa/OxaPay callback).
-   * Production: verify the provider signature first — never trust a bare call.
+   *
+   * Providers are not trusted by URL alone: the shared secret must match, and
+   * an already-approved subscription is never activated again. Without the
+   * idempotency check a replay of the same callback stacked another plan on
+   * every request — free premium forever.
    */
-  async webhookActivate(subscriptionId: string, provider: string) {
+  async webhookActivate(subscriptionId: string, provider: string, secret?: string) {
+    this.assertWebhookSecret(secret);
+
     const sub = await this.prisma.subscription.findUnique({ where: { id: subscriptionId } });
     if (!sub) throw new NotFoundException('Subscription not found');
+    if (sub.status === 'approved') {
+      return { ok: true, provider, duplicate: true };
+    }
+    if (sub.status !== 'pending') {
+      return { ok: true, provider, ignored: true };
+    }
     await this.activate(sub.userId, sub);
     return { ok: true, provider };
+  }
+
+  /**
+   * Fail closed in production when no secret is configured. In development a
+   * missing secret is allowed so the local redirect flows still work.
+   */
+  private assertWebhookSecret(secret?: string) {
+    const expected = process.env.PAYMENTS_WEBHOOK_SECRET;
+    if (!expected) {
+      if (process.env.NODE_ENV === 'production') {
+        throw new UnauthorizedException('Payment webhook is not configured');
+      }
+      return;
+    }
+    const provided = Buffer.from(secret ?? '');
+    const wanted = Buffer.from(expected);
+    if (provided.length !== wanted.length || !timingSafeEqual(provided, wanted)) {
+      throw new UnauthorizedException('Invalid webhook signature');
+    }
   }
 
   async mySubscription(userId: string) {

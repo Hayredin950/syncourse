@@ -34,6 +34,15 @@ export function signMediaUrl(rawUrl: string, secret: string, ttlSeconds = DEFAUL
   return { url, expiresAt: new Date(expires * 1000).toISOString() };
 }
 
+/**
+ * Check a signed URL at the point that serves the bytes.
+ *
+ * This API only *issues* the signed URL; storage/CDN must call this (or its
+ * equivalent) before handing the file over. Today files are served straight
+ * from Telegram/Cloudinary, so the parameters travel with the URL but nothing
+ * checks them — a deployment that needs enforcement has to put its own proxy
+ * or CDN rule in front and verify there.
+ */
 export function verifySignedUrl(rawUrl: string, secret: string, urlWithParams: string): boolean {
   try {
     const u = new URL(urlWithParams);

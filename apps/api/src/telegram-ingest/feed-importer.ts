@@ -10,6 +10,7 @@
  */
 import { PrismaClient } from '@prisma/client';
 import { ParsedFeed, ParsedCourse, ParsedSection, slugify } from './telegram-feed.parser';
+import { matchRows } from '../common/match-rows';
 
 export interface ImportOptions {
   /** Extra categories (by slug) attached to every course from this feed. */
@@ -271,22 +272,61 @@ export class FeedImporter {
     totalDurationMin: number,
     result: ImportResult,
   ) {
-    await this.prisma.attachment.deleteMany({ where: { courseId } });
-    await this.prisma.lesson.deleteMany({ where: { courseId } });
-    await this.prisma.section.deleteMany({ where: { courseId } });
-
     // distribute the announced "⏱ N Hours" across the parts so the catalog's
     // computed durationMin/lessonCount match the channel's own numbers
     const partCount = sections.reduce((n, s) => n + s.parts.length, 0);
     const perLessonSec = partCount > 0 ? Math.round((totalDurationMin * 60) / partCount) : 0;
 
-    for (const sec of sections) {
-      const section = await this.prisma.section.create({
-        data: { courseId, title: sec.title, orderIndex: sec.orderIndex },
-      });
-      result.sectionsCreated++;
+    // Re-import used to delete every section, lesson and attachment first. That
+    // destroyed notes and files an editor had added to those lessons, cascaded
+    // DownloadEvent rows away, and nulled the section on every Telegram link.
+    // Match what already exists instead, update it in place, and remove only
+    // what the new feed no longer contains.
+    const existingSections = await this.prisma.section.findMany({
+      where: { courseId },
+      include: { lessons: { include: { attachments: true } } },
+      orderBy: { orderIndex: 'asc' },
+    });
+    const usedSectionIds = new Set<string>();
+    const keptLessonIds = new Set<string>();
+    const keptAttachmentIds = new Set<string>();
 
-      for (const [idx, part] of sec.parts.entries()) {
+    // Titles first, then the feed's module number — see matchRows. This keeps a
+    // module's notes when modules are reordered, and keeps them through a
+    // rename because the fallback is its old position.
+    const sectionFor = matchRows(
+      sections,
+      existingSections,
+      (a, b) => a.title === b.title,
+      (a, b) => b.orderIndex === a.orderIndex,
+    );
+
+    for (const [si, sec] of sections.entries()) {
+      const prior = sectionFor[si];
+
+      let sectionId: string;
+      let priorLessons: (typeof existingSections)[number]['lessons'] = [];
+      if (prior) {
+        usedSectionIds.add(prior.id);
+        sectionId = prior.id;
+        priorLessons = prior.lessons;
+        if (prior.title !== sec.title || prior.orderIndex !== sec.orderIndex) {
+          await this.prisma.section.update({
+            where: { id: prior.id },
+            data: { title: sec.title, orderIndex: sec.orderIndex },
+          });
+        }
+      } else {
+        const created = await this.prisma.section.create({
+          data: { courseId, title: sec.title, orderIndex: sec.orderIndex },
+        });
+        sectionId = created.id;
+        result.sectionsCreated++;
+      }
+
+      // Resolve every part's title and link before matching, because the title
+      // is the stable identity the match depends on.
+      const parts = sec.parts.map((part, idx) => {
         const multi = sec.parts.length > 1;
         const title = multi ? `Part ${pad2(part.partNo ?? idx + 1)}` : stripExt(part.fileName);
         const link =
@@ -296,32 +336,119 @@ export class FeedImporter {
             : channelUsername
               ? `https://t.me/${channelUsername}/${part.orderIndex}`
               : null);
+        return {
+          title,
+          link,
+          fileUrl: link ?? part.fileName,
+          fileType: part.fileName.includes('.')
+            ? part.fileName.split('.').pop()!.toLowerCase()
+            : 'zip',
+        };
+      });
+      const lessonFor = matchRows(
+        parts,
+        priorLessons,
+        (a, b) => a.title === b.title,
+        (_a, b, i) => b.orderIndex === i,
+      );
 
-        const lesson = await this.prisma.lesson.create({
-          data: {
-            courseId,
-            sectionId: section.id,
-            title,
-            orderIndex: idx,
-            type: 'video',
-            durationSec: perLessonSec,
-            sourceUrl: link,
-            isPreview: false,
-          },
-        });
-        result.lessonsCreated++;
+      for (const [idx, p] of parts.entries()) {
+        const { title, link, fileUrl, fileType } = p;
 
-        await this.prisma.attachment.create({
-          data: {
-            lessonId: lesson.id,
-            courseId,
-            fileUrl: link ?? part.fileName,
-            fileType: part.fileName.includes('.') ? part.fileName.split('.').pop()!.toLowerCase() : 'zip',
-            sizeMb: 0,
-          },
-        });
-        result.attachmentsCreated++;
+        // A created lesson has no previous notes/files; an existing one keeps
+        // them because it is updated, never re-created.
+        const priorLesson = lessonFor[idx];
+
+        let lessonId: string;
+        if (priorLesson) {
+          keptLessonIds.add(priorLesson.id);
+          lessonId = priorLesson.id;
+          await this.prisma.lesson.update({
+            where: { id: priorLesson.id },
+            data: {
+              sectionId,
+              title,
+              orderIndex: idx,
+              type: 'video',
+              durationSec: perLessonSec,
+              sourceUrl: link,
+            },
+          });
+        } else {
+          const lesson = await this.prisma.lesson.create({
+            data: {
+              courseId,
+              sectionId,
+              title,
+              orderIndex: idx,
+              type: 'video',
+              durationSec: perLessonSec,
+              sourceUrl: link,
+              isPreview: false,
+            },
+          });
+          lessonId = lesson.id;
+          result.lessonsCreated++;
+        }
+
+        // One importer attachment per part, keyed by its URL. Admin-uploaded
+        // attachments have different URLs and are left alone.
+        const priorAttachment = priorLesson?.attachments.find((a) => a.fileUrl === fileUrl);
+        if (priorAttachment) {
+          keptAttachmentIds.add(priorAttachment.id);
+          await this.prisma.attachment.update({
+            where: { id: priorAttachment.id },
+            data: { lessonId, courseId, fileType, sizeMb: 0 },
+          });
+        } else {
+          await this.prisma.attachment.create({
+            data: { lessonId, courseId, fileUrl, fileType, sizeMb: 0 },
+          });
+          result.attachmentsCreated++;
+        }
       }
+    }
+
+    // Importer-owned attachments on lessons that survived but whose URL moved
+    // (renamed channel, renumbered part). Admin uploads live on Cloudinary and
+    // are left alone; feed rows are t.me links or bare source filenames.
+    const staleAttachmentIds = existingSections
+      .flatMap((s) => s.lessons)
+      .filter((l) => keptLessonIds.has(l.id))
+      .flatMap((l) => l.attachments)
+      .filter(
+        (a) =>
+          !keptAttachmentIds.has(a.id) &&
+          (a.fileUrl.startsWith('https://t.me/') || !a.fileUrl.includes('://')),
+      )
+      .map((a) => a.id);
+    if (staleAttachmentIds.length > 0) {
+      await this.prisma.attachment.deleteMany({ where: { id: { in: staleAttachmentIds } } });
+    }
+
+    // Remove lessons the new feed no longer has. Their importer attachments go
+    // with the cascade; notes and files go too, which is correct for content
+    // that is gone. Download history is not analytics noise — detach it first
+    // so a reader's library keeps the course.
+    const staleLessons = existingSections
+      .flatMap((s) => s.lessons)
+      .filter((l) => !keptLessonIds.has(l.id));
+    if (staleLessons.length > 0) {
+      const staleIds = staleLessons.map((l) => l.id);
+      await this.prisma.downloadEvent.updateMany({
+        where: { lessonId: { in: staleIds } },
+        data: { lessonId: null },
+      });
+      await this.prisma.lesson.deleteMany({ where: { id: { in: staleIds } } });
+    }
+
+    // Empty modules from the previous import would otherwise linger forever.
+    const staleSections = existingSections.filter(
+      (s) => !usedSectionIds.has(s.id) && !s.lessons.some((l) => keptLessonIds.has(l.id)),
+    );
+    for (const s of staleSections) {
+      const remaining = await this.prisma.lesson.count({ where: { sectionId: s.id } });
+      if (remaining === 0) await this.prisma.section.delete({ where: { id: s.id } });
     }
   }
 

@@ -221,7 +221,7 @@ export function ResourceDetailView({ slug }: { slug: string }) {
   const meta = typeMeta(r.type);
   const Glyph = meta.icon;
   const updated = formatDate(r.updatedAt) !== formatDate(r.publishedAt);
-  const nothingPublished = !r.bodyMd.trim() && media.length === 0;
+  const nothingPublished = !r.locked && !r.bodyMd.trim() && media.length === 0;
 
   return (
     <main className="page res-detail">
@@ -289,6 +289,16 @@ export function ResourceDetailView({ slug }: { slug: string }) {
 
       <div className="res-columns">
         <article className="res-main">
+          {r.locked && (
+            <div className="dark-panel res-empty">
+              <h3>This {meta.label.toLowerCase()} is part of Premium.</h3>
+              <p className="muted">Upgrade to read the full body and download the attached files.</p>
+              <Link href="/premium" className="btn primary" style={{ marginTop: 12 }}>
+                Go Premium
+              </Link>
+            </div>
+          )}
+
           {nothingPublished && (
             <div className="dark-panel res-empty">
               <h3>Nothing published here yet.</h3>

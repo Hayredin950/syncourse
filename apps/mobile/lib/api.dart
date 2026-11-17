@@ -53,10 +53,13 @@ class Api {
     switch (method) {
       case 'POST':
         res = await http.post(uri, headers: headers, body: jsonEncode(body ?? {}));
+        break;
       case 'PATCH':
         res = await http.patch(uri, headers: headers, body: jsonEncode(body ?? {}));
+        break;
       case 'DELETE':
         res = await http.delete(uri, headers: headers);
+        break;
       default:
         res = await http.get(uri, headers: headers);
     }
@@ -138,11 +141,8 @@ class Api {
   }
 
   // --- learning ---
-  static Future<void> enroll(String slug) => post('/courses/$slug/enroll');
   static Future<void> toggleSave(String slug) => post('/courses/$slug/save');
   static Future<void> toggleLike(String slug) => post('/courses/$slug/like');
-  static Future<void> markComplete(String lessonId) =>
-      post('/lessons/$lessonId/progress', {'completed': true});
 
   static Future<MyLearning> myLearning() async {
     final d = await get('/me/learning');

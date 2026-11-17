@@ -258,11 +258,12 @@ export class AuthService {
   async verify(email: string, code: string) {
     const user = await this.prisma.user.findUnique({ where: { email: email.toLowerCase() } });
     if (!user) throw new BadRequestException('No account found for that email.');
+    // Never mint a token for an already-verified account from this endpoint:
+    // the code is not checked for verified users, so returning one here let
+    // anyone who knew an email address sign in as that account with any
+    // six-digit code. Verified users sign in through /auth/login instead.
     if (user.isVerified) {
-      await this.prisma.session.create({
-        data: { userId: user.id, device: 'verify', ip: 'n/a', active: true },
-      });
-      return this.buildAuthResponse(user);
+      throw new BadRequestException('That account is already verified — sign in instead.');
     }
     if (!user.verifyCode) {
       throw new BadRequestException('No verification code is pending — request a new one.');

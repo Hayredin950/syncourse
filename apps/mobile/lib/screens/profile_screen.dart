@@ -12,19 +12,19 @@ class ProfileScreen extends StatefulWidget {
 }
 
 class _ProfileScreenState extends State<ProfileScreen> {
-  late Future<Profile?> _profile;
+  late Future<UserProfile?> _profile;
 
   @override
   void initState() {
     super.initState();
-    _profile = Api.instance.me();
+    _profile = Api.me();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('Me')),
-      body: FutureBuilder<Profile?>(
+      body: FutureBuilder<UserProfile?>(
         future: _profile,
         builder: (context, snapshot) {
           if (snapshot.connectionState != ConnectionState.done) {
@@ -75,12 +75,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 mainAxisSpacing: 10,
                 crossAxisSpacing: 10,
                 children: [
-                  _StatTile(icon: Icons.school, value: '${profile.stats['enrolled'] ?? 0}', label: 'Enrolled'),
-                  _StatTile(icon: Icons.check_circle, value: '${profile.stats['completed'] ?? 0}', label: 'Completed'),
+                  _StatTile(icon: Icons.download_outlined, value: '${profile.stats['downloaded'] ?? 0}', label: 'Downloaded'),
                   _StatTile(icon: Icons.bookmark, value: '${profile.stats['saved'] ?? 0}', label: 'Saved'),
                   _StatTile(icon: Icons.favorite, value: '${profile.stats['liked'] ?? 0}', label: 'Liked'),
                   _StatTile(icon: Icons.list, value: '${profile.stats['lists'] ?? 0}', label: 'Lists'),
                   _StatTile(icon: Icons.rate_review, value: '${profile.stats['reviews'] ?? 0}', label: 'Reviews'),
+                  _StatTile(icon: Icons.workspace_premium, value: profile.isPremium ? 'Pro' : 'Free', label: 'Plan'),
                 ],
               ),
               const SizedBox(height: 20),
@@ -92,8 +92,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 icon: Icons.logout,
                 title: 'Sign out',
                 onTap: () async {
-                  await Api.instance.logout();
-                  if (mounted) setState(() => _profile = Api.instance.me());
+                  await Api.logout();
+                  if (mounted) setState(() => _profile = Api.me());
                 },
               ),
             ],

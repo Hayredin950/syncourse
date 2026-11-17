@@ -243,7 +243,14 @@ export interface LessonDetail {
     audio: string | null;
     isBest: boolean;
   }[];
-  attachments: { id: string; fileUrl: string; fileType: string; sizeMb: number; fileName: string }[];
+  attachments: {
+    id: string;
+    fileType: string;
+    sizeMb: number;
+    fileName: string;
+  }[];
+  /** True when Premium is required to see notes/attachments on this lesson. */
+  locked?: boolean;
 }
 
 /** GET /me/learning — what a reader saved, liked and downloaded. */
@@ -581,6 +588,8 @@ export interface ResourceDetail extends ResourceSummary {
   updatedAt: string;
   media: ResourceMedia[];
   related: ResourceSummary[];
+  /** True when the body/media require Premium and the viewer has none. */
+  locked?: boolean;
 }
 
 export interface ResourceList {

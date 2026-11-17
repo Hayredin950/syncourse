@@ -33,14 +33,23 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
 
   const res = await fetch(`${API_URL}/api${path}`, { ...options, headers });
   const text = await res.text();
-  const data = text ? JSON.parse(text) : null;
+  // A proxy or a hosting error page is HTML, not JSON. Parsing it blindly
+  // turned a 502 into "Unexpected token '<'" instead of the real status.
+  let data: any = null;
+  if (text) {
+    try {
+      data = JSON.parse(text);
+    } catch {
+      if (res.ok) throw new ApiError(res.status, "The server returned an unreadable response");
+    }
+  }
   if (!res.ok) {
     const message =
       data?.message && typeof data.message === "string"
         ? data.message
         : Array.isArray(data?.message)
           ? data.message.join(", ")
-          : "Something went wrong";
+          : `Something went wrong (${res.status})`;
     throw new ApiError(res.status, message);
   }
   return data as T;

@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useEffect, useMemo, useState } from "react";
+import { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { BookOpen, Filter, LayoutGrid, Search, SlidersHorizontal, Zap } from "lucide-react";
 import { get } from "@/lib/api";
@@ -17,6 +17,8 @@ const LEVELS = ["All Levels", "Beginner", "Intermediate", "Advanced"];
 // Courses only — cheat-sheets, roadmaps and notes are Resources with their own
 // index at /resources, so filtering the catalogue to either returned nothing.
 const TYPES = ["course", "mini-course"];
+/** One page of the grid. The API caps at 100, so this is a calm first screen. */
+const BROWSE_PAGE = 24;
 /** The tab strip that replaced the site-wide second nav row. */
 const TYPE_TABS = [
   { value: "course", label: "Courses", icon: BookOpen },
@@ -43,6 +45,8 @@ function BrowseInner() {
   const [view, setView] = useState<"grid" | "list">("grid");
   const [categories, setCategories] = useState<{ name: string; slug: string }[]>([]);
   const [showFilters, setShowFilters] = useState(false);
+  const [pageBusy, setPageBusy] = useState(false);
+  const [moreFailed, setMoreFailed] = useState(false);
 
   const category = params.get("category") ?? "";
   const level = params.get("level") ?? "";
@@ -52,13 +56,21 @@ function BrowseInner() {
   const organization = params.get("organization") ?? "";
   const lecturer = params.get("lecturer") ?? "";
 
+  /** The filter combination the visible list belongs to. `loadMore` captures it
+      and refuses to append a page that was requested under a different one. */
+  const filtersKey = [category, level, sort, minRating, type, organization, lecturer].join("|");
+  const filtersKeyRef = useRef(filtersKey);
+
   useEffect(() => {
     get<{ name: string; slug: string }[]>("/categories").then(setCategories).catch(() => {});
   }, []);
 
   useEffect(() => {
+    filtersKeyRef.current = [category, level, sort, minRating, type, organization, lecturer].join("|");
     setLoading(true);
     setFailed(false);
+    setMoreFailed(false);
+    setPageBusy(false);
     const qs = new URLSearchParams();
     if (category) qs.set("category", category);
     if (level) qs.set("level", level);
@@ -67,9 +79,12 @@ function BrowseInner() {
     if (type) qs.set("contentType", type);
     if (organization) qs.set("organization", organization);
     if (lecturer) qs.set("lecturer", lecturer);
-    qs.set("limit", "60");
+    qs.set("limit", String(BROWSE_PAGE));
+    qs.set("offset", "0");
+    let cancelled = false;
     get<{ total: number; counts?: Record<string, number>; results: CourseSummary[] }>(`/courses?${qs.toString()}`)
       .then((d) => {
+        if (cancelled) return;
         setResults(d.results);
         setTotal(d.total);
         // Counts arrive with the page and ignore the type filter, so the strip is
@@ -77,9 +92,48 @@ function BrowseInner() {
         // tabs then simply carry no numbers rather than showing zeros.
         if (d.counts) setCounts(d.counts);
       })
-      .catch(() => setFailed(true))
-      .finally(() => setLoading(false));
+      .catch(() => {
+        if (!cancelled) setFailed(true);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [category, level, sort, minRating, type, organization, lecturer, retry]);
+
+  /**
+   * The page used to request 60 and call that the catalogue. Anything past the
+   * first 60 courses was unreachable from Browse, and the header said "60+" to
+   * paper over it. Now the API reports the real total and pages.
+   */
+  const loadMore = () => {
+    if (loading || pageBusy || results.length >= total) return;
+    const key = [category, level, sort, minRating, type, organization, lecturer].join("|");
+    const qs = new URLSearchParams();
+    if (category) qs.set("category", category);
+    if (level) qs.set("level", level);
+    if (sort) qs.set("sort", sort);
+    if (minRating) qs.set("minRating", minRating);
+    if (type) qs.set("contentType", type);
+    if (organization) qs.set("organization", organization);
+    if (lecturer) qs.set("lecturer", lecturer);
+    qs.set("limit", String(BROWSE_PAGE));
+    qs.set("offset", String(results.length));
+    setPageBusy(true);
+    setMoreFailed(false);
+    get<{ total: number; results: CourseSummary[] }>(`/courses?${qs.toString()}`)
+      .then((d) => {
+        // A filter change while this page was in flight replaces the results;
+        // appending the old page to the new list would mix two catalogues.
+        if (key !== filtersKeyRef.current) return;
+        setResults((prev) => [...prev, ...d.results]);
+        setTotal(d.total);
+      })
+      .catch(() => setMoreFailed(true))
+      .finally(() => setPageBusy(false));
+  };
 
   const activeFilterCount = useMemo(
     () => [category, level, minRating, type, organization, lecturer].filter(Boolean).length,
@@ -117,7 +171,7 @@ function BrowseInner() {
         <div className="page-head__main">
           <span className="eyebrow">{category ? "Topic index" : "Library index"}</span>
           <h1 className="display page-head__title" style={{ textTransform: "capitalize" }}>{heading}</h1>
-          <p className="muted mono" style={{ fontSize: 11, margin: 0 }}>{total}+ results</p>
+          <p className="muted mono" style={{ fontSize: 11, margin: 0 }}>{plural(total, "result")}</p>
         </div>
         <button className="btn" onClick={() => setShowFilters(true)}>
           <Filter size={14} /> Filters{" "}
@@ -207,6 +261,19 @@ function BrowseInner() {
           {results.map((c) => (
             <CourseRow key={c.id} course={c} />
           ))}
+        </div>
+      )}
+
+      {!loading && !failed && results.length > 0 && results.length < total && (
+        <div className="s-more">
+          <button type="button" className="btn" onClick={loadMore} disabled={pageBusy}>
+            {pageBusy
+              ? "Loading…"
+              : `Load ${Math.min(BROWSE_PAGE, total - results.length)} more · ${total - results.length} left`}
+          </button>
+          {moreFailed && (
+            <span className="s-more__note">Couldn’t load the next page — try again.</span>
+          )}
         </div>
       )}
 

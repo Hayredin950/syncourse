@@ -209,10 +209,16 @@ export class CatalogService {
       where.lecturers = { some: { lecturer: { slug: filters.lecturer } } };
     }
     if (filters.q) {
+      // Case-insensitive substring match. Postgres `LIKE` is case-sensitive, so
+      // "javascript" used to miss "JavaScript" in both browse and search.
+      const q = filters.q.trim();
+      const insensitive = { contains: q, mode: 'insensitive' as const };
       where.OR = [
-        { title: { contains: filters.q } },
-        { description: { contains: filters.q } },
-        { tags: { some: { tag: { contains: filters.q } } } },
+        { title: insensitive },
+        { description: insensitive },
+        { tags: { some: { tag: insensitive } } },
+        { categories: { some: { category: { name: insensitive } } } },
+        { lecturers: { some: { lecturer: { name: insensitive } } } },
       ];
     }
     if (filters.minRating) {
@@ -230,8 +236,12 @@ export class CatalogService {
             ? [{ title: 'asc' }]
             : [{ publishedAt: 'desc' }];
 
-    const limit = Math.min(filters.limit ?? 30, 100);
-    const offset = filters.offset ?? 0;
+    const limit = Number.isFinite(filters.limit)
+      ? Math.min(Math.max(Math.trunc(filters.limit as number), 1), 100)
+      : 30;
+    const offset = Number.isFinite(filters.offset)
+      ? Math.max(Math.trunc(filters.offset as number), 0)
+      : 0;
 
     // The tab counts deliberately ignore the contentType filter: a count taken
     // under the current selection reads 0 for every tab you are not standing on,
@@ -440,7 +450,20 @@ export class CatalogService {
       orderBy: { ratingAvg: 'desc' },
       include: courseInclude,
     });
-    return { ...lecturer, socialLinks: JSON.parse(lecturer.socialLinks || '{}'), courses: courses.map((c) => this.summary(c)) };
+    let socialLinks: Record<string, string> = {};
+    if (lecturer.socialLinks) {
+      try {
+        socialLinks = JSON.parse(lecturer.socialLinks) as Record<string, string>;
+      } catch {
+        // Legacy rows can hold malformed JSON; the profile should still load.
+        socialLinks = {};
+      }
+    }
+    return {
+      ...lecturer,
+      socialLinks,
+      courses: courses.map((c) => this.summary(c)),
+    };
   }
 
   async organizations() {

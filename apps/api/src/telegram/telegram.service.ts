@@ -2681,9 +2681,16 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
         slug: true,
         ratingAvg: true,
         price: true,
+        isPremium: true,
       },
     });
     if (!course) return this.sendText(chatId, `Course “${slug}” not found. Try /courses.`);
+    // Gate before the picker, not after: showing the module list first and then
+    // refusing the file is a bait-and-switch. deliverFiles re-checks as the
+    // single choke point for every direct callback (dlp/dlm/dlall/linked file).
+    if (course.isPremium && !(await this.canDownloadPremium(chatId))) {
+      return this.denyPremiumDownload(chatId, course.title, threadId);
+    }
     const modules = await this.courseModules(course.id);
     const fileCount = modules.reduce((n, m) => n + m.files.length, 0);
     if (fileCount === 0) {
@@ -2798,7 +2805,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
   ) {
     const course = await this.prisma.course.findUnique({
       where: { id: courseId },
-      select: { id: true, title: true, slug: true, ratingAvg: true },
+      select: { id: true, title: true, slug: true, ratingAvg: true, isPremium: true },
     });
     if (!course) return this.sendText(chatId, 'That course is no longer available.', threadId);
     const modules = await this.courseModules(course.id);
@@ -2835,7 +2842,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     }
     const course = await this.prisma.course.findUnique({
       where: { id: link.courseId },
-      select: { id: true, title: true, slug: true, ratingAvg: true },
+      select: { id: true, title: true, slug: true, ratingAvg: true, isPremium: true },
     });
     if (!course) return this.sendText(chatId, 'That course is no longer available.', threadId);
     // Grouping goes through courseModules so a part sent from the website gets
@@ -2850,6 +2857,46 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
+   * True when the Telegram account behind a DM has an active Premium plan.
+   * In a DM the chat id *is* the Telegram user id (see deliverFiles), so no
+   * separate viewer parameter is needed. `planExpiresAt` null means lifetime.
+   */
+  private async canDownloadPremium(chatId: number): Promise<boolean> {
+    if (chatId <= 0) return false;
+    const user = await this.prisma.user
+      .findUnique({
+        where: { telegramId: BigInt(chatId) },
+        select: { planType: true, planExpiresAt: true },
+      })
+      .catch(() => null);
+    return (
+      !!user &&
+      user.planType === 'premium' &&
+      (!user.planExpiresAt || user.planExpiresAt > new Date())
+    );
+  }
+
+  /** The upgrade message every premium file request ends on. */
+  private async denyPremiumDownload(chatId: number, title: string, threadId?: number | null) {
+    await this.sendRich(
+      chatId,
+      `${this.brandHeader('Premium')}\n\n` +
+        `⭐ <b>“${esc(title)}”</b> is a Premium course.\n` +
+        `${DIV}\n` +
+        `Activate a plan on the website to unlock its files. Plans start at 149 ETB.\n\n` +
+        `<i>Already Premium? Connect Telegram from your account page so I can see your plan.</i>`,
+      threadId,
+      [
+        [{ text: '⭐ Go Premium', url: `${APP_URL}/premium` }],
+        [
+          { text: '📚 All courses', callback_data: 'courses' },
+          { text: '🏠 Home', callback_data: 'home' },
+        ],
+      ],
+    );
+  }
+
+  /**
    * Send a set of files in order.
    *
    * Telegram rate-limits messages to a chat, so a 6-part module sent in a tight
@@ -2858,11 +2905,18 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
    */
   private async deliverFiles(
     chatId: number,
-    course: { id: string; title: string; slug: string; ratingAvg: number },
+    course: { id: string; title: string; slug: string; ratingAvg: number; isPremium?: boolean },
     files: TelegramFileRow[],
     threadId?: number | null,
     moduleTitle?: string | null,
   ) {
+    // The one place every delivery passes through. Premium courses stay locked
+    // until the Telegram account linked to this chat has an active plan; group
+    // chat ids are negative and match no user, so they fail closed rather than
+    // dumping paid files into a shared room.
+    if (course.isPremium && !(await this.canDownloadPremium(chatId))) {
+      return this.denyPremiumDownload(chatId, course.title, threadId);
+    }
     let sent = 0;
     for (const [i, f] of files.entries()) {
       // Label from the stored part number, not the loop index: sending part 2 on
@@ -2974,7 +3028,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
   private async sendCourseModule(chatId: number, courseId: string, moduleIndex: number | null, threadId?: number | null) {
     const course = await this.prisma.course.findUnique({
       where: { id: courseId },
-      select: { id: true, title: true, slug: true, ratingAvg: true },
+      select: { id: true, title: true, slug: true, ratingAvg: true, isPremium: true },
     });
     if (!course) return this.sendText(chatId, 'That course is no longer available.', threadId);
     const modules = await this.courseModules(course.id);

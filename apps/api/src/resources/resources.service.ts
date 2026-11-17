@@ -70,21 +70,27 @@ export class ResourcesService {
     };
   }
 
-  private detail(r: ResourceWith) {
+  private detail(r: ResourceWith, locked = false) {
     return {
       ...this.summary(r),
-      bodyMd: r.bodyMd,
-      sourceUrl: r.sourceUrl,
+      /** True when the body/media require Premium and the viewer has none. */
+      locked,
+      bodyMd: locked ? '' : r.bodyMd,
+      // The source post is the resource itself (that is where the body came
+      // from), so it must not be a free back door around the paywall.
+      sourceUrl: locked ? null : r.sourceUrl,
       updatedAt: r.updatedAt,
-      media: r.media.map((m) => ({
-        id: m.id,
-        kind: m.kind,
-        url: m.url,
-        fileName: m.fileName,
-        fileSizeMb: m.fileSizeMb,
-        caption: m.caption,
-        orderIndex: m.orderIndex,
-      })),
+      media: locked
+        ? []
+        : r.media.map((m) => ({
+            id: m.id,
+            kind: m.kind,
+            url: m.url,
+            fileName: m.fileName,
+            fileSizeMb: m.fileSizeMb,
+            caption: m.caption,
+            orderIndex: m.orderIndex,
+          })),
     };
   }
 
@@ -121,8 +127,12 @@ export class ResourcesService {
           ? [{ title: 'asc' }]
           : [{ publishedAt: 'desc' }];
 
-    const limit = Math.min(filters.limit ?? 30, 100);
-    const offset = filters.offset ?? 0;
+    const limit = Number.isFinite(filters.limit)
+      ? Math.min(Math.max(Math.trunc(filters.limit as number), 1), 100)
+      : 30;
+    const offset = Number.isFinite(filters.offset)
+      ? Math.max(Math.trunc(filters.offset as number), 0)
+      : 0;
 
     const [total, rows, counts, catGroups] = await Promise.all([
       this.prisma.resource.count({ where }),
@@ -164,9 +174,20 @@ export class ResourcesService {
   }
 
   /** Detail plus a short "more like this" rail, so the page is never a dead end. */
-  async detailBySlug(slug: string) {
+  async detailBySlug(slug: string, userId?: string) {
     const row = await this.prisma.resource.findUnique({ where: { slug }, include: resourceInclude });
     if (!row || row.deletedAt) throw new NotFoundException('Resource not found');
+
+    // Premium resources are public to list but not to read: the body and every
+    // attachment need an active plan. Previously the full body and all raw
+    // media URLs were returned to anonymous callers.
+    let premiumActive = false;
+    if (row.isPremium && userId) {
+      const user = await this.prisma.user.findUnique({ where: { id: userId } });
+      premiumActive =
+        !!user && user.planType === 'premium' && (!user.planExpiresAt || user.planExpiresAt > new Date());
+    }
+    const locked = row.isPremium && !premiumActive;
 
     // Fire-and-forget: a failed counter must not fail the read.
     this.prisma.resource
@@ -187,7 +208,7 @@ export class ResourcesService {
       include: resourceInclude,
     });
 
-    return { ...this.detail(row), related: related.map((r) => this.summary(r)) };
+    return { ...this.detail(row, locked), related: related.map((r) => this.summary(r)) };
   }
 
   /** Counted separately from views so "opened" and "kept" stay distinguishable. */

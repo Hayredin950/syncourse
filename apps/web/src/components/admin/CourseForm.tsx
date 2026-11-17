@@ -147,10 +147,12 @@ export function CourseForm({ initial }: Props) {
       sections: sections
         .filter((s) => s.title.trim())
         .map((s) => ({
+          id: s.id,
           title: s.title.trim(),
           lessons: s.lessons
             .filter((l) => l.title.trim())
             .map((l) => ({
+              id: l.id,
               title: l.title.trim(),
               type: l.type,
               durationSec: Number(l.durationSec) || 0,

@@ -303,7 +303,23 @@ export default function LessonPage() {
         </div>
       ) : (
         <div className="space-y-4 p-4">
-          {lesson.notes.length === 0 && <div className="text-center text-sm text-dim">No notes for this lesson yet.</div>}
+          {lesson.notes.length === 0 &&
+            (lesson.locked ? (
+              <div className="rounded-lg border border-border bg-surface p-4 text-center">
+                <div className="text-sm font-medium text-text">These notes are part of Premium</div>
+                <div className="mt-1 text-xs text-muted">
+                  The lesson outline is free; the notes and downloadable files need an active plan.
+                </div>
+                <Link
+                  href="/premium"
+                  className="mt-3 inline-flex rounded-full bg-accent px-4 py-2 text-xs font-bold text-black"
+                >
+                  Go Premium
+                </Link>
+              </div>
+            ) : (
+              <div className="text-center text-sm text-dim">No notes for this lesson yet.</div>
+            ))}
           {lesson.notes.map((n) => (
             <div key={n.id} className="overflow-hidden rounded-lg border border-border bg-surface">
               <div className="flex items-center justify-between border-b border-border px-4 py-2.5">

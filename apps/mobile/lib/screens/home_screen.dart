@@ -17,12 +17,12 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    _feed = Api.instance.home();
+    _feed = Api.home();
   }
 
   void _reload() {
     setState(() {
-      _feed = Api.instance.home();
+      _feed = Api.home();
     });
   }
 

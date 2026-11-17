@@ -15,12 +15,12 @@ class LessonScreen extends StatefulWidget {
 
 class _LessonScreenState extends State<LessonScreen> {
   late Future<LessonDetail> _lesson;
-  bool _completed = false;
+  bool _saved = false;
 
   @override
   void initState() {
     super.initState();
-    _lesson = Api.instance.lessonDetail(widget.lessonId);
+    _lesson = Api.lessonDetail(widget.lessonId);
   }
 
   @override
@@ -66,7 +66,7 @@ class _LessonScreenState extends State<LessonScreen> {
                         icon: const Icon(Icons.play_circle_fill),
                         onPressed: () async {
                           try {
-                            final url = await Api.instance.videoUrl(widget.lessonId);
+                            final url = await Api.videoUrl(widget.lessonId);
                             if (!mounted) return;
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(content: Text('Signed video URL ready (${url.substring(0, 40)}…) — attach to a player')),
@@ -95,12 +95,16 @@ class _LessonScreenState extends State<LessonScreen> {
                   Expanded(
                     child: OutlinedButton.icon(
                       onPressed: () async {
+                        // There is no lesson progress: courses are delivered as
+                        // Telegram archives. The useful action here is saving the
+                        // course to the reader's library, which is a real endpoint.
+                        if (l.courseSlug.isEmpty) return;
                         try {
-                          await Api.instance.markComplete(widget.lessonId);
+                          await Api.toggleSave(l.courseSlug);
                           if (!mounted) return;
-                          setState(() => _completed = true);
+                          setState(() => _saved = !_saved);
                           ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Marked as complete ✓')),
+                            SnackBar(content: Text(_saved ? 'Saved to your library ✓' : 'Removed from your library')),
                           );
                         } catch (e) {
                           if (!mounted) return;
@@ -109,8 +113,8 @@ class _LessonScreenState extends State<LessonScreen> {
                           );
                         }
                       },
-                      icon: Icon(_completed ? Icons.check_circle : Icons.check_circle_outline),
-                      label: const Text('Mark complete'),
+                      icon: Icon(_saved ? Icons.bookmark : Icons.bookmark_border),
+                      label: Text(_saved ? 'Saved' : 'Save course'),
                     ),
                   ),
                   const SizedBox(width: 10),

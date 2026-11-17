@@ -1824,6 +1824,8 @@ input:focus-visible, textarea:focus-visible, select:focus-visible { outline-offs
   margin: 0 0 11px; font-size: 17px; letter-spacing: -.02em;
 }
 .s-group__n { font-size: 11px; font-weight: 600; color: hsl(var(--muted-foreground)); }
+.s-more { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-top: 14px; }
+.s-more__note { font-size: 11px; color: hsl(var(--muted-foreground)); }
 
 .s-hits { padding: 7px; }
 .s-hit {

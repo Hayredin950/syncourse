@@ -7,30 +7,44 @@ export class SearchService {
   constructor(private readonly prisma: PrismaService) {}
 
   /** Global search — mirrors the reference: type scope, live results, trending chips. */
-  async search(q: string, opts: { limit?: number } = {}) {
+  async search(q: string, opts: { limit?: number; offset?: number } = {}) {
     const query = (q || '').trim();
-    const limit = Math.min(opts.limit ?? 20, 50);
+    // Never let a query string turn into NaN/negative paging values: Prisma
+    // throws on `take: NaN`, which surfaced as a 500 from /search?limit=abc.
+    const limit = Number.isFinite(opts.limit)
+      ? Math.min(Math.max(Math.trunc(opts.limit as number), 1), 50)
+      : 20;
+    const offset = Number.isFinite(opts.offset)
+      ? Math.max(Math.trunc(opts.offset as number), 0)
+      : 0;
 
-    if (query) {
+    // Record only a real search, not every prefix the debounced input sent.
+    if (query.length >= 3) {
       await this.upsertTrending(query);
     }
 
+    // Postgres `LIKE` is case-sensitive; without `mode: 'insensitive'` a search
+    // for "react" missed "React", "REACT" and every mixed-case title.
+    const insensitive = { contains: query, mode: 'insensitive' as const };
     const courseWhere: Prisma.CourseWhereInput = query
       ? {
           deletedAt: null,
           OR: [
-            { title: { contains: query } },
-            { description: { contains: query } },
-            { tags: { some: { tag: { contains: query } } } },
+            { title: insensitive },
+            { description: insensitive },
+            { tags: { some: { tag: insensitive } } },
+            { categories: { some: { category: { name: insensitive } } } },
+            { lecturers: { some: { lecturer: { name: insensitive } } } },
           ],
         }
       : { deletedAt: null };
 
-    const [courses, lecturers, organizations, trending] = await Promise.all([
+    const [courses, total, lecturers, organizations, trending] = await Promise.all([
       this.prisma.course.findMany({
         where: courseWhere,
         orderBy: [{ ratingAvg: 'desc' }, { downloadCount: 'desc' }],
         take: limit,
+        skip: offset,
         include: {
           level: true,
           // Every teacher, in credited order — a course can be taught by several.
@@ -42,18 +56,23 @@ export class SearchService {
           sections: { include: { lessons: true } },
         },
       }),
+      this.prisma.course.count({ where: courseWhere }),
       query
-        ? this.prisma.lecturer.findMany({ where: { name: { contains: query } }, take: 6 })
+        ? this.prisma.lecturer.findMany({ where: { name: insensitive }, take: 6 })
         : [],
       query
-        ? this.prisma.organization.findMany({ where: { name: { contains: query } }, take: 6 })
+        ? this.prisma.organization.findMany({ where: { name: insensitive }, take: 6 })
         : [],
       this.prisma.trendingQuery.findMany({ orderBy: { count: 'desc' }, take: 10 }),
     ]);
 
     return {
       query,
-      total: courses.length,
+      // The real match count. This used to be `courses.length`, so the UI
+      // reported the page size ("Courses 20") as if it were the total.
+      total,
+      limit,
+      offset,
       courses: courses.map((c) => ({
         id: c.id,
         title: c.title,

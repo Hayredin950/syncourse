@@ -8,9 +8,13 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CloudinaryService, type UploadKind } from '../cloudinary/cloudinary.service';
 import { parseChatRef, TelegramService } from '../telegram/telegram.service';
+import { PLANS } from '../payments/payments.service';
 import { bumpVersion, legalTitle } from '../legal/legal.constants';
+import { matchRows } from '../common/match-rows';
 
 export interface AdminLessonInput {
+  /** Existing row being edited (absent for a new lesson). */
+  id?: string;
   title: string;
   type?: string;
   durationSec?: number;
@@ -23,6 +27,8 @@ export interface AdminLessonInput {
 }
 
 export interface AdminSectionInput {
+  /** Existing row being edited (absent for a new section). */
+  id?: string;
   title: string;
   lessons?: AdminLessonInput[];
 }
@@ -316,12 +322,183 @@ export class AdminService {
     const updated = await this.prisma.$transaction(async (tx) => {
       const u = await tx.course.update({ where: { slug }, data });
       if (dto.sections !== undefined) {
-        await tx.section.deleteMany({ where: { courseId: existing.id } }); // cascades lessons
-        await this.createSections(tx, existing.id, dto.sections);
+        await this.syncSections(tx, existing.id, dto.sections);
       }
       return u;
     });
     return { id: updated.id, slug: updated.slug, title: updated.title };
+  }
+
+  /**
+   * Apply an edited curriculum without destroying what lives on it.
+   *
+   * The form posts the whole section/lesson tree, so the old implementation
+   * deleted every section (cascading through lessons and attachments) and
+   * recreated it. That silently wiped editor notes, extra files and the
+   * reader's download history on every save. Match by title, then position,
+   * update in place, and remove only what the form no longer contains.
+   */
+  private async syncSections(
+    tx: Prisma.TransactionClient,
+    courseId: string,
+    sections: AdminSectionInput[],
+  ): Promise<void> {
+    const existingSections = await tx.section.findMany({
+      where: { courseId },
+      include: {
+        lessons: {
+          include: { attachments: { orderBy: { id: 'asc' } } },
+          orderBy: { orderIndex: 'asc' },
+        },
+      },
+      orderBy: { orderIndex: 'asc' },
+    });
+    const keptLessonIds = new Set<string>();
+
+    const rows = sections.filter((s) => s.title?.trim());
+
+    // Titles first, then position — see matchRows. Matching per-iteration
+    // would let an inserted section steal the row a later one claims by title.
+    const sectionFor = matchRows(
+      rows,
+      existingSections,
+      (s, x) => s.title.trim() === x.title,
+      (_s, x, i) => x.orderIndex === i,
+      (s, x) => !!s.id && s.id === x.id,
+    );
+    const keptSectionIds = new Set(
+      sectionFor.filter((x): x is (typeof existingSections)[number] => !!x).map((x) => x.id),
+    );
+
+    for (const [si, s] of rows.entries()) {
+      const title = s.title.trim();
+      const prior = sectionFor[si];
+
+      let sectionId: string;
+      let priorLessons: (typeof existingSections)[number]['lessons'] = [];
+      if (prior) {
+        sectionId = prior.id;
+        priorLessons = prior.lessons;
+        if (prior.title !== title || prior.orderIndex !== si) {
+          await tx.section.update({ where: { id: prior.id }, data: { title, orderIndex: si } });
+        }
+      } else {
+        const created = await tx.section.create({ data: { courseId, title, orderIndex: si } });
+        sectionId = created.id;
+      }
+
+      const lessons = (s.lessons ?? []).filter((l) => l.title?.trim());
+      const lessonFor = matchRows(
+        lessons,
+        priorLessons,
+        (l, x) => l.title.trim() === x.title,
+        (_l, x, i) => x.orderIndex === i,
+        (l, x) => !!l.id && l.id === x.id,
+      );
+
+      for (const [li, l] of lessons.entries()) {
+        const lessonTitle = l.title.trim();
+        const priorLesson = lessonFor[li];
+
+        const fileUrl = l.fileUrl?.trim() || null;
+        // The form sends no size (it does not know one for an existing
+        // upload). Only overwrite sizeMb when the request actually supplies
+        // it, otherwise every save would reset the label to 0 MB.
+        const attachmentData = fileUrl
+          ? {
+              fileUrl,
+              fileType: fileTypeOf(fileUrl),
+              ...(typeof l.fileSizeMb === 'number' ? { sizeMb: l.fileSizeMb } : {}),
+            }
+          : null;
+
+        if (priorLesson) {
+          keptLessonIds.add(priorLesson.id);
+          await tx.lesson.update({
+            where: { id: priorLesson.id },
+            data: {
+              sectionId,
+              title: lessonTitle,
+              orderIndex: li,
+              type: l.type || 'video',
+              durationSec: l.durationSec ?? 0,
+              videoUrl: l.videoUrl || null,
+              isPreview: l.isPreview ?? false,
+            },
+          });
+
+          // The form models one attachment per lesson, so edit that row in
+          // place instead of recreating it. Attachments added anywhere other
+          // than this form are left alone.
+          const editable =
+            (fileUrl && priorLesson.attachments.find((a) => a.fileUrl === fileUrl)) ||
+            priorLesson.attachments[0];
+          if (attachmentData) {
+            if (editable) {
+              await tx.attachment.update({ where: { id: editable.id }, data: attachmentData });
+            } else {
+              await tx.attachment.create({
+                data: {
+                  ...attachmentData,
+                  sizeMb: attachmentData.sizeMb ?? 0,
+                  lessonId: priorLesson.id,
+                  courseId,
+                },
+              });
+            }
+          } else if (editable) {
+            await tx.attachment.delete({ where: { id: editable.id } });
+          }
+        } else {
+          const created = await tx.lesson.create({
+            data: {
+              courseId,
+              sectionId,
+              title: lessonTitle,
+              orderIndex: li,
+              type: l.type || 'video',
+              durationSec: l.durationSec ?? 0,
+              videoUrl: l.videoUrl || null,
+              isPreview: l.isPreview ?? false,
+              ...(attachmentData
+                ? {
+                    attachments: {
+                      create: {
+                        ...attachmentData,
+                        sizeMb: attachmentData.sizeMb ?? 0,
+                        courseId,
+                      },
+                    },
+                  }
+                : {}),
+            },
+          });
+          keptLessonIds.add(created.id);
+        }
+      }
+    }
+
+    // Download history is a reader's library, not analytics noise. Detach it
+    // from lessons that are actually gone before the lesson rows go.
+    const staleLessons = existingSections
+      .flatMap((s) => s.lessons)
+      .filter((l) => !keptLessonIds.has(l.id));
+    if (staleLessons.length > 0) {
+      const staleIds = staleLessons.map((l) => l.id);
+      await tx.downloadEvent.updateMany({
+        where: { lessonId: { in: staleIds } },
+        data: { lessonId: null },
+      });
+      await tx.lesson.deleteMany({ where: { id: { in: staleIds } } });
+    }
+
+    // Remove modules the form dropped, but only once they are empty. A section
+    // that still owns a lesson (added in the admin but not visible in this
+    // payload) must not disappear with its children.
+    for (const s of existingSections.filter((x) => !keptSectionIds.has(x.id))) {
+      const remaining = await tx.lesson.count({ where: { sectionId: s.id } });
+      if (remaining === 0) await tx.section.delete({ where: { id: s.id } });
+    }
   }
 
   /** Create sections + lessons inside a transaction (createMany needs the known courseId). */
@@ -468,18 +645,27 @@ export class AdminService {
     await this.assertStaff(userId);
     const now = new Date();
     const monthAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    // `reviews7d` really is seven days — it used a 30-day window and reported
+    // a month of reviews under a weekly label.
+    const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
     const [courses, users, premium, revenue, pendingPayments, reviewsTotal, reviews7d, lists, circles] =
       await Promise.all([
         this.prisma.course.count({ where: { deletedAt: null } }),
         this.prisma.user.count(),
-        this.prisma.user.count({ where: { planType: 'premium' } }),
+        // An expired plan is not a subscriber. Null expiry means lifetime.
+        this.prisma.user.count({
+          where: {
+            planType: 'premium',
+            OR: [{ planExpiresAt: null }, { planExpiresAt: { gt: now } }],
+          },
+        }),
         this.prisma.subscription.aggregate({
           where: { status: 'approved', createdAt: { gte: monthAgo } },
           _sum: { amount: true },
         }),
         this.prisma.subscription.count({ where: { status: 'pending' } }),
         this.prisma.review.count(),
-        this.prisma.review.count({ where: { createdAt: { gte: monthAgo } } }),
+        this.prisma.review.count({ where: { createdAt: { gte: weekAgo } } }),
         this.prisma.collectionList.count(),
         this.prisma.circle.count(),
       ]);
@@ -625,18 +811,35 @@ export class AdminService {
       include: { user: true },
     });
     if (!sub) throw new NotFoundException('Subscription not found');
-    const days =
-      sub.planName === '1_month' ? 30 : sub.planName === '3_months' ? 90 : sub.planName === '6_months' ? 180 : 30;
+    if (sub.status === status) {
+      return {
+        id: sub.id,
+        status: sub.status,
+        message: status === 'approved' ? `${sub.user.name} is already Premium` : 'That payment is already rejected',
+      };
+    }
+    if (sub.status === 'approved') {
+      throw new BadRequestException('Approved payments cannot be changed here');
+    }
+
+    // The stored planName is a PLANS id (`1m`/`3m`/`6m`). The old comparison
+    // used `1_month`/`3_months`/`6_months`, which never matched, so every plan
+    // granted 30 days. Remaining time is preserved (stacked), as in
+    // PaymentsService.activate — resetting it silently stole paid days.
+    const plan = PLANS.find((p) => p.id === sub.planName);
+    const days = plan?.durationDays ?? 30;
+    const now = new Date();
+    const base =
+      sub.user.planExpiresAt && sub.user.planExpiresAt > now ? sub.user.planExpiresAt : now;
+    const expiresAt = new Date(base.getTime() + days * 24 * 60 * 60 * 1000);
+
     const updated = await this.prisma.$transaction(async (tx) => {
       const s = await tx.subscription.update({
         where: { id: subscriptionId },
         data: {
           status,
-          periodStart: status === 'approved' ? new Date() : undefined,
-          periodEnd:
-            status === 'approved'
-              ? new Date(Date.now() + days * 24 * 60 * 60 * 1000)
-              : undefined,
+          periodStart: status === 'approved' ? now : undefined,
+          periodEnd: status === 'approved' ? expiresAt : undefined,
         },
       });
       if (status === 'approved') {
@@ -644,7 +847,7 @@ export class AdminService {
           where: { id: sub.userId },
           data: {
             planType: 'premium',
-            planExpiresAt: new Date(Date.now() + days * 24 * 60 * 60 * 1000),
+            planExpiresAt: expiresAt,
           },
         });
         await tx.notification.create({
@@ -652,7 +855,7 @@ export class AdminService {
             userId: sub.userId,
             type: 'system',
             title: 'Premium activated 🎉',
-            body: `Your ${sub.planName} plan is active. Enjoy full-speed downloads and an ad-free experience.`,
+            body: `Your ${plan?.name ?? sub.planName} plan is active. Enjoy full-speed downloads and an ad-free experience.`,
           },
         });
       }
