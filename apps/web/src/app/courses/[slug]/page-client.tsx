@@ -456,6 +456,15 @@ export function CourseDetailView({ slug }: { slug: string }) {
                   <SparklesInline /> Preview
                 </a>
               )}
+              {/* Scopes the assistant to this course, so "what does this cover?"
+                  answers from these transcripts instead of the whole catalogue. */}
+              <Link
+                href={`/assistant?course=${encodeURIComponent(course.slug)}`}
+                className="hero-dl"
+                aria-label={`Ask the study assistant about ${course.title}`}
+              >
+                <SparklesInline /> Ask about this
+              </Link>
             </div>
             {/* The icon carries the state, not the label. A button that swaps "Like"
                 for "Liked" makes you read a word to find out what you did; a filled

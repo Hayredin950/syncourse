@@ -30,6 +30,7 @@ import { cloudinaryUrl } from "@/lib/cloudinary";
 export default function HomePage() {
   const [home, setHome] = useState<HomeData | null>(null);
   const [library, setLibrary] = useState<LibraryData | null>(null);
+  const [forYou, setForYou] = useState<{ source: string; courses: CourseSummary[] } | null>(null);
   const [error, setError] = useState(false);
   const { user } = useAuth();
 
@@ -88,6 +89,19 @@ export default function HomePage() {
 
   useEffect(() => {
     if (user) get<LibraryData>("/me/learning").then(setLibrary).catch(() => undefined);
+  }, [user]);
+
+  // The same taste profile the course pages use, surfaced where a reader
+  // actually starts their session. Anonymous visitors get nothing here: the
+  // endpoint would just return popularity, which the rails below already show.
+  useEffect(() => {
+    if (!user) {
+      setForYou(null);
+      return;
+    }
+    get<{ source: string; courses: CourseSummary[] }>("/recommendations/for-you?limit=12")
+      .then((r) => setForYou(r.courses.length > 0 ? r : null))
+      .catch(() => setForYou(null));
   }, [user]);
 
   /**
@@ -263,6 +277,24 @@ export default function HomePage() {
             </>
           )}
         </div>
+      )}
+
+      {/* For you — the reader's own shelf, from the same explainable profile the
+          "More like this" rail uses. It leads the page when there is one. */}
+      {user && forYou && (
+        <Rail
+          title="For you"
+          href="/recommendations"
+          subtitle={
+            forYou.source === "personalised"
+              ? "Picked from what you have saved, downloaded and rated."
+              : "Popular right now — save or rate a course and this grows sharper."
+          }
+        >
+          {forYou.courses.map((c) => (
+            <CourseCard key={c.id} course={c} />
+          ))}
+        </Rail>
       )}
 
       {/* New drops */}

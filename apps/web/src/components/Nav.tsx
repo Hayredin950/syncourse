@@ -15,6 +15,7 @@ import {
   Map,
   MessageCircle,
   Search,
+  Sparkles,
   Zap,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
@@ -125,6 +126,13 @@ export function TopNav() {
         </div>
 
         <nav className="nav-links" aria-label="Primary">
+          <Link
+            href="/assistant"
+            aria-label="Ask the study assistant"
+            className={`nav-pill nav-pill--ask ${active("/assistant") ? "active" : ""}`}
+          >
+            <Sparkles size={19} strokeWidth={1.8} /> <span className="nav-label">Ask</span>
+          </Link>
           <Link href="/browse" aria-label="Browse" className={`nav-pill ${active("/browse") ? "active" : ""}`}>
             <LayoutGrid size={19} strokeWidth={1.8} /> <span className="nav-label">Browse</span>
           </Link>
@@ -196,6 +204,12 @@ export function TopNav() {
                   <Link href="/my-learning" className="me-dropdown__item" onClick={closeMe}>
                     <BookOpen size={16} strokeWidth={1.8} /> My learning
                   </Link>
+                  <Link href="/assistant" className="me-dropdown__item" onClick={closeMe}>
+                    <Sparkles size={16} strokeWidth={1.8} /> Study assistant
+                  </Link>
+                  <Link href="/recommendations" className="me-dropdown__item" onClick={closeMe}>
+                    <Sparkles size={16} strokeWidth={1.8} /> For you
+                  </Link>
                   <Link href="/premium" className="me-dropdown__item" onClick={closeMe}>
                     <Crown size={16} strokeWidth={1.8} /> Subscription
                   </Link>
@@ -238,6 +252,9 @@ export function MobileHeader({ title }: { title?: string }) {
         {title && title !== "Syncourse" ? <span className="mobile-page-title">{title}</span> : <Wordmark small />}
       </Link>
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <Link href="/assistant" className="icon-btn icon-btn--ask" aria-label="Ask the study assistant" title="Ask the study assistant">
+          <Sparkles size={19} strokeWidth={1.8} />
+        </Link>
         <Link href="/search" className="icon-btn" aria-label="Search">
           <Search size={19} strokeWidth={1.8} />
         </Link>

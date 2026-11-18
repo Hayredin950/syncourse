@@ -195,6 +195,9 @@ h3 { font-size: 16px; }
 }
 .nav-pill--cta:hover, .nav-pill--premium:hover, .nav-pill--admin:hover { background: rgba(232,161,58,.16); border-color: rgba(232,161,58,.8); color: #f0b055; }
 .nav-pill--me { padding: 0 14px 0 8px; gap: 8px; }
+.nav-pill--ask { color: #e8a13a; border-color: rgba(232,161,58,.38); }
+.nav-pill--ask:hover { color: #f0b055; border-color: rgba(232,161,58,.7); background: rgba(232,161,58,.08); }
+.icon-btn--ask { color: #e8a13a; }
 .nav-pill .nav-label { display: inline; }
 @media (max-width: 1320px) {
   .nav-pill { padding: 0 11px; }

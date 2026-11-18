@@ -281,6 +281,9 @@ Built in `apps/api/src/assistant/`:
 - `assistant.module.ts`, `assistant.controller.ts`, `assistant.service.ts`
 - `llm/llm.provider.ts` — one adapter, env-switched (Gemini free tier default;
   Groq/OpenRouter use the OpenAI-compatible shape). No SDK, no vendor lock-in.
+  Every configured key joins an ordered fallback chain, each provider retries a
+  429/5xx/timeout once, and Gemini 3 thinking is switched off so the token
+  budget goes to the answer rather than a hidden monologue.
 - `retrieval/retrieval.service.ts` — Postgres FTS + trigram over
   `ContentChunk`, plus lesson titles when a course has no indexed text. It asks
   `SearchService` for ranked **ids only**, so a question does not load every
@@ -292,10 +295,16 @@ Endpoints:
 
 ```
 GET  /api/assistant/status      { enabled, mode, provider, model, dailyCap }
-POST /api/assistant/ask         { question, courseSlug? }
+POST /api/assistant/ask         { question, courseSlug?, history? }
      -> { answer, mode: llm | extractive, provider, notice,
           citations[], courses[], premiumActive }
 ```
+
+`history` is the client-owned thread (`[{ role, content }]`, last 8 turns kept).
+A follow-up that leans on the previous question ("and the second one?") also
+inherits the earlier subject for retrieval, while the model receives the real
+turns as context. No session table: a free database should not be kept warm for
+a chat transcript.
 
 Rules, all enforced in code:
 
@@ -313,24 +322,26 @@ Rules, all enforced in code:
   guard alone would reset on every serverless instance.
 - No write actions: the assistant can only read and suggest.
 
-Frontend: `/assistant` — asks a question, renders the answer, the numbered
-sources and the courses to open. The search page hands its query over with
-`?q=`. Search itself stays the default path; this is for "explain / which one"
-questions.
+Frontend: `/assistant` is a threaded chat, not a one-shot box. Each answer keeps
+its sources and courses, `[n]` references jump to the cited file, follow-ups
+carry the thread back to the API, and the thread survives a reload in
+`sessionStorage`. The search page hands its query over with `?q=`; a course page
+opens it scoped with `?course=`. It is reachable from the desktop **Ask** pill,
+the mobile header icon and the Me menu — not only by typing the URL.
 
-**Acceptance met** by `npm run test:assistant -w apps/api` — 38 checks against
+**Acceptance met** by `npm run test:assistant -w apps/api` — 48 checks against
 the real catalogue and a temporary premium course + member, both deleted in
 `finally`: a real question returns grounded citations and links; a nonsense
 question returns no citations and says so; the premium course is listed but its
 unique token never appears in the free reader's answer or snippets; the same
 member can read it; the daily cap returns 429 on the second question at a cap of
-1; the kill switch returns 503; and an anchored question never pulls sources
-from another course.
+1; the kill switch returns 503; an anchored question never pulls sources from
+another course; and a pronoun-heavy follow-up inherits the previous subject
+while a self-contained question keeps its own words.
 
 Deferred on purpose (needs volume or a different product decision):
-`threads`/multi-turn memory, `POST /assistant/recommend`, lesson-page
-*Explain/Quiz* buttons, and Telegram free-text routing into the assistant. Each
-is additive on the same service.
+`POST /assistant/recommend`, lesson-page *Explain/Quiz* buttons, and Telegram
+free-text routing into the assistant. Each is additive on the same service.
 
 ### Phase 6 — Recommendations & semantic search (content-based part done ✅)
 
@@ -349,7 +360,9 @@ is additive on the same service.
       and course per 10 min). Ranking adds a 0.08 tie-break from clicks for the
       same query in the last 90 days; relevance still dominates.
 - [x] Web: "More like this" on the course page, a "For you" rail on home for
-      signed-in readers, and fire-and-forget click tracking on search results.
+      signed-in readers, a full `/recommendations` shelf (with a sign-in prompt
+      and honest empty state), and fire-and-forget click tracking on search
+      results. The Me menu links to both the assistant and the shelf.
 - [ ] Co-occurrence recommender once volume justifies it.
 - [ ] `pgvector` embeddings for semantic search and "I want to automate my
       business" queries.
