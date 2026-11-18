@@ -1,0 +1,107 @@
+name: index-large-files
+
+# Phase 4: the attachments the free Bot API refuses to serve (> 20 MB).
+#
+# Logs into MTProto as the same bot, downloads a small batch one file at a
+# time, extracts only the text (subtitles, PDFs, notes) into ContentChunk, and
+# deletes the temporary file. Resumable: every finished file is marked
+# `indexed`, so the next run continues where this one stopped.
+#
+# Public repo → Actions minutes are free. Bandwidth comes from Telegram, not
+# from us, and the database only ever sees text.
+#
+# Required repository secrets (Settings → Secrets and variables → Actions):
+#   DATABASE_URL          same Neon URL the API uses
+#   TELEGRAM_BOT_TOKEN    @syncourse_bot's token
+#   TELEGRAM_API_ID       from https://my.telegram.org → API development tools
+#   TELEGRAM_API_HASH     same page
+#
+# Never add TELEGRAM_API_ID/HASH to Vercel: only this job needs them.
+
+on:
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: 'Files to process in this run (keep the job under 6 h)'
+        required: true
+        default: '5'
+      course:
+        description: 'Optional course slug to restrict the run'
+        required: false
+        default: ''
+      dry_run:
+        description: 'List what would be processed; download nothing'
+        type: boolean
+        default: false
+      force:
+        description: 'Re-process files already marked indexed'
+        type: boolean
+        default: false
+
+concurrency:
+  group: index-large-files
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  index:
+    runs-on: ubuntu-latest
+    timeout-minutes: 350
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Check the secrets are present
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+          TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+        run: |
+          missing=0
+          for name in DATABASE_URL TELEGRAM_BOT_TOKEN TELEGRAM_API_ID TELEGRAM_API_HASH; do
+            if [ -z "${!name}" ]; then
+              echo "::error::Missing repository secret: $name"
+              missing=1
+            fi
+          done
+          exit $missing
+
+      - name: Install
+        run: |
+          npm ci
+          npx prisma generate --schema apps/api/prisma/schema.prisma
+
+      - name: Free disk
+        run: df -h /
+
+      - name: Index a batch
+        env:
+          DATABASE_URL: ${{ secrets.DATABASE_URL }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_API_ID: ${{ secrets.TELEGRAM_API_ID }}
+          TELEGRAM_API_HASH: ${{ secrets.TELEGRAM_API_HASH }}
+          LIMIT: ${{ inputs.limit }}
+          COURSE: ${{ inputs.course }}
+          DRY_RUN: ${{ inputs.dry_run }}
+          FORCE: ${{ inputs.force }}
+        run: |
+          args=(--limit "$LIMIT")
+          if [ -n "$COURSE" ]; then args+=(--course "$COURSE"); fi
+          if [ "$DRY_RUN" = "true" ]; then args+=(--dry-run); fi
+          if [ "$FORCE" = "true" ]; then args+=(--force); fi
+          npx tsx apps/api/prisma/large-file-worker.ts "${args[@]}"
+
+      - name: Free disk after the run
+        if: always()
+        run: |
+          df -h /
+          # The runner is destroyed after the job, but a leftover gigabyte
+          # should never be the reason the *next* step fails.
+          rm -f /tmp/syncourse-* 2>/dev/null || true

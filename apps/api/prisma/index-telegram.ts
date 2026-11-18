@@ -14,7 +14,7 @@
  *                  This alone makes "which module covers CrewAI?" searchable.
  *   2. download  — fetch files that fit the free Bot API limit (< 20 MB) and
  *                  extract their text. Larger files are left `pending` for the
- *                  GitHub Actions worker (Phase 4).
+ *                  GitHub Actions worker (`large-file-worker.ts`).
  *
  * Usage (from the repo root):
  *
@@ -33,37 +33,32 @@
  *   --max-mb <n>         download ceiling (default 19; Bot API caps at 20)
  *   --force              re-process attachments already marked indexed
  *   --stats              print index status counts and exit
+ *
+ * Text extraction itself lives in `lib/text-extract.ts` and is shared with the
+ * large-file worker, so both waves read subtitles and PDFs identically.
  */
 import { PrismaClient } from '@prisma/client';
-import AdmZip from 'adm-zip';
-import { PDFParse } from 'pdf-parse';
-import { createHash } from 'node:crypto';
+import {
+  ARCHIVE_EXTS,
+  ChunkRow,
+  DOCX_EXTS,
+  PDF_EXTS,
+  TEXT_EXTS,
+  chunkText,
+  extractFile,
+  extractZip,
+  extOf,
+  hash,
+  humanize,
+  nameChunk,
+  trimToBudget,
+} from './lib/text-extract';
+import { writeLinkChunks } from './lib/chunk-store';
 
 const prisma = new PrismaClient();
 
 /** The Bot API refuses `getFile` above 20 MB; 19 leaves a margin. */
 const DEFAULT_MAX_MB = 19;
-
-/** Text containers we can read without any external service. */
-const TEXT_EXTS = new Set([
-  'srt', 'vtt', 'txt', 'md', 'markdown', 'json', 'html', 'htm', 'csv',
-  'url', 'rtf', 'xml', 'yaml', 'yml', 'nfo',
-]);
-const PDF_EXTS = new Set(['pdf']);
-const ARCHIVE_EXTS = new Set(['zip']);
-const DOCX_EXTS = new Set(['docx']);
-
-/** Media and images: never downloaded, but their names are still indexed. */
-const MEDIA_EXTS = new Set([
-  'mp4', 'mkv', 'avi', 'mov', 'webm', 'flv', 'mp3', 'm4a', 'wav', 'ogg',
-  'jpg', 'jpeg', 'png', 'webp', 'gif', 'svg', 'bmp',
-]);
-
-/** Guardrails so one pathological PDF cannot fill the free database tier. */
-const MAX_TEXT_PER_LINK = 2_000_000; // characters
-const MAX_CHUNKS_PER_LINK = 2_000;
-const CHUNK_SIZE = 1_200;
-const CHUNK_OVERLAP = 200;
 
 interface Args {
   names: boolean;
@@ -74,15 +69,6 @@ interface Args {
   course?: string;
   limit?: number;
   maxMb: number;
-}
-
-interface ChunkRow {
-  sourceKind: string;
-  sourceName: string;
-  moduleTitle: string | null;
-  partIndex: number | null;
-  ordinal: number;
-  text: string;
 }
 
 function parseArgs(argv: string[]): Args {
@@ -118,209 +104,6 @@ function parseArgs(argv: string[]): Args {
   return args;
 }
 
-function extOf(name: string): string {
-  const clean = name.split('?')[0].split('#')[0];
-  const m = clean.match(/\.([a-zA-Z0-9]{1,6})$/);
-  return m ? m[1].toLowerCase() : '';
-}
-
-/** `07. The_InitState_Method.mp4` → `07. The InitState Method` */
-function humanize(name: string): string {
-  const base = name.split(/[\\/]/).pop() ?? name;
-  return base
-    .replace(/\.[a-zA-Z0-9]{1,6}$/, '')
-    .replace(/[_+]+/g, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-}
-
-function hash(text: string): string {
-  return createHash('sha1').update(text).digest('hex');
-}
-
-// ---------------------------------------------------------------
-// Extraction
-// ---------------------------------------------------------------
-
-const NAMED_ENTITIES: Record<string, string> = {
-  '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&#39;': "'", '&nbsp;': ' ',
-};
-
-function stripHtml(html: string): string {
-  return html
-    .replace(/<script[\s\S]*?<\/script>/gi, ' ')
-    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
-    .replace(/<[^>]+>/g, ' ')
-    .replace(/&[a-z#0-9]+;/gi, (m) => NAMED_ENTITIES[m.toLowerCase()] ?? ' ')
-    .replace(/[ \t]+/g, ' ')
-    .replace(/\n{3,}/g, '\n\n')
-    .trim();
-}
-
-/**
- * Subtitles are the cheapest transcript there is: the packager already wrote
- * one per lesson. Strip cue numbers, timestamps and markup, and collapse the
- * rolling duplicates that auto-captions repeat on every line.
- */
-function cleanSubtitle(raw: string): string {
-  return raw
-    .replace(/^\uFEFF/, '')
-    .replace(/^WEBVTT.*$/gim, '')
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter((line) => {
-      if (!line) return false;
-      if (/^\d+$/.test(line)) return false;
-      if (/^\d{1,2}:\d{2}:\d{2}[,.]\d{1,3}\s*-->/.test(line)) return false;
-      if (/^\d{1,2}:\d{2}[,.]\d{1,3}\s*-->/.test(line)) return false;
-      if (/^NOTE\b/i.test(line)) return false;
-      return true;
-    })
-    .map((line) =>
-      line
-        .replace(/<[^>]+>/g, '')
-        .replace(/\{\\[^}]+\}/g, '')
-        .replace(/^[A-Z][A-Z0-9 _-]{1,30}:\s*/, '') // speaker labels
-        .trim(),
-    )
-    .filter(Boolean)
-    .filter((line, i, arr) => i === 0 || line !== arr[i - 1])
-    .join('\n');
-}
-
-/** A .docx is a ZIP with one XML story inside. */
-function extractDocx(buf: Buffer): string {
-  try {
-    const zip = new AdmZip(buf);
-    const entry = zip.getEntry('word/document.xml');
-    if (!entry) return '';
-    const xml = entry.getData().toString('utf8');
-    return stripHtml(xml.replace(/<\/w:p>/gi, '\n').replace(/<w:tab\/>/gi, '\t'));
-  } catch {
-    return '';
-  }
-}
-
-async function extractFile(name: string, buf: Buffer): Promise<{ kind: string; text: string } | null> {
-  const ext = extOf(name);
-  try {
-    if (PDF_EXTS.has(ext)) {
-      // pdf-parse 2.x: construct, read, then release the worker explicitly.
-      // A scanned PDF yields no text — that is a skip, not a failure.
-      const parser = new PDFParse({ data: new Uint8Array(buf) });
-      try {
-        const parsed = await parser.getText();
-        return { kind: 'pdf', text: (parsed.text || '').trim() };
-      } finally {
-        await parser.destroy().catch(() => undefined);
-      }
-    }
-    if (ARCHIVE_EXTS.has(ext)) {
-      // Callers handle archives entry-by-entry.
-      return null;
-    }
-    if (DOCX_EXTS.has(ext)) {
-      return { kind: 'text', text: extractDocx(buf) };
-    }
-    if (ext === 'srt' || ext === 'vtt') {
-      return { kind: 'subtitle', text: cleanSubtitle(buf.toString('utf8')) };
-    }
-    if (ext === 'html' || ext === 'htm') {
-      return { kind: 'html', text: stripHtml(buf.toString('utf8')) };
-    }
-    if (ext === 'json') {
-      // n8n workflow exports are JSON; keep them readable for search and for
-      // the assistant, but do not store megabytes of minified noise.
-      const raw = buf.toString('utf8');
-      let pretty = raw;
-      try {
-        pretty = JSON.stringify(JSON.parse(raw), null, 2);
-      } catch {
-        // keep raw
-      }
-      return { kind: 'json', text: pretty.slice(0, 200_000) };
-    }
-    if (TEXT_EXTS.has(ext)) {
-      return { kind: ext === 'md' || ext === 'markdown' ? 'text' : 'text', text: buf.toString('utf8') };
-    }
-  } catch (err) {
-    throw new Error(`extract ${name}: ${(err as Error).message}`);
-  }
-  return null;
-}
-
-function chunkText(text: string): string[] {
-  const clean = text.replace(/\r/g, '').replace(/\n{3,}/g, '\n\n').trim();
-  if (!clean) return [];
-  if (clean.length <= CHUNK_SIZE) return [clean];
-
-  const out: string[] = [];
-  let i = 0;
-  while (i < clean.length) {
-    let end = Math.min(i + CHUNK_SIZE, clean.length);
-    if (end < clean.length) {
-      const boundary = clean.lastIndexOf('\n\n', end);
-      if (boundary > i + CHUNK_SIZE * 0.5) end = boundary;
-    }
-    const piece = clean.slice(i, end).trim();
-    if (piece) out.push(piece);
-    if (end >= clean.length) break;
-    i = Math.max(end - CHUNK_OVERLAP, i + 1);
-  }
-  return out;
-}
-
-/** One chunk per archive entry, so lesson titles are searchable with no download. */
-function nameChunk(entryName: string): ChunkRow {
-  return {
-    sourceKind: 'entry-name',
-    sourceName: `entry:${entryName}`,
-    moduleTitle: null,
-    partIndex: null,
-    ordinal: 0,
-    text: humanize(entryName),
-  };
-}
-
-async function extractZip(buf: Buffer): Promise<ChunkRow[]> {
-  const zip = new AdmZip(buf);
-  const rows: ChunkRow[] = [];
-
-  for (const entry of zip.getEntries()) {
-    if (entry.isDirectory) continue;
-    const name = entry.entryName;
-    const ext = extOf(name);
-
-    // The name is free knowledge even when the payload is a 150 MB video.
-    rows.push(nameChunk(name));
-
-    if (MEDIA_EXTS.has(ext)) continue;
-    if (!TEXT_EXTS.has(ext) && !PDF_EXTS.has(ext) && !DOCX_EXTS.has(ext)) continue;
-
-    let data: Buffer;
-    try {
-      data = entry.getData();
-    } catch {
-      continue; // corrupt or encrypted entry: keep the name, skip the body
-    }
-    const extracted = await extractFile(name, data);
-    if (!extracted || extracted.text.trim().length < 20) continue;
-
-    const chunks = chunkText(extracted.text);
-    chunks.forEach((text, ordinal) => {
-      rows.push({
-        sourceKind: extracted.kind,
-        sourceName: name,
-        moduleTitle: null,
-        partIndex: null,
-        ordinal,
-        text,
-      });
-    });
-  }
-  return rows;
-}
-
 // ---------------------------------------------------------------
 // Telegram download (free Bot API, < 20 MB)
 // ---------------------------------------------------------------
@@ -342,7 +125,7 @@ async function downloadTelegramFile(fileId: string): Promise<Buffer> {
   if (!meta.ok || !meta.result?.file_path) {
     throw new Error(meta.description || 'getFile failed');
   }
-  const fileRes = await fetch(`https://api.telegram.org/file/bot${token}/${meta.result.file_path}`, {
+  const fileRes = await fetch(`https://api.telegram.org/bot${token}/${meta.result.file_path}`, {
     signal: AbortSignal.timeout(120_000),
   });
   if (!fileRes.ok) throw new Error(`file download → HTTP ${fileRes.status}`);
@@ -352,29 +135,6 @@ async function downloadTelegramFile(fileId: string): Promise<Buffer> {
 // ---------------------------------------------------------------
 // Database writes
 // ---------------------------------------------------------------
-
-async function writeLinkChunks(linkId: string, courseId: string, rows: ChunkRow[], replaceKinds: string[]) {
-  const data = rows
-    .filter((r) => r.text.trim())
-    .map((r) => ({
-      courseId,
-      linkId,
-      sourceKind: r.sourceKind,
-      sourceName: r.sourceName,
-      moduleTitle: r.moduleTitle,
-      partIndex: r.partIndex,
-      ordinal: r.ordinal,
-      text: r.text,
-      charCount: r.text.length,
-      contentHash: hash(`${r.sourceName}\u0000${r.ordinal}\u0000${r.text}`),
-    }));
-
-  await prisma.$transaction([
-    prisma.contentChunk.deleteMany({ where: { linkId, sourceKind: { in: replaceKinds } } }),
-    ...(data.length ? [prisma.contentChunk.createMany({ data, skipDuplicates: true })] : []),
-  ]);
-  return data.length;
-}
 
 /** Index the module title and filename of every attachment. No download. */
 async function indexNames(args: Args) {
@@ -530,7 +290,7 @@ async function indexDownloads(args: Args) {
         continue;
       }
 
-      chunks += await writeLinkChunks(link.id, link.course.id, trimmed, [
+      chunks += await writeLinkChunks(prisma, link.id, link.course.id, trimmed, [
         'subtitle', 'pdf', 'text', 'json', 'html', 'link', 'entry-name',
       ]);
       await prisma.telegramCourseLink.update({
@@ -554,19 +314,6 @@ async function indexDownloads(args: Args) {
     `download: ${ok} indexed, ${noText} without text, ${failed} failed, ${chunks} chunks` +
       (args.dryRun ? ' (dry run)' : ''),
   );
-}
-
-/** Keep one pathological archive from exhausting the free database tier. */
-function trimToBudget(rows: ChunkRow[]): ChunkRow[] {
-  const out: ChunkRow[] = [];
-  let chars = 0;
-  for (const row of rows) {
-    if (out.length >= MAX_CHUNKS_PER_LINK) break;
-    if (chars + row.text.length > MAX_TEXT_PER_LINK) break;
-    chars += row.text.length;
-    out.push(row);
-  }
-  return out;
 }
 
 async function printStats() {

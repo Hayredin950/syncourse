@@ -1,6 +1,7 @@
 # Syncourse — Agent & Search Integration Plan
 
-Status: **Phases 1–3, 5 and the content-based half of 6 done** · Phase 4 next
+Status: **Phases 1–3, 5 and the content-based half of 6 done** · Phase 4 built,
+waiting for `TELEGRAM_API_ID`/`TELEGRAM_API_HASH`
 Owner: Hayredin
 Last audited: 2026-11-18
 
@@ -243,17 +244,30 @@ ZIP posts        ──▶ payload.files[]      ──┐
                           🗑 Discard ─▶ audit row, never proposed again
 ```
 
-### Phase 4 — Large-file worker
+### Phase 4 — Large-file worker (built ✅, waiting for the two Telegram keys)
 
-- [ ] GitHub Actions workflow, batched, resumable, 6-hour-safe.
-- [ ] Telegram local Bot API server in the job (official, 2 GB limit).
-- [ ] Download → extract text-only entries → upsert chunks → delete.
-- [ ] Per-file job state; retry with backoff; skip the 2.6 GB file.
-- [ ] Optional later: MTProto selective read (tail of ZIP → fetch only small
-      entries) to cut transfer from 115 GB to a few hundred MB. Only if needed.
+- [x] GitHub Actions workflow, batched, resumable, 6-hour-safe:
+      `.github/workflows/index-large.yml`.
+- [x] MTProto login **as the same bot** (GramJS) instead of a local Bot API
+      server. The local server needs a tdlib build on every run; MTProto gives
+      the same 2 GB ceiling with no build and no extra service.
+- [x] Download → stream text-only entries → upsert chunks → delete the
+      temporary file in `finally`.
+- [x] Per-file job state, retry with backoff, and an upper bound that skips the
+      2.6 GB file (`--max-mb`, default 1900).
+- [x] Streaming archive reader (`yauzl`) so a 1.9 GB ZIP is never read into
+      memory and video bytes are never decompressed.
+- [ ] First production run — needs `TELEGRAM_API_ID` + `TELEGRAM_API_HASH`.
 
-**Acceptance:** one 1.4 GB video ZIP yields its `.srt` transcripts and notes,
-no video bytes are stored, and the job can resume after failure.
+**Acceptance, partly met offline:** `npm run test:extract -w apps/api` builds a
+course-shaped ZIP and proves the reader extracts subtitles, notes, HTML, JSON
+and the readme, indexes a 2 MB video by name only, leaks not one video byte,
+and stops at the text budget — 18 checks, no Telegram, no network. The real
+download half is implemented but cannot be proven until the API id/hash exist.
+
+**Measured backlog:** 303 files in the 19–1900 MB band, 2 files above it that
+are skipped, 294 small files still pending (audio/video with text-bearing
+siblings), 34 already indexed.
 
 ### Phase 5 — Agent (grounded assistant done ✅ with a no-AI floor)
 

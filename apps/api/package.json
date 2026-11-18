@@ -30,7 +30,8 @@
     "test:draft-parser": "tsx src/telegram-ingest/draft-parser.test.ts",
     "test:drafts": "tsx --env-file=.env prisma/draft-check.ts",
     "test:recommend": "tsx --env-file=.env prisma/recommend-check.ts",
-    "test:assistant": "tsx --env-file=.env prisma/assistant-check.ts"
+    "test:assistant": "tsx --env-file=.env prisma/assistant-check.ts",
+    "test:extract": "tsx prisma/extract-check.ts"
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"
@@ -63,11 +64,14 @@
     "@types/node": "^20.14.0",
     "@types/nodemailer": "^8.0.1",
     "@types/passport-jwt": "^4.0.1",
+    "@types/yauzl": "^3.4.0",
     "prisma": "^5.22.0",
+    "telegram": "^2.26.22",
     "ts-loader": "^9.5.1",
     "ts-node": "^10.9.2",
     "tsconfig-paths": "^4.2.0",
     "tsx": "^4.23.12",
-    "typescript": "^5.5.4"
+    "typescript": "^5.5.4",
+    "yauzl": "^3.4.0"
   }
 }
