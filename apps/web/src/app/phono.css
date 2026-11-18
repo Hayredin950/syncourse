@@ -99,7 +99,12 @@ h3 { font-size: 16px; }
   padding: 14px 32px 8px;
 }
 .topbar-row--main { align-items: flex-start; }
-.topbar-row--types { display: none; }
+.topbar-row--types {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  padding: 2px 32px 12px;
+}
 
 .brand {
   display: inline-flex;
@@ -147,9 +152,6 @@ h3 { font-size: 16px; }
    too. Without an explicit basis they shrink when the header is measured, and
    the 46px field collapsed to 20px — text touching both borders. */
 .topbar-center > .top-search { flex: 0 0 46px; }
-/* Full width (and allowed to shrink) is what lets the chip row wrap at the
-   centre column's edge instead of overflowing it. */
-.topbar-center > .nav-cats { flex: 0 1 auto; width: 100%; }
 
 .top-search svg { flex: none; color: #b8afa4; }
 .top-search input {
@@ -227,13 +229,12 @@ h3 { font-size: 16px; }
 .nav-pill--me.open .nav-me__chevron { transform: rotate(180deg); }
 
 /* --- category chips (All / Movie / TV Show …) ------------------------------ */
-/* The five chips need ~500px. When the centre column is narrower they used to
-   scroll horizontally with the scrollbar hidden, so "Roadmaps" looked cut off
-   and there was no hint that the row moved. Wrap instead: every category stays
-   visible, centred, with breathing room on both sides. */
+/* The chips sit on their own full-width row (`.topbar-row--types`), so all
+   five labels fit on one line with room on both sides. No hidden horizontal
+   scroller and no wrapping. */
 .nav-cats {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
   justify-content: center;
   gap: 6px;
@@ -262,14 +263,6 @@ h3 { font-size: 16px; }
 .nav-cat:hover { border-color: rgba(245,242,234,.4); color: #f5f2ea; }
 .nav-cat.active { background: #e8a13a; border-color: #e8a13a; color: #0e0e0d; box-shadow: 0 1px 2px rgba(0,0,0,.4); }
 .nav-cat.active svg { color: #0e0e0d; }
-/* Between the phone breakpoint and a full desktop the five labelled chips need
-   504px and the centre column has ~380. Rather than clip "Roadmaps" off the
-   edge, keep every category reachable as an icon with the label as its title. */
-@media (min-width: 900px) and (max-width: 1049px) {
-  .nav-cat { padding: 7px 10px; gap: 0; }
-  .nav-cat span { display: none; }
-  .nav-cat svg { width: 18px; height: 18px; }
-}
 
 /* desktop-only / mobile-only helpers keep their meaning */
 @media (max-width: 899px) {

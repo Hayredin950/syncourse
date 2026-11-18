@@ -120,9 +120,6 @@ export function TopNav() {
               onChange={(e) => setValue(e.target.value)}
             />
           </form>
-          <Suspense fallback={<CatLinks pathname={pathname} type="" />}>
-            <NavCats pathname={pathname} />
-          </Suspense>
         </div>
 
         <nav className="nav-links" aria-label="Primary">
@@ -239,6 +236,16 @@ export function TopNav() {
             </Link>
           )}
         </nav>
+      </div>
+
+      {/* The type chips get their own full-width row. Inside the centre column
+          they were capped at the search field's width, so the last chip was
+          clipped on narrower desktops. Nothing else occupies this line, so the
+          row can use the whole header and keep every label on one line. */}
+      <div className="topbar-row topbar-row--types">
+        <Suspense fallback={<CatLinks pathname={pathname} type="" />}>
+          <NavCats pathname={pathname} />
+        </Suspense>
       </div>
     </header>
   );
