@@ -12,6 +12,7 @@
  */
 import { PrismaClient } from '@prisma/client';
 import { SearchService } from '../src/search/search.service';
+import { warmUp } from './lib/db-warmup';
 
 const prisma = new PrismaClient();
 const search = new SearchService(prisma as never);
@@ -41,6 +42,7 @@ const CASES: Case[] = [
 ];
 
 async function main() {
+  await warmUp(prisma);
   let misses = 0;
 
   for (const c of CASES) {

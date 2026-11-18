@@ -15,6 +15,7 @@ import { SearchService } from '../src/search/search.service';
 import { RetrievalService, keywordsOf, snippetOf } from '../src/assistant/retrieval/retrieval.service';
 import { AssistantService } from '../src/assistant/assistant.service';
 import { resolveLlm } from '../src/assistant/llm/llm.provider';
+import { warmUp } from './lib/db-warmup';
 
 const prisma = new PrismaClient(
   // The test opens more queries in a row than a single page load. Neon's pooled
@@ -55,17 +56,9 @@ const secret = process.env.JWT_SECRET ?? 'syncourse';
 const subject = `ip:${createHash('sha1').update(`${IP}|${secret}`).digest('hex').slice(0, 24)}`;
 
 async function main() {
-  // The free Neon compute suspends when idle; the first connection can take a
-  // few seconds longer than Prisma's 5s budget. Wake it before asserting, so a
+  // The free Neon compute suspends when idle; wake it before asserting, so a
   // cold start is not reported as a product failure.
-  for (let i = 0; i < 8; i++) {
-    try {
-      await prisma.$queryRaw`select 1`;
-      break;
-    } catch {
-      await new Promise((r) => setTimeout(r, 2_000));
-    }
-  }
+  await warmUp(prisma);
 
   console.log('assistant: keywords and snippets');
   {

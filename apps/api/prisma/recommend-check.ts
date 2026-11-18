@@ -16,6 +16,7 @@ import { PrismaClient } from '@prisma/client';
 import { CatalogService } from '../src/catalog/catalog.service';
 import { RecommendationsService } from '../src/recommendations/recommendations.service';
 import { SearchService } from '../src/search/search.service';
+import { warmUp } from './lib/db-warmup';
 
 const prisma = new PrismaClient();
 const catalog = new CatalogService(prisma as never);
@@ -75,6 +76,7 @@ async function sharesSomething(a: string, b: string): Promise<boolean> {
 }
 
 async function main() {
+  await warmUp(prisma);
   await cleanup();
 
   const anchor = await prisma.course.findFirst({
