@@ -816,6 +816,8 @@ model SearchClick {
 
   @@index([query])
   @@index([courseId])
+  /// Ranking reads "clicks for this query, grouped by course".
+  @@index([query, courseId])
 }
 
 /// A course the Telegram watcher believes it found, before it touches the

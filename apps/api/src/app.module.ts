@@ -16,6 +16,7 @@ import { ReviewsModule } from './reviews/reviews.module';
 import { CollectionsModule } from './collections/collections.module';
 import { PaymentsModule } from './payments/payments.module';
 import { SearchModule } from './search/search.module';
+import { RecommendationsModule } from './recommendations/recommendations.module';
 import { DiscussionsModule } from './discussions/discussions.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { CirclesModule } from './circles/circles.module';
@@ -41,6 +42,7 @@ import { TelegramIngestModule } from './telegram-ingest/telegram-ingest.module';
     CollectionsModule,
     PaymentsModule,
     SearchModule,
+    RecommendationsModule,
     DiscussionsModule,
     NotificationsModule,
     CirclesModule,

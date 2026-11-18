@@ -4,7 +4,7 @@ import { Suspense, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Building2, Mic, Search, Square, X } from "lucide-react";
-import { get } from "@/lib/api";
+import { get, post } from "@/lib/api";
 import type { CourseSummary } from "@/lib/types";
 import { CourseRow } from "@/components/CourseCard";
 import { MobileHeader } from "@/components/Nav";
@@ -182,6 +182,19 @@ function SearchInner() {
       .finally(() => setMoreBusy(false));
   };
 
+  /**
+   * Record that this result was opened, so the ranking can learn that people
+   * searching for this query choose this course. Fire-and-forget: the reader
+   * is navigating, and a failed write must never be visible to them. The query
+   * comes from `data`, not `q`, because debounced results can lag one keystroke
+   * behind the box.
+   */
+  const recordClick = (courseId: string) => {
+    const query = (data?.query ?? q).trim();
+    if (query.length < 3) return;
+    void post("/search/click", { query, courseId }).catch(() => undefined);
+  };
+
   const empty =
     !!data && data.courses.length === 0 && data.lecturers.length === 0 && data.organizations.length === 0;
   const entities = data ? data.lecturers.length + data.organizations.length : 0;
@@ -281,7 +294,7 @@ function SearchInner() {
                 </h2>
                 <div className="flex flex-col gap-1">
                   {data.courses.map((c) => (
-                    <CourseRow key={c.id} course={c} />
+                    <CourseRow key={c.id} course={c} onOpen={() => recordClick(c.id)} />
                   ))}
                 </div>
                 <div className="s-more">

@@ -126,31 +126,19 @@ export function CourseDetailView({ slug }: { slug: string }) {
         setLikeCount(d.likeCount);
         setMyRating(d.myRating);
         setReviewTotal(d.reviewTotal ?? d.reviews.length);
-        const cat = d.categoryNames[0];
-        if (cat) {
-          // resolve category name -> slug (the list API filters by slug)
-          get<{ name: string; slug: string }[]>("/categories")
-            .then((cats) => {
-              const catSlug = cats.find((c) => c.name === cat)?.slug ?? cat;
-              return get<{ results: CourseSummary[] }>(`/courses?category=${encodeURIComponent(catSlug)}&limit=8`);
-            })
-            .then((r) => {
-              const filtered = r.results.filter((c) => c.id !== d.id);
-              // `lecturers` is the full credit list; `lecturer` is the older
-              // single field, still sent while the column exists.
-              const firstTeacher = d.lecturers?.[0] ?? d.lecturer;
-              if (filtered.length >= 4) {
-                setSimilar(filtered);
-              } else if (firstTeacher) {
-                // fallback: same instructor
-                return get<{ results: CourseSummary[] }>(`/courses?lecturer=${encodeURIComponent(firstTeacher.slug)}&limit=8`)
-                  .then((r2) => setSimilar(r2.results.filter((c) => c.id !== d.id)))
-                  .catch(() => setSimilar(filtered));
-              }
-              setSimilar(filtered);
-            })
-            .catch(() => {});
-        }
+        // Related courses are chosen by the recommendation service, which
+        // weighs categories, tags, lecturers and level together. The old
+        // fallback queried one category and then one lecturer, so a course
+        // tagged "Search" could sit beside a Flutter course — and the heading
+        // promised "More like this". Only a genuine subject match renders now;
+        // a short rail is better than a mislabelled one.
+        get<{ courses: CourseSummary[]; source: string }>(
+          `/recommendations/similar/${encodeURIComponent(slug)}?limit=8`,
+        )
+          .then((r) => {
+            setSimilar(r.source === "related" ? r.courses.filter((c) => c.id !== d.id) : []);
+          })
+          .catch(() => {});
       })
       .catch(() => setError(true));
   }, [slug]);

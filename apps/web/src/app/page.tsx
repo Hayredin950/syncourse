@@ -19,6 +19,9 @@ export default function HomePage() {
   const [home, setHome] = useState<HomeData | null>(null);
   const [library, setLibrary] = useState<LibraryData | null>(null);
   const [error, setError] = useState(false);
+  // Per-viewer picks. Kept separate from `home`, which is a cached
+  // catalogue-wide snapshot shared by every visitor.
+  const [forYou, setForYou] = useState<{ courses: CourseSummary[]; source: string } | null>(null);
   const { user } = useAuth();
 
   // Ranking tabs. These were labelled Day / Week / Month but did not measure
@@ -91,6 +94,23 @@ export default function HomePage() {
   // Signed-in users get real progress numbers in "Your Next Course"
   useEffect(() => {
     if (user) get<LibraryData>("/me/learning").then(setLibrary).catch(() => undefined);
+  }, [user]);
+
+  // "For you" needs a reader to have a taste profile, so it is requested only
+  // when signed in. The API answers with the popular list until there is one,
+  // which is why this rail never renders empty.
+  useEffect(() => {
+    if (!user) {
+      setForYou(null);
+      return;
+    }
+    let alive = true;
+    get<{ courses: CourseSummary[]; source: string }>("/recommendations/for-you?limit=10")
+      .then((r) => alive && setForYou(r))
+      .catch(() => alive && setForYou(null));
+    return () => {
+      alive = false;
+    };
   }, [user]);
 
   if (error) {
@@ -249,6 +269,29 @@ export default function HomePage() {
           <Link href="/my-learning" className="btn primary">
             Open your library <ArrowRight size={13} />
           </Link>
+        </section>
+      )}
+
+      {/* For you — the same signals the reader gives by downloading, saving,
+          liking, rating and opening search results, scored by the API. */}
+      {user && forYou && forYou.courses.length > 0 && (
+        <section className="rail">
+          <div className="section-head">
+            <h2>
+              For you{" "}
+              <span className="eyebrow" style={{ marginLeft: 8 }}>
+                {forYou.source === "personalised" ? "Based on your activity" : "Popular right now"}
+              </span>
+            </h2>
+            <Link href="/browse">
+              See all <ChevronRight size={14} style={{ verticalAlign: "middle" }} />
+            </Link>
+          </div>
+          <div className="rail-row">
+            {forYou.courses.map((c) => (
+              <CourseCard key={c.id} course={c} />
+            ))}
+          </div>
         </section>
       )}
 

@@ -1,6 +1,6 @@
 # Syncourse — Agent & Search Integration Plan
 
-Status: **Phases 1–3 done** · Phase 4 next
+Status: **Phases 1–3 and the content-based half of 6 done** · Phase 4 next
 Owner: Hayredin
 Last audited: 2026-11-18
 
@@ -305,14 +305,38 @@ lesson; "quiz me" produces questions answerable from the text; a premium lesson
 is refused for a free user; quota exhaustion returns search results instead of
 an error.
 
-### Phase 6 — Recommendations & semantic search
+### Phase 6 — Recommendations & semantic search (content-based part done ✅)
 
-- [ ] Content-based recommender: tags/topics/level + quality + freshness.
-- [ ] Write `TasteProfile` weights on download/like/rate.
+- [x] Content-based recommender: category/tag/lecturer/level overlap plus
+      quality, popularity and freshness priors.
+      `apps/api/src/recommendations/recommendations.service.ts`
+- [x] Reader profile built on the fly from downloads, saves, likes, ratings
+      (4–5 positive, 1–2 negative) and recent search clicks. No denormalised
+      `TasteProfile` maintenance, so a deleted signal disappears immediately.
+- [x] Endpoints:
+      `GET /recommendations/similar/:slug` (related courses; never padded with
+      unrelated popular ones) and `GET /recommendations/for-you` (popular until
+      the reader has a profile). Both are public and use a bearer token when
+      present.
+- [x] `POST /search/click` records an opened result (one vote per reader, query
+      and course per 10 min). Ranking adds a 0.08 tie-break from clicks for the
+      same query in the last 90 days; relevance still dominates.
+- [x] Web: "More like this" on the course page, a "For you" rail on home for
+      signed-in readers, and fire-and-forget click tracking on search results.
 - [ ] Co-occurrence recommender once volume justifies it.
 - [ ] `pgvector` embeddings for semantic search and "I want to automate my
       business" queries.
-- [ ] Learn from `SearchClick`.
+
+**Acceptance met** by `npm run test:recommend -w apps/api` — 22 checks against
+the real catalogue: related cards exclude the anchor and share a subject, a
+liked course is never recommended back, cold start returns popular, a click is
+stored once, and clicks alone produce a personalised list. `npm run test:search`
+still passes 14/14 after adding the click tie-break.
+
+Why clicks are a tie-break and not a vote: a popular query can have a clear
+best answer by text relevance, and letting clicks outweigh it would let a
+bandwagon bury the exact match. 0.08 is enough to reorder near-ties (measured:
+rank 4 → 2 for "ai") without moving a course past a genuinely better result.
 
 ---
 
@@ -348,6 +372,10 @@ search results and lesson snippets. The product stays useful.
 | Files posted before the announcement | not collected (updates are not retained); use `/link`, or re-post the announcement and files |
 | A draft approved with the wrong metadata | fix it in the normal course editor afterwards; approval only creates the row, it does not freeze it |
 | Search regression | fallback path + golden-query test |
+| "For you" is empty for a new reader | falls back to the popular rail; the same courses a visitor sees without an account |
+| Recommendations turn into a popularity contest | subject overlap (category/tag/lecturer/level) outweighs the rating/download priors; "More like this" is never padded with unrelated bestsellers |
+| Clicks bury the exact match | clicks add 0.08 only, count for 90 days, and one reader+query+course can vote once per 10 minutes |
+| `SearchClick` grows without bound | low write volume; if it ever matters, keep 180 days and aggregate the rest into `TrendingQuery` |
 
 ---
 
@@ -376,6 +404,11 @@ npm run test:search -w apps/api
 npm run test:draft-parser -w apps/api
 npm run test:drafts -w apps/api        # creates and removes its own course
 npm run test:drafts -w apps/api -- --cleanup   # remove leftovers from a crashed run
+
+# 7. Recommendations + click learning
+psql "$DATABASE_URL" -f apps/api/prisma/sql/2026-11-recommendations.sql
+npm run test:recommend -w apps/api     # creates and removes its own reader
+npm run test:search -w apps/api        # ranking must still pass 14/14
 ```
 
 Draft review in Telegram: `/drafts`, `/draft <id>`, `/approve <id>`,

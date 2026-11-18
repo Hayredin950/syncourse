@@ -106,6 +106,43 @@ export class SearchService {
     return { trending: rows.map((r) => r.query) };
   }
 
+  /**
+   * A result was opened from the search page.
+   *
+   * Recording is best-effort by design: the reader is navigating to a course
+   * while this request is in flight, so a deleted course, a missing table or a
+   * cold database must not surface as an error. The click only breaks ties in
+   * ranking — it never makes an unrelated course match.
+   */
+  async recordClick(query: string, courseId: string, userId?: string) {
+    const normalized = (query || '').trim().toLowerCase().slice(0, 200);
+    if (normalized.length < 2 || !courseId) return { recorded: false };
+
+    try {
+      // A reload or a back-navigation is not a second vote. One click per
+      // (reader, query, course) per ten minutes is enough to learn the pattern.
+      if (userId) {
+        const recent = await this.prisma.searchClick.findFirst({
+          where: {
+            userId,
+            query: normalized,
+            courseId,
+            createdAt: { gte: new Date(Date.now() - 10 * 60_000) },
+          },
+          select: { id: true },
+        });
+        if (recent) return { recorded: false, duplicate: true };
+      }
+
+      await this.prisma.searchClick.create({
+        data: { query: normalized, courseId, userId: userId ?? null },
+      });
+      return { recorded: true };
+    } catch {
+      return { recorded: false };
+    }
+  }
+
   // ---------------------------------------------------------------
   // Ranked path
   // ---------------------------------------------------------------
@@ -140,6 +177,20 @@ export class SearchService {
           FROM "Course"
           WHERE "deletedAt" IS NULL
         ),
+        -- What readers actually opened for this exact query. Used only as a
+        -- tie-breaker, and only recent clicks count: a term that moved on
+        -- should not stay pinned to last year's answer.
+        clickstats AS (
+          SELECT "courseId", count(*)::float AS clicks
+          FROM "SearchClick"
+          WHERE "query" = lower(${query}::text)
+            AND "createdAt" > now() - interval '90 days'
+          GROUP BY "courseId"
+        ),
+        clickmax AS (
+          SELECT greatest(coalesce(max(clicks), 0), 1)::float AS max_clicks
+          FROM clickstats
+        ),
         matched AS (
           SELECT
             c.id,
@@ -173,10 +224,13 @@ export class SearchService {
             ) AS chunk_hit,
             c."ratingAvg"::float AS rating,
             c."downloadCount"::float AS downloads,
-            m.max_downloads
+            m.max_downloads,
+            coalesce(cs.clicks, 0) / cm.max_clicks AS click_rate
           FROM "Course" c
           CROSS JOIN q
           CROSS JOIN maxes m
+          CROSS JOIN clickmax cm
+          LEFT JOIN clickstats cs ON cs."courseId" = c.id
           WHERE c."deletedAt" IS NULL
             AND (
               to_tsvector('simple',
@@ -239,6 +293,7 @@ export class SearchService {
           + 0.10 * CASE WHEN chunk_hit THEN 1 ELSE 0 END
           + 0.10 * (rating / 5.0)
           + 0.10 * (ln(1 + downloads) / ln(1 + max_downloads))
+          + 0.08 * greatest(click_rate, 0)
         ) DESC,
         rating DESC,
         downloads DESC

@@ -1,4 +1,5 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
@@ -64,9 +65,21 @@ export class ReviewsService {
       }
     }
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
-    const review = await this.prisma.review.create({
-      data: { userId, courseId, body, containsSpoilers, parentId },
-    });
+    const review = await this.prisma.review
+      .create({ data: { userId, courseId, body, containsSpoilers, parentId } })
+      .catch((err: unknown) => {
+        // The checks above lose to two requests that land together; the partial
+        // unique indexes on Review are the final word. Translate the violation
+        // into the same sentence the check would have produced.
+        if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+          throw new BadRequestException(
+            parentId
+              ? 'You have already replied here'
+              : 'You already reviewed this course — edit your review instead',
+          );
+        }
+        throw err;
+      });
     // the client inserts this straight into the rendered list, so return the
     // same shape the course-detail endpoint does — otherwise the new card is
     // missing its stars and the reply body can't be shown until a reload

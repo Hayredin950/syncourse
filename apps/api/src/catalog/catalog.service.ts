@@ -635,6 +635,28 @@ export class CatalogService {
     }));
   }
 
+  /**
+   * Cards for a known set of ids, in the order given.
+   *
+   * Recommendations decide *which* courses belong on a rail; this decides how
+   * each one looks. Keeping the card shape here means a new field added to
+   * `summary()` appears on every surface at once instead of drifting on the
+   * recommendation rails.
+   */
+  async summariesByIds(ids: string[], userId?: string) {
+    if (ids.length === 0) return [];
+    const rows = await this.prisma.course.findMany({
+      where: { id: { in: ids }, deletedAt: null },
+      include: courseInclude,
+    });
+    const byId = new Map(rows.map((c) => [c.id, c]));
+    const ordered = ids
+      .map((id) => byId.get(id))
+      .filter((c): c is CourseWith => Boolean(c));
+    const saved = await this.savedSet(userId, ordered);
+    return ordered.map((c) => this.summary(c, saved));
+  }
+
   // ---------------------------------------------------------------
   // Helpers
   // ---------------------------------------------------------------

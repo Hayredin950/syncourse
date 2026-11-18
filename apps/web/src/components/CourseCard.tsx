@@ -190,7 +190,14 @@ export function CourseCard({
   );
 }
 
-export function CourseRow({ course }: { course: CourseSummary }) {
+export function CourseRow({
+  course,
+  onOpen,
+}: {
+  course: CourseSummary;
+  /** Fired when the row is followed — used by search to learn from choices. */
+  onOpen?: () => void;
+}) {
   const facts = [
     `${compact(course.downloadCount)} downloads`,
     formatDuration(course.durationMin),
@@ -198,6 +205,7 @@ export function CourseRow({ course }: { course: CourseSummary }) {
   return (
     <Link
       href={`/courses/${course.slug}`}
+      onClick={onOpen}
       className="flex w-full items-center gap-3 rounded-lg p-2 transition-colors hover:bg-surface-hover"
     >
       <div className="h-[72px] w-[48px] shrink-0 overflow-hidden rounded-md" style={{ position: "relative" }}>
