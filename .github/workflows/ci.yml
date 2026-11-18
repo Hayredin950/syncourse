@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      # `prisma generate` reads the schema only; no database is needed here.
+      - name: Generate Prisma client
+        run: npm run db:generate
+
+      - name: Typecheck API and web
+        run: npm run typecheck
+
+      - name: Typecheck Expo app
+        run: npx tsc --noEmit -p apps/mobile-expo/tsconfig.json
+
+      - name: Unit checks
+        run: |
+          npm run test:plans -w apps/api
+          npm run test:parser -w apps/api
+
+      - name: Build packages, API and web
+        run: npm run build

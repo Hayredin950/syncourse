@@ -22,7 +22,10 @@
     "index:names": "tsx --env-file=.env prisma/index-telegram.ts --names",
     "index:download": "tsx --env-file=.env prisma/index-telegram.ts --download",
     "index:stats": "tsx --env-file=.env prisma/index-telegram.ts --stats",
-    "test:search": "tsx --env-file=.env prisma/search-check.ts"
+    "test:search": "tsx --env-file=.env prisma/search-check.ts",
+    "test:plans": "tsx --test src/payments/plans.test.ts",
+    "test:draft-parser": "tsx src/telegram-ingest/draft-parser.test.ts",
+    "test:drafts": "tsx --env-file=.env prisma/draft-check.ts"
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"

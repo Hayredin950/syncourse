@@ -16,6 +16,23 @@ type CourseWith = Prisma.CourseGetPayload<{
   };
 }>;
 
+/** The catalogue-wide half of the home page. Identical for every visitor. */
+type HomeSnapshot = {
+  trending: CourseWith[];
+  latest: CourseWith[];
+  topRated: CourseWith[];
+  featuredPaths: Prisma.LearningPathGetPayload<{
+    include: { courses: { include: { course: true } } };
+  }>[];
+  categories: Prisma.CategoryGetPayload<{ include: { courses: true } }>[];
+  lecturers: Prisma.LecturerGetPayload<{
+    include: { _count: { select: { courseLinks: true } } };
+  }>[];
+  organizations: Prisma.OrganizationGetPayload<{
+    include: { _count: { select: { courses: true } } };
+  }>[];
+};
+
 const courseInclude = {
   level: true,
   // Ordered, because the order a course credits its teachers in is the order the
@@ -35,6 +52,13 @@ function lecturersOf(c: CourseWith) {
 
 @Injectable()
 export class CatalogService {
+  /**
+   * The home fan-out is eight catalogue-wide queries. They are identical for
+   * every visitor, so one short in-process snapshot serves the burst; only the
+   * per-viewer `saved` set is resolved afterwards.
+   */
+  private homeCache: { at: number; data: HomeSnapshot } | null = null;
+
   constructor(private readonly prisma: PrismaService) {}
 
   // ---------------------------------------------------------------
@@ -44,47 +68,8 @@ export class CatalogService {
   // ---------------------------------------------------------------
   async home(userId?: string) {
     const now = new Date();
-    const [trending, latest, topRated, featuredPaths, categories, lecturers, organizations] =
-      await Promise.all([
-        // Trending = raw download volume, tie-broken by rating then recency.
-        this.prisma.course.findMany({
-          where: { deletedAt: null },
-          orderBy: [{ downloadCount: 'desc' }, { ratingAvg: 'desc' }, { publishedAt: 'desc' }],
-          take: 20,
-          include: courseInclude,
-        }),
-        this.prisma.course.findMany({
-          where: { deletedAt: null },
-          orderBy: { publishedAt: 'desc' },
-          take: 20,
-          include: courseInclude,
-        }),
-        this.prisma.course.findMany({
-          where: { deletedAt: null, ratingCount: { gt: 0 } },
-          orderBy: [{ ratingAvg: 'desc' }, { ratingCount: 'desc' }],
-          take: 20,
-          include: courseInclude,
-        }),
-        this.prisma.learningPath.findMany({
-          orderBy: { sortOrder: 'asc' },
-          take: 10,
-          include: { courses: { include: { course: true } } },
-        }),
-        this.prisma.category.findMany({
-          orderBy: { sortOrder: 'asc' },
-          include: { courses: true },
-        }),
-        this.prisma.lecturer.findMany({
-          orderBy: { name: 'asc' },
-          take: 12,
-          include: { _count: { select: { courseLinks: true } } },
-        }),
-        this.prisma.organization.findMany({
-          orderBy: { subscribers: 'desc' },
-          take: 12,
-          include: { _count: { select: { courses: true } } },
-        }),
-      ]);
+    const { trending, latest, topRated, featuredPaths, categories, lecturers, organizations } =
+      await this.homeSnapshot();
 
     // Saved is a per-viewer fact; browser cards start in the right state when
     // this list carries it. Trending is the widest set (latest/topRated are
@@ -151,6 +136,62 @@ export class CatalogService {
         courseCount: o._count.courses,
       })),
     };
+  }
+
+  /**
+   * One 60-second snapshot of the catalogue rails. Kept deliberately short:
+   * long enough to absorb a traffic burst, short enough that an admin publish
+   * shows up while the editor is still looking at the page.
+   */
+  private async homeSnapshot(): Promise<HomeSnapshot> {
+    const now = Date.now();
+    if (this.homeCache && now - this.homeCache.at < 60_000) return this.homeCache.data;
+
+    const [trending, latest, topRated, featuredPaths, categories, lecturers, organizations] =
+      await Promise.all([
+        // Trending = raw download volume, tie-broken by rating then recency.
+        this.prisma.course.findMany({
+          where: { deletedAt: null },
+          orderBy: [{ downloadCount: 'desc' }, { ratingAvg: 'desc' }, { publishedAt: 'desc' }],
+          take: 20,
+          include: courseInclude,
+        }),
+        this.prisma.course.findMany({
+          where: { deletedAt: null },
+          orderBy: { publishedAt: 'desc' },
+          take: 20,
+          include: courseInclude,
+        }),
+        this.prisma.course.findMany({
+          where: { deletedAt: null, ratingCount: { gt: 0 } },
+          orderBy: [{ ratingAvg: 'desc' }, { ratingCount: 'desc' }],
+          take: 20,
+          include: courseInclude,
+        }),
+        this.prisma.learningPath.findMany({
+          orderBy: { sortOrder: 'asc' },
+          take: 10,
+          include: { courses: { include: { course: true } } },
+        }),
+        this.prisma.category.findMany({
+          orderBy: { sortOrder: 'asc' },
+          include: { courses: true },
+        }),
+        this.prisma.lecturer.findMany({
+          orderBy: { name: 'asc' },
+          take: 12,
+          include: { _count: { select: { courseLinks: true } } },
+        }),
+        this.prisma.organization.findMany({
+          orderBy: { subscribers: 'desc' },
+          take: 12,
+          include: { _count: { select: { courses: true } } },
+        }),
+      ]);
+
+    const data: HomeSnapshot = { trending, latest, topRated, featuredPaths, categories, lecturers, organizations };
+    this.homeCache = { at: now, data };
+    return data;
   }
 
   async categories() {
@@ -293,12 +334,14 @@ export class CatalogService {
 
     if (!course || course.deletedAt) throw new NotFoundException('Course not found');
 
-    const [ratings, reviewRows, downloadStats, myUpvotes, reviewRatings, likeCount, mine] = await Promise.all([
+    const [ratings, reviewRows, reviewTotal, downloadStats, myUpvotes, reviewRatings, likeCount, mine] = await Promise.all([
       this.prisma.rating.aggregate({ where: { courseId: course.id }, _avg: { stars: true }, _count: true }),
       this.prisma.review.findMany({
         where: { courseId: course.id, parentId: null },
         orderBy: [{ upvotes: 'desc' }, { createdAt: 'desc' }],
-        take: 12,
+        // Same page size as ReviewsService.listReviews, so "Show all" replaces
+        // the preview with an identical first page instead of dropping two rows.
+        take: 10,
         include: {
           user: { select: { name: true, avatarUrl: true, isStaff: true } },
           _count: { select: { replies: true } },
@@ -309,6 +352,9 @@ export class CatalogService {
           },
         },
       }),
+      // The preview above is capped; the page needs the real thread length to
+      // offer "Show all" instead of implying twelve is everything.
+      this.prisma.review.count({ where: { courseId: course.id, parentId: null } }),
       this.downloadStats(course.id),
       userId
         ? this.prisma.reviewUpvote.findMany({ where: { userId, review: { courseId: course.id } } })
@@ -384,6 +430,7 @@ export class CatalogService {
       liked: !!likedRow,
       likeCount,
       myRating: myRatingRow?.stars ?? 0,
+      reviewTotal,
       reviews: reviewRows.map((r) => ({
         id: r.id,
         userName: r.user.name,

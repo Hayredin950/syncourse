@@ -821,6 +821,25 @@ a.admin-tile:hover {
 }
 .admin-textarea { min-height: 74px; resize: vertical; line-height: 1.55; width: 100%; }
 .admin-select { padding-right: 26px; cursor: pointer; }
+/* Read-only values (Settings) use the field silhouette without pretending to
+   be editable: same box, quieter text, selectable for copying. */
+.admin-readonly {
+  background: var(--adm-surface);
+  border: 1px solid var(--adm-line-strong);
+  border-radius: var(--adm-r);
+  color: var(--adm-ink-2);
+  font-size: var(--adm-t-body);
+  padding: 7px 10px;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+.admin-readonly:focus-visible {
+  border-color: var(--adm-accent);
+  box-shadow: 0 0 0 3px var(--adm-accent-soft);
+  outline: none;
+}
 /* Search is the one field that may claim room, and it gives it all back on a
    phone by taking the whole toolbar row. */
 .admin-search { flex: 1 1 240px; max-width: 320px; }
@@ -1120,6 +1139,8 @@ a.admin-tile:hover {
 .admin-btn--danger:hover:not(:disabled) { background: var(--adm-bad-soft); border-color: rgba(239, 68, 68, 0.55); }
 .admin-btn--danger-solid { background: var(--adm-bad); border-color: var(--adm-bad); color: #fff; }
 .admin-btn--danger-solid:hover:not(:disabled) { background: #f05a5a; }
+.admin-btn--success-solid { background: var(--adm-good); border-color: var(--adm-good); color: #fff; }
+.admin-btn--success-solid:hover:not(:disabled) { background: #35d36c; }
 
 /* --- badges & status ------------------------------------------------------- */
 .admin-badge {

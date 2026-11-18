@@ -62,7 +62,17 @@ export class ReviewsController {
 
   @Public()
   @Get('courses/:id/reviews')
-  listReviews(@Param('id') id: string, @Query('sort') sort?: string, @Query('page') page?: string) {
-    return this.reviews.listReviews(id, (sort as 'top' | 'newest') || 'newest', page ? Number(page) : 1);
+  listReviews(
+    @Param('id') id: string,
+    @Query('sort') sort?: string,
+    @Query('page') page?: string,
+    @CurrentUser() user?: AuthUser,
+  ) {
+    return this.reviews.listReviews(
+      id,
+      (sort as 'top' | 'newest') || 'newest',
+      page ? Number(page) : 1,
+      user?.id,
+    );
   }
 }

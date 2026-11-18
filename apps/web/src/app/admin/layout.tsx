@@ -40,7 +40,19 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 }
 
 function AdminGate({ children }: { children: React.ReactNode }) {
-  const { user, token } = useAuth();
+  const { user, token, loading } = useAuth();
+
+  // Auth hydration is a client-side read of localStorage plus one /users/me
+  // call. Without this branch the gate below rendered "Staff sign-in required"
+  // for a frame on every load, even for a signed-in admin.
+  if (loading) {
+    return (
+      <div className="admin-gate" aria-busy="true" aria-live="polite">
+        <div className="admin-skeleton" style={{ width: 190, height: 12, margin: "0 auto 10px" }} />
+        <p style={{ margin: 0, fontSize: 12 }}>Checking your session…</p>
+      </div>
+    );
+  }
 
   if (!token) {
     return (

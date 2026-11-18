@@ -97,6 +97,8 @@ export interface CourseDetail extends CourseSummary {
   liked: boolean;
   likeCount: number;
   myRating: number;
+  /** Real length of the top-level thread — `reviews` is only the preview. */
+  reviewTotal: number;
   reviews: ReviewRow[];
   downloads: { total: number; last30: number; last7: number; today: number; sparkline?: number[] };
   telegramFiles: TelegramFile[];

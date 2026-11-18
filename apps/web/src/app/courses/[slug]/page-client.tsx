@@ -90,6 +90,12 @@ export function CourseDetailView({ slug }: { slug: string }) {
   const [myRating, setMyRating] = useState(0);
   const [reviewText, setReviewText] = useState("");
   const [containsSpoilers, setContainsSpoilers] = useState(false);
+  // `course.reviews` is only the first page. These track the real thread length
+  // and which page the expanded list has reached.
+  const [reviewTotal, setReviewTotal] = useState(0);
+  const [reviewPage, setReviewPage] = useState(1);
+  const [reviewsExpanded, setReviewsExpanded] = useState(false);
+  const [reviewsBusy, setReviewsBusy] = useState(false);
   const { toast, setToast } = useToast();
   const [coverBusy, setCoverBusy] = useState(false);
   const coverInputRef = useRef<HTMLInputElement>(null);
@@ -119,6 +125,7 @@ export function CourseDetailView({ slug }: { slug: string }) {
         setLiked(d.liked);
         setLikeCount(d.likeCount);
         setMyRating(d.myRating);
+        setReviewTotal(d.reviewTotal ?? d.reviews.length);
         const cat = d.categoryNames[0];
         if (cat) {
           // resolve category name -> slug (the list API filters by slug)
@@ -151,6 +158,33 @@ export function CourseDetailView({ slug }: { slug: string }) {
   const flash = (msg: string) => {
     setToast(msg);
     setTimeout(() => setToast(""), 2500);
+  };
+
+  /**
+   * Expand the review thread in place. Page 1 replaces the preview (so the
+   * order changes from "top 12" to "top 10" once), later pages append.
+   */
+  const loadReviews = async (page: number) => {
+    if (!course) return;
+    setReviewsBusy(true);
+    try {
+      const res = await get<{ total: number; page: number; reviews: ReviewRow[] }>(
+        `/courses/${course.id}/reviews?sort=top&page=${page}`,
+      );
+      setReviewTotal(res.total);
+      setReviewPage(res.page);
+      setReviewsExpanded(true);
+      setCourse((c) => {
+        if (!c) return c;
+        const keep = page === 1 ? [] : c.reviews;
+        const seen = new Set(keep.map((r) => r.id));
+        return { ...c, reviews: [...keep, ...res.reviews.filter((r) => !seen.has(r.id))] };
+      });
+    } catch {
+      flash("Could not load more reviews");
+    } finally {
+      setReviewsBusy(false);
+    }
   };
 
   const requireAuth = () => {
@@ -203,6 +237,7 @@ export function CourseDetailView({ slug }: { slug: string }) {
         containsSpoilers,
       });
       setCourse((c) => (c ? { ...c, reviews: [review, ...c.reviews] } : c));
+      setReviewTotal((n) => n + 1);
       setReviewText("");
       setContainsSpoilers(false);
       flash("Review posted");
@@ -284,6 +319,7 @@ export function CourseDetailView({ slug }: { slug: string }) {
   const onDeleteReview = async (id: string) => {
     try {
       await del(`/reviews/${id}`);
+      if (course?.reviews.some((rv) => rv.id === id)) setReviewTotal((n) => Math.max(0, n - 1));
       setCourse((c) => {
         if (!c) return c;
         const wasTopLevel = c.reviews.some((rv) => rv.id === id);
@@ -715,7 +751,7 @@ export function CourseDetailView({ slug }: { slug: string }) {
           {/* reviews — unified: stars + upvote + reply on the same card (phonofilm) */}
           <div style={{ marginTop: 25 }}>
             <div className="section-head">
-              <h2>Reviews · {course.reviews.length}</h2>
+              <h2>Reviews · {reviewTotal || course.reviews.length}</h2>
               <span className="muted" style={{ fontSize: 12 }}>
                 <span className="rating"><Star size={12} fill="currentColor" style={{ display: "inline" }} /> {course.ratings.avg.toFixed(1)}</span>
                 <span style={{ marginLeft: 6 }}>{compact(course.ratings.count)} ratings</span>
@@ -729,7 +765,7 @@ export function CourseDetailView({ slug }: { slug: string }) {
                 <p className="muted" style={{ margin: 0, fontSize: 12 }}>No reviews yet — start the thread.</p>
               </div>
             )}
-            {course.reviews.slice(0, 8).map((r) => (
+            {(reviewsExpanded ? course.reviews : course.reviews.slice(0, 8)).map((r) => (
               <ReviewCard
                 key={r.id}
                 review={r}
@@ -739,6 +775,21 @@ export function CourseDetailView({ slug }: { slug: string }) {
                 onDelete={onDeleteReview}
               />
             ))}
+            {(reviewsExpanded ? reviewTotal > course.reviews.length : reviewTotal > 8) && (
+              <button
+                type="button"
+                className="btn"
+                style={{ width: "100%", justifyContent: "center", marginTop: 10 }}
+                disabled={reviewsBusy}
+                onClick={() => void loadReviews(reviewsExpanded ? reviewPage + 1 : 1)}
+              >
+                {reviewsBusy
+                  ? "Loading reviews…"
+                  : reviewsExpanded
+                    ? `Load more reviews (${course.reviews.length} of ${reviewTotal})`
+                    : `Show all ${reviewTotal} reviews`}
+              </button>
+            )}
             </div>
 
           {/* review composer */}

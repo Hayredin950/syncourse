@@ -112,10 +112,12 @@ export default function ResourceScreen() {
   }, [slug]);
 
   const save = useCallback(
-    (item: ResourceMedia) => {
+    (item: ResourceMedia, count = true) => {
       const url = attachmentUrl(item.url);
       if (!url) return;
-      countDownload();
+      // The lightbox "save image" is a view of media already on screen, not a
+      // download of the resource; counting it inflated the ledger.
+      if (count) countDownload();
       flash(`Saving ${mediaTitle(item, "file")}…`);
       void Linking.openURL(url);
     },
@@ -585,7 +587,7 @@ export default function ResourceScreen() {
         images={images}
         index={shot}
         onClose={() => setShot(null)}
-        onSave={save}
+        onSave={(item) => save(item, false)}
       />
     </View>
   );

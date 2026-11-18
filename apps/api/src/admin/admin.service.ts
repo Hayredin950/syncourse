@@ -8,7 +8,7 @@ import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CloudinaryService, type UploadKind } from '../cloudinary/cloudinary.service';
 import { parseChatRef, TelegramService } from '../telegram/telegram.service';
-import { PLANS } from '../payments/payments.service';
+import { PLANS, premiumExpiresAt } from '../payments/plans';
 import { bumpVersion, legalTitle } from '../legal/legal.constants';
 import { matchRows } from '../common/match-rows';
 
@@ -832,11 +832,8 @@ export class AdminService {
     // granted 30 days. Remaining time is preserved (stacked), as in
     // PaymentsService.activate — resetting it silently stole paid days.
     const plan = PLANS.find((p) => p.id === sub.planName);
-    const days = plan?.durationDays ?? 30;
     const now = new Date();
-    const base =
-      sub.user.planExpiresAt && sub.user.planExpiresAt > now ? sub.user.planExpiresAt : now;
-    const expiresAt = new Date(base.getTime() + days * 24 * 60 * 60 * 1000);
+    const expiresAt = premiumExpiresAt(sub.user.planExpiresAt, sub.planName, now);
 
     const updated = await this.prisma.$transaction(async (tx) => {
       const s = await tx.subscription.update({

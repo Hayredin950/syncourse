@@ -8,16 +8,14 @@ import {
 import { timingSafeEqual } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
+import { PLANS, premiumExpiresAt } from './plans';
 
 /**
- * Fixed-duration premium plans (mirrors the reference's ETB/USD pricing):
- * direct plans do not renew automatically.
+ * Kept as a re-export so callers that import plans from the service keep
+ * working. The definitions and the expiry math live in `plans.ts` so admin
+ * approval and this service can never disagree again.
  */
-export const PLANS = [
-  { id: '1m', name: '1 Month', durationDays: 30, priceEtb: 149, priceUsd: 1.99, weeklyEtb: 35, isBestValue: false },
-  { id: '3m', name: '3 Months', durationDays: 90, priceEtb: 349, priceUsd: 3.99, weeklyEtb: 27, isBestValue: false },
-  { id: '6m', name: '6 Months', durationDays: 182, priceEtb: 549, priceUsd: 5.99, weeklyEtb: 21, isBestValue: true },
-];
+export { PLANS } from './plans';
 
 @Injectable()
 export class PaymentsService {
@@ -212,7 +210,6 @@ export class PaymentsService {
    */
   private async activate(userId: string, sub: { id: string; planName: string }): Promise<boolean> {
     const plan = PLANS.find((p) => p.id === sub.planName);
-    const days = plan?.durationDays ?? 30;
     const now = new Date();
 
     const activated = await this.prisma.$transaction(async (tx) => {
@@ -224,8 +221,7 @@ export class PaymentsService {
 
       const current = await tx.user.findUnique({ where: { id: userId } });
       // stacking: if a pass is running, add to what's left
-      const base = current?.planExpiresAt && current.planExpiresAt > now ? current.planExpiresAt : now;
-      const stacked = new Date(base.getTime() + days * 24 * 60 * 60 * 1000);
+      const stacked = premiumExpiresAt(current?.planExpiresAt, sub.planName, now);
       await tx.subscription.update({ where: { id: sub.id }, data: { periodEnd: stacked } });
       await tx.user.update({
         where: { id: userId },

@@ -174,7 +174,7 @@ export class ResourcesService {
   }
 
   /** Detail plus a short "more like this" rail, so the page is never a dead end. */
-  async detailBySlug(slug: string, userId?: string) {
+  async detailBySlug(slug: string, userId?: string, countView = true) {
     const row = await this.prisma.resource.findUnique({ where: { slug }, include: resourceInclude });
     if (!row || row.deletedAt) throw new NotFoundException('Resource not found');
 
@@ -189,10 +189,13 @@ export class ResourcesService {
     }
     const locked = row.isPremium && !premiumActive;
 
-    // Fire-and-forget: a failed counter must not fail the read.
-    this.prisma.resource
-      .update({ where: { id: row.id }, data: { viewCount: { increment: 1 } } })
-      .catch(() => undefined);
+    // Fire-and-forget: a failed counter must not fail the read. Prefetches are
+    // skipped so a crawler or a hover does not read as engagement.
+    if (countView) {
+      this.prisma.resource
+        .update({ where: { id: row.id }, data: { viewCount: { increment: 1 } } })
+        .catch(() => undefined);
+    }
 
     const related = await this.prisma.resource.findMany({
       where: {

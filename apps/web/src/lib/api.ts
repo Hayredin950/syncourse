@@ -43,6 +43,18 @@ export async function api<T>(path: string, options: RequestInit = {}): Promise<T
       if (res.ok) throw new ApiError(res.status, "The server returned an unreadable response");
     }
   }
+  // An expired/revoked token used to leave every page on "Something went wrong
+  // (401)" with no way forward. If we sent a token and the server rejected it,
+  // the session is over: drop it and send the reader to sign in, keeping the
+  // current page as the return target. Login failures never reach this branch
+  // because they carry no token.
+  if (res.status === 401 && token && typeof window !== "undefined") {
+    setToken(null);
+    const here = window.location.pathname + window.location.search;
+    if (!here.startsWith("/auth")) {
+      window.location.assign(`/auth?next=${encodeURIComponent(here)}`);
+    }
+  }
   if (!res.ok) {
     const message =
       data?.message && typeof data.message === "string"

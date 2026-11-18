@@ -8,6 +8,7 @@ import { Press } from "../components/Press";
 import { SkRows } from "../components/Skeleton";
 import { Text } from "../components/Type";
 import * as api from "../lib/api";
+import { safeInternalPath } from "../lib/links";
 import { colors, radius } from "../lib/tokens";
 import { plural } from "../lib/types";
 
@@ -109,7 +110,9 @@ export default function NotificationsScreen() {
           body="Reminders about your courses, and any document that needs re-accepting, land here."
         />
       }
-      renderItem={({ item }) => (
+      renderItem={({ item }) => {
+        const target = safeInternalPath(item.deepLink);
+        return (
         <View style={[styles.card, !item.read && styles.unread]}>
           <View style={styles.cardTop}>
             <View style={[styles.icon, !item.read && styles.iconOn]}>
@@ -127,10 +130,10 @@ export default function NotificationsScreen() {
           </View>
           <Text style={styles.cardBody}>{item.body}</Text>
           {/* Was a bare "Open →" text link: 13px of type for a tap target. */}
-          {!!item.deepLink && (
+          {!!target && (
             <Press
               style={styles.open}
-              onPress={() => router.push(item.deepLink as never)}
+              onPress={() => router.push(target as never)}
               accessibilityLabel={`Open: ${item.title}`}
             >
               <Text style={styles.openLabel}>Open</Text>
@@ -138,7 +141,8 @@ export default function NotificationsScreen() {
             </Press>
           )}
         </View>
-      )}
+        );
+      }}
     />
   );
 }

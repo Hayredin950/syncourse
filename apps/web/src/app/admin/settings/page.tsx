@@ -1,35 +1,40 @@
-"use client";
-
-import { useState } from "react";
 import { Info } from "lucide-react";
-import { useAdminToast } from "@/components/admin/AdminToast";
 
 /**
  * Site-wide configuration.
  *
- * Everything here is display-only for now: the real values live in the API's
- * environment (Telebirr number, crypto wallets, plan prices), so this screen
- * says so plainly instead of pretending Save writes anywhere.
+ * These values live in the API's environment (Telebirr number, crypto wallets,
+ * support address, plan prices). This screen is deliberately read-only: the
+ * previous version offered editable inputs whose Save button could not persist
+ * anything, which is worse than showing the truth. When a config store exists,
+ * this page can become its editor.
  */
+const SETTINGS = {
+  telegramBot: "@syncourse_bot",
+  telebirrNumber: "09 11 22 33 44",
+  cryptoNote: "USDT, BTC, ETH and more — checkout on OxaPay's secure page",
+  supportEmail: "support@syncourse.app",
+};
+
 const PLANS = [
   { name: "1 Month", days: 30, price: "$1.99", badge: null },
   { name: "3 Months", days: 90, price: "$3.99", badge: null },
   { name: "6 Months", days: 182, price: "$5.99", badge: "Best value" },
 ];
 
-export default function AdminSettings() {
-  const toast = useAdminToast();
-  const [telegramBot, setTelegramBot] = useState("@syncourse_bot");
-  const [telebirrNumber, setTelebirrNumber] = useState("09 11 22 33 44");
-  const [cryptoNote, setCryptoNote] = useState(
-    "USDT, BTC, ETH and more — checkout on OxaPay's secure page",
+function Value({ label, value, hint }: { label: string; value: string; hint?: string }) {
+  return (
+    <div className="admin-field">
+      <span className="admin-label">{label}</span>
+      <div className="admin-readonly" tabIndex={0} aria-label={label}>
+        {value}
+      </div>
+      {hint && <span className="admin-field__hint">{hint}</span>}
+    </div>
   );
-  const [supportEmail, setSupportEmail] = useState("support@syncourse.app");
+}
 
-  const save = () => {
-    toast.info("Not saved — these values come from the API environment, not a config store");
-  };
-
+export default function AdminSettings() {
   return (
     <div>
       <div className="admin-page-head">
@@ -39,18 +44,13 @@ export default function AdminSettings() {
             Configuration shown to users on the Premium page and in support flows.
           </p>
         </div>
-        <div className="admin-page-head__actions">
-          <button type="button" className="admin-btn admin-btn--primary" onClick={save}>
-            Save settings
-          </button>
-        </div>
       </div>
 
       <div className="admin-notice" style={{ marginBottom: 14 }}>
         <Info size={14} />
         <span>
-          <strong>These fields are not persisted yet.</strong> The live values are read from the API&rsquo;s environment
-          variables on Render — editing here changes what you see on this screen and nothing else.
+          <strong>Read-only.</strong> These values come from the API&rsquo;s environment variables, so changing them
+          needs a deployment — not an edit here. This screen shows what is actually live.
         </span>
       </div>
 
@@ -58,46 +58,24 @@ export default function AdminSettings() {
         <div className="admin-card">
           <h3>Payments</h3>
           <div className="admin-form-grid" style={{ gridTemplateColumns: "minmax(0, 1fr)", marginBottom: 0 }}>
-            <label className="admin-field">
-              <span className="admin-label">Telebirr account shown to users</span>
-              <input
-                className="admin-input admin-input--full"
-                value={telebirrNumber}
-                onChange={(e) => setTelebirrNumber(e.target.value)}
-              />
-            </label>
-            <label className="admin-field">
-              <span className="admin-label">Crypto note</span>
-              <input
-                className="admin-input admin-input--full"
-                value={cryptoNote}
-                onChange={(e) => setCryptoNote(e.target.value)}
-              />
-              <span className="admin-field__hint">Shown under the OxaPay checkout button.</span>
-            </label>
+            <Value label="Telebirr account shown to users" value={SETTINGS.telebirrNumber} />
+            <Value
+              label="Crypto note"
+              value={SETTINGS.cryptoNote}
+              hint="Shown under the OxaPay checkout button."
+            />
           </div>
         </div>
 
         <div className="admin-card">
           <h3>Support</h3>
           <div className="admin-form-grid" style={{ gridTemplateColumns: "minmax(0, 1fr)", marginBottom: 0 }}>
-            <label className="admin-field">
-              <span className="admin-label">Support email</span>
-              <input
-                className="admin-input admin-input--full"
-                value={supportEmail}
-                onChange={(e) => setSupportEmail(e.target.value)}
-              />
-            </label>
-            <label className="admin-field">
-              <span className="admin-label">Telegram bot</span>
-              <input
-                className="admin-input admin-input--full"
-                value={telegramBot}
-                onChange={(e) => setTelegramBot(e.target.value)}
-              />
-              <span className="admin-field__hint">Handles downloads and payment notifications.</span>
-            </label>
+            <Value label="Support email" value={SETTINGS.supportEmail} />
+            <Value
+              label="Telegram bot"
+              value={SETTINGS.telegramBot}
+              hint="Handles downloads and payment notifications."
+            />
           </div>
         </div>
       </div>

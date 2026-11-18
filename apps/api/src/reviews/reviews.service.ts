@@ -155,7 +155,12 @@ export class ReviewsService {
     return { deleted: true, id: reviewId, repliesRemoved: review._count.replies };
   }
 
-  async listReviews(courseIdOrSlug: string, sort: 'top' | 'newest' = 'newest', page = 1) {
+  async listReviews(
+    courseIdOrSlug: string,
+    sort: 'top' | 'newest' = 'newest',
+    page = 1,
+    userId?: string,
+  ) {
     const course = await this.findCourse(courseIdOrSlug);
     if (!course) throw new NotFoundException('Course not found');
     const courseId = course.id;
@@ -165,7 +170,7 @@ export class ReviewsService {
     const safePage = Number.isFinite(page) ? Math.max(Math.trunc(page), 1) : 1;
     const skip = (safePage - 1) * take;
     const where = { courseId, parentId: null };
-    const [rows, total] = await Promise.all([
+    const [rows, total, myUpvotes, reviewRatings] = await Promise.all([
       this.prisma.review.findMany({
         where,
         orderBy:
@@ -184,7 +189,23 @@ export class ReviewsService {
         },
       }),
       this.prisma.review.count({ where }),
+      // The public list used to omit the viewer's own state, so "Show all"
+      // rendered cards whose upvote buttons looked untouched and whose edit
+      // controls were missing. These two reads make the expanded list identical
+      // to the preview the detail endpoint returns.
+      userId
+        ? this.prisma.reviewUpvote.findMany({
+            where: { userId, review: { courseId } },
+            select: { reviewId: true },
+          })
+        : Promise.resolve([]),
+      this.prisma.rating.findMany({
+        where: { courseId },
+        select: { userId: true, stars: true },
+      }),
     ]);
+    const upvotedIds = new Set(myUpvotes.map((u) => u.reviewId));
+    const ratingByUser = new Map(reviewRatings.map((r) => [r.userId, r.stars]));
     return {
       total,
       page: safePage,
@@ -198,11 +219,16 @@ export class ReviewsService {
         editedAt: r.editedAt,
         createdAt: r.createdAt,
         replyCount: r._count.replies,
+        rating: ratingByUser.get(r.userId) ?? 0,
+        upvotes: r.upvotes,
+        upvoted: upvotedIds.has(r.id),
+        mine: !!userId && r.userId === userId,
         replies: r.replies.map((rep) => ({
           id: rep.id,
           userName: rep.user.name,
           userAvatar: rep.user.avatarUrl,
           isStaff: rep.user.isStaff,
+          rating: ratingByUser.get(rep.userId) ?? 0,
           body: rep.body,
           createdAt: rep.createdAt,
         })),

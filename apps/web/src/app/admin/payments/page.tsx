@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { BadgeCheck, Check, CheckCheck, CreditCard, Search } from "lucide-react";
+import { BadgeCheck, CheckCheck, CreditCard, Search } from "lucide-react";
 import { get, patch } from "@/lib/api";
 import type { AdminPaymentRow } from "@/lib/types";
 import { formatDate } from "@/lib/format";
@@ -188,14 +188,23 @@ export default function AdminPayments() {
             </div>
             {p.status === "pending" && (
               <div className="admin-row__actions">
-                <button
-                  type="button"
+                <ConfirmButton
+                  label={busyId === p.id ? "Working…" : "Approve"}
+                  question={
+                    `Approve ${p.user.name}'s ${p.planName.replace(/_/g, " ")} payment of ` +
+                    `${p.amount.toLocaleString("en-US")} ${p.currency}?` +
+                    ([p.txReference, ...p.references.map((r) => r.reference)].filter(Boolean).length
+                      ? ` Reference ${[p.txReference, ...p.references.map((r) => r.reference)].filter(Boolean).join(" · ")}.`
+                      : "") +
+                    " Premium is granted immediately; there is no undo here."
+                  }
+                  confirmLabel="Yes, approve"
+                  busy={busyId === p.id}
+                  icon={false}
                   className="admin-btn admin-btn--success admin-btn--sm"
-                  disabled={busyId === p.id}
-                  onClick={() => review(p, "approved")}
-                >
-                  <Check size={13} /> {busyId === p.id ? "Working…" : "Approve"}
-                </button>
+                  confirmClassName="admin-btn admin-btn--success-solid"
+                  onConfirm={() => review(p, "approved")}
+                />
                 <ConfirmButton
                   label="Reject"
                   question="Reject this payment?"

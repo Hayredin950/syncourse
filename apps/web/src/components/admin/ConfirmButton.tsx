@@ -20,6 +20,7 @@ export default function ConfirmButton({
   busy = false,
   icon = true,
   className = "admin-btn admin-btn--danger",
+  confirmClassName = "admin-btn admin-btn--danger-solid",
   disabled = false,
   ariaLabel,
 }: {
@@ -30,6 +31,8 @@ export default function ConfirmButton({
   busy?: boolean;
   icon?: boolean;
   className?: string;
+  /** The armed-state action. Defaults to the destructive red. */
+  confirmClassName?: string;
   disabled?: boolean;
   /** Required when `label` is empty — an icon-only button needs a name. */
   ariaLabel?: string;
@@ -72,7 +75,7 @@ export default function ConfirmButton({
       <span className="admin-confirm__ask">{question}</span>
       <button
         type="button"
-        className="admin-btn admin-btn--danger-solid admin-btn--sm"
+        className={`${confirmClassName} admin-btn--sm`}
         disabled={busy}
         autoFocus
         onClick={async () => {
