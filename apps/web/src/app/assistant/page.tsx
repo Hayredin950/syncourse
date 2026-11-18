@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import Link from "next/link";
 import { ApiError, get, post } from "@/lib/api";
+import { useAuth } from "@/lib/auth";
 import { MobileHeader } from "@/components/Nav";
 import styles from "./assistant.module.css";
 
@@ -46,7 +47,28 @@ interface Answer {
 
 type Turn =
   | { role: "user"; content: string }
-  | { role: "assistant"; content: string; answer: Answer };
+  | { role: "assistant"; content: string; answer?: Answer; proposal?: Proposal; action?: ActionResult };
+
+/** A write the assistant is asking permission to perform. */
+interface Proposal {
+  kind: string;
+  summary: string;
+  token: string | null;
+  reply?: string;
+}
+
+interface ActionResult {
+  ok: boolean;
+  message: string;
+  url?: string;
+}
+
+/** What the admin "Actions" mode accepts. Shown as examples, not a form. */
+const ACTION_SUGGESTIONS = [
+  'create course "Flutter Bootcamp" by Stephen Grider',
+  "create resource Figma shortcuts | 40 keyboard shortcuts | cheat-sheet",
+  "publish draft ab12cd34",
+];
 
 /** Sent back to the API as context; the server keeps the last eight. */
 interface HistoryTurn {
@@ -104,6 +126,9 @@ function readThread(): StoredThread | null {
 }
 
 export default function AssistantPage() {
+  const { user } = useAuth();
+  const canAct = Boolean(user?.isStaff);
+  const [mode, setMode] = useState<"ask" | "do">("ask");
   const [status, setStatus] = useState<Status | null>(null);
   const [question, setQuestion] = useState("");
   const [courseSlug, setCourseSlug] = useState<string | null>(null);
@@ -222,6 +247,82 @@ export default function AssistantPage() {
     [commitTurns, courseSlug],
   );
 
+  /**
+   * Ask the write path for a proposal. Nothing is written here: the response is
+   * a summary and a signed token, and only `confirmAction` spends it.
+   */
+  const propose = useCallback(
+    async (text: string) => {
+      const clean = text.replace(/\s+/g, " ").trim();
+      if (clean.length < 3 || pendingRef.current) return;
+
+      pendingRef.current = true;
+      setPending(true);
+      setError(null);
+      setFailedQuestion(null);
+      setQuestion("");
+      commitTurns([...turnsRef.current, { role: "user", content: clean }]);
+
+      try {
+        const proposal = await post<Proposal>("/assistant/actions/propose", { instruction: clean });
+        commitTurns([
+          ...turnsRef.current,
+          { role: "assistant", content: proposal.reply ?? proposal.summary, proposal },
+        ]);
+      } catch (err) {
+        setFailedQuestion(clean);
+        setError(
+          err instanceof ApiError
+            ? err.message
+            : "Could not prepare that action. Check the syntax and try again.",
+        );
+      } finally {
+        pendingRef.current = false;
+        setPending(false);
+      }
+    },
+    [commitTurns],
+  );
+
+  /** Execute exactly the proposal the operator confirmed. */
+  const confirmAction = useCallback(
+    async (turnIndex: number, token: string) => {
+      if (pendingRef.current) return;
+      pendingRef.current = true;
+      setPending(true);
+      setError(null);
+      try {
+        const result = await post<ActionResult>("/assistant/actions/confirm", { token });
+        const cleared = turnsRef.current.map((turn, i) =>
+          i === turnIndex && turn.role === "assistant" ? { ...turn, proposal: undefined } : turn,
+        );
+        commitTurns([...cleared, { role: "assistant", content: result.message, action: result }]);
+      } catch (err) {
+        setError(
+          err instanceof ApiError
+            ? err.message
+            : "That action did not complete. Nothing was changed.",
+        );
+      } finally {
+        pendingRef.current = false;
+        setPending(false);
+      }
+    },
+    [commitTurns],
+  );
+
+  const cancelAction = useCallback(
+    (turnIndex: number) => {
+      commitTurns(turnsRef.current.filter((_, i) => i !== turnIndex));
+    },
+    [commitTurns],
+  );
+
+  const run = useCallback(
+    (text: string) => (mode === "do" && canAct ? propose(text) : ask(text)),
+    [ask, canAct, mode, propose],
+  );
+
   // A link that arrives with a question asks it once. Waiting for `/status`
   // keeps a disabled assistant from showing an avoidable error.
   useEffect(() => {
@@ -238,6 +339,7 @@ export default function AssistantPage() {
   }, [turns.length, pending]);
 
   const disabled = status !== null && !status.enabled;
+  const inputDisabled = mode === "do" ? !canAct : disabled;
 
   const newChat = () => {
     commitTurns([]);
@@ -296,7 +398,7 @@ export default function AssistantPage() {
           )}
         </header>
 
-        {courseSlug && (
+        {courseSlug && mode === "ask" && (
           <div className={styles.scope}>
             <span>
               Answering inside{" "}
@@ -310,15 +412,46 @@ export default function AssistantPage() {
           </div>
         )}
 
+        {canAct && (
+          <div className={styles.modeBar}>
+            <button
+              type="button"
+              className={`${styles.modeBtn} ${mode === "ask" ? styles.modeBtnOn : ""}`}
+              onClick={() => setMode("ask")}
+              aria-pressed={mode === "ask"}
+            >
+              Ask
+            </button>
+            <button
+              type="button"
+              className={`${styles.modeBtn} ${mode === "do" ? styles.modeBtnOn : ""}`}
+              onClick={() => setMode("do")}
+              aria-pressed={mode === "do"}
+            >
+              Add to catalogue
+            </button>
+            <span className={styles.modeHint}>
+              {mode === "do"
+                ? "Writes ask for confirmation first."
+                : "Read-only answers from the catalogue."}
+            </span>
+          </div>
+        )}
+
         {turns.length === 0 && !pending && (
           <section className={styles.suggestions} aria-label="Example questions">
-            {(courseSlug ? SCOPED_SUGGESTIONS : SUGGESTIONS).map((s) => (
+            {(mode === "do" && canAct
+              ? ACTION_SUGGESTIONS
+              : courseSlug
+                ? SCOPED_SUGGESTIONS
+                : SUGGESTIONS
+            ).map((s) => (
               <button
                 key={s}
                 type="button"
                 className={styles.chip}
-                onClick={() => void ask(s)}
-                disabled={disabled}
+                onClick={() => void run(s)}
+                disabled={mode === "ask" && disabled}
               >
                 {s}
               </button>
@@ -333,7 +466,13 @@ export default function AssistantPage() {
                 <p className={styles.userText}>{turn.content}</p>
               </div>
             ) : (
-              <AnswerCard key={i} answer={turn.answer} turnIndex={i} />
+              <AssistantTurn
+                key={i}
+                turn={turn}
+                turnIndex={i}
+                onConfirm={confirmAction}
+                onCancel={cancelAction}
+              />
             ),
           )}
 
@@ -342,7 +481,7 @@ export default function AssistantPage() {
               <div className={styles.result}>
                 <p className={styles.thinking}>
                   <span className={styles.dot} />
-                  Reading the course transcripts…
+                  {mode === "do" ? "Checking what that would write…" : "Reading the course transcripts…"}
                 </p>
               </div>
             </div>
@@ -361,7 +500,7 @@ export default function AssistantPage() {
           </div>
         )}
 
-        {turns.length > 0 && !pending && !error && (
+        {turns.length > 0 && !pending && !error && mode === "ask" && (
           <div className={styles.followUps}>
             {FOLLOW_UPS.map((s) => (
               <button key={s} type="button" className={styles.chip} onClick={() => void ask(s)}>
@@ -375,11 +514,11 @@ export default function AssistantPage() {
           className={styles.composer}
           onSubmit={(e) => {
             e.preventDefault();
-            void ask(question);
+            void run(question);
           }}
         >
           <label className={styles.srOnly} htmlFor="assistant-question">
-            {turns.length > 0 ? "Ask a follow-up" : "Your question"}
+            {mode === "do" ? "What should I add?" : turns.length > 0 ? "Ask a follow-up" : "Your question"}
           </label>
           <textarea
             id="assistant-question"
@@ -390,24 +529,32 @@ export default function AssistantPage() {
             onKeyDown={(e) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
-                void ask(question);
+                void run(question);
               }
             }}
             rows={turns.length > 0 ? 2 : 3}
-            maxLength={500}
-            placeholder={turns.length > 0 ? "Ask a follow-up…" : "What do you want to learn or check?"}
-            disabled={disabled}
+            maxLength={mode === "do" ? 600 : 500}
+            placeholder={
+              mode === "do"
+                ? 'create course "Title" by Instructor'
+                : turns.length > 0
+                  ? "Ask a follow-up…"
+                  : "What do you want to learn or check?"
+            }
+            disabled={inputDisabled}
           />
           <div className={styles.actions}>
             <span className={styles.meta}>
-              {question.length}/500 · Enter to send · Shift + Enter for a new line
+              {mode === "do"
+                ? "Writes are confirmed before they run"
+                : `${question.length}/500 · Enter to send · Shift + Enter for a new line`}
             </span>
             <button
               type="submit"
               className={styles.button}
-              disabled={pending || disabled || question.trim().length < 3}
+              disabled={pending || inputDisabled || question.trim().length < 3}
             >
-              {pending ? "Reading…" : turns.length > 0 ? "Follow up" : "Ask"}
+              {pending ? (mode === "do" ? "Preparing…" : "Reading…") : mode === "do" ? "Prepare" : turns.length > 0 ? "Follow up" : "Ask"}
             </button>
           </div>
         </form>
@@ -418,6 +565,86 @@ export default function AssistantPage() {
         </p>
       </div>
     </main>
+  );
+}
+
+/**
+ * One assistant turn. Answers keep their sources; a write proposal is a card
+ * with Confirm/Cancel, and a completed write is a short receipt.
+ */
+function AssistantTurn({
+  turn,
+  turnIndex,
+  onConfirm,
+  onCancel,
+}: {
+  turn: Extract<Turn, { role: "assistant" }>;
+  turnIndex: number;
+  onConfirm: (turnIndex: number, token: string) => void;
+  onCancel: (turnIndex: number) => void;
+}) {
+  if (turn.answer) return <AnswerCard answer={turn.answer} turnIndex={turnIndex} />;
+
+  if (turn.action) {
+    return (
+      <div className={`${styles.turn} ${styles.turnAssistant}`}>
+        <div className={styles.result}>
+          <div className={styles.answerHead}>
+            <span className={styles.badge}>Done</span>
+          </div>
+          <p className={styles.answer}>{turn.action.message}</p>
+          {turn.action.url && (
+            <Link href={turn.action.url} className={styles.inlineLink}>
+              Open it →
+            </Link>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  if (turn.proposal) {
+    return (
+      <div className={`${styles.turn} ${styles.turnAssistant}`}>
+        <div className={styles.result}>
+          <div className={styles.answerHead}>
+            <span className={styles.badge}>{turn.proposal.token ? "Needs confirmation" : "How to phrase it"}</span>
+          </div>
+          <p className={styles.answer} style={{ whiteSpace: "pre-wrap" }}>
+            {turn.proposal.token ? turn.proposal.summary : turn.proposal.reply}
+          </p>
+          {turn.proposal.token && (
+            <>
+              <div className={styles.confirmRow}>
+                <button
+                  type="button"
+                  className={styles.button}
+                  onClick={() => onConfirm(turnIndex, turn.proposal!.token!)}
+                >
+                  Confirm
+                </button>
+                <button type="button" className={styles.ghostButton} onClick={() => onCancel(turnIndex)}>
+                  Cancel
+                </button>
+              </div>
+              <p className={styles.meta}>
+                Nothing is written until you confirm. The confirmation expires in 10 minutes.
+              </p>
+            </>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className={`${styles.turn} ${styles.turnAssistant}`}>
+      <div className={styles.result}>
+        <div className={styles.answer}>
+          <p>{turn.content}</p>
+        </div>
+      </div>
+    </div>
   );
 }
 

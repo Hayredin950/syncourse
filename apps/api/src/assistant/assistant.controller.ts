@@ -5,7 +5,9 @@ import { Public } from '../common/public.decorator';
 import { CurrentUser } from '../common/current-user.decorator';
 import { AuthUser } from '../common/jwt-auth.guard';
 import { AssistantService } from './assistant.service';
+import { AssistantActionsService } from './actions.service';
 import { AskDto } from './dto/ask.dto';
+import { ConfirmActionDto, ProposeActionDto } from './dto/action.dto';
 
 /**
  * The assistant is readable by anyone: a visitor deciding whether to sign up is
@@ -39,5 +41,29 @@ export class AssistantController {
       ip: forwarded || req?.ip,
       history: dto.history,
     });
+  }
+}
+
+/**
+ * Write path. Deliberately a separate controller so it cannot inherit the
+ * `@Public()` above: a signed-in staff member is required for every call, and
+ * the confirmation is a second, separately signed request.
+ */
+@Controller('assistant/actions')
+export class AssistantActionsController {
+  constructor(private readonly actions: AssistantActionsService) {}
+
+  @Post('propose')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  propose(@Body() dto: ProposeActionDto, @CurrentUser() user: AuthUser) {
+    return this.actions.propose(user.id, dto.instruction);
+  }
+
+  @Post('confirm')
+  @HttpCode(200)
+  @Throttle({ default: { limit: 10, ttl: 60_000 } })
+  confirm(@Body() dto: ConfirmActionDto, @CurrentUser() user: AuthUser) {
+    return this.actions.confirm(user.id, dto.token);
   }
 }

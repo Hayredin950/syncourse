@@ -113,6 +113,14 @@ A course the watcher believes it found, before it touches the catalog.
 `payload` holds the parsed course; `status` is `pending | approved | discarded |
 failed`. Approval calls the existing importer/admin service.
 
+The payload is versioned by convention (`payload.version = 1`) and gained
+`kind` (`course | resource`), `images[]` (`cover | lecturer | organization`,
+with Telegram `file_id`s), `fields` (explicit operator overrides such as
+`org`, `level`, `price`), and `autoPublished`. An auto-published draft stays
+`approved` and keeps accepting files for 12 hours; `approvedCourseId` holds the
+course id, while a resource stores its slug in `payload.approvedCourseSlug`
+only. This needed **no schema change** — additive JSON, no `prisma db push`.
+
 ### `SearchClick`
 
 `(query, courseId, userId, createdAt)` — ranking feedback and future
@@ -218,31 +226,68 @@ Notes:
       `fileName + fileSizeMb`, and approval is idempotent.
 - [x] Approve / Discard via bot inline buttons, `/drafts`, `/approve <id>`,
       `/discard <id>`, and `/admin/drafts` in the web console.
+      The card also has **✏️ Fix a field**: tap a field, type the answer (or
+      send a photo for the cover / lecturer / logo), and the card updates in
+      place. Nothing is reposted.
 - [x] Approval writes Course + `TelegramCourseLink` rows, keeps `file_id` for
       delivery, creates the lecturer, links categories and hashtags, and
-      preserves module order and part numbers. Fields can still be edited
-      afterwards in the normal course editor.
+      preserves module order and part numbers. Description, cover, lecturer
+      photo and bio, organisation (+ logo), level, price, type and tags come
+      from the post when present. Fields can still be edited afterwards in the
+      normal course editor.
+- [x] Resources: a post starting with `resource: Title`, or carrying
+      `resource: roadmap`, becomes a `Resource` + `ResourceMedia` instead of a
+      course. Approval reuses the same card and the same tap-to-fix fields.
+- [x] Auto-publish when the post is complete: title, lecturer, description of
+      at least 80 characters, at least one file, confidence ≥ 0.7, and no
+      existing course with the same slug. A resource needs a body of 60
+      characters or an attachment. The draft row is kept for audit; the review
+      card turns into the receipt. `TELEGRAM_AUTOPUBLISH=false` is the kill
+      switch. Files keep joining an auto-published course for 12 hours, and a
+      later approval appends only the new parts.
 - [x] Discarding keeps the row (`status = discarded`), so the same post is
       never proposed twice.
-- [x] No auto-publish. `TELEGRAM_WATCHER_ENABLED=false` is the kill switch.
 
-**Acceptance met** by `npm run test:drafts -w apps/api` — 27 checks covering
+**Posting recipe — no markers, no ceremony:**
+
+| You post | The watcher reads |
+|---|---|
+| the normal announcement | title, description, lecturer(s), hours, lessons, price, hashtags |
+| `org: Udemy` | organisation (+ created once) |
+| `category: mobile-development, design` | categories, created when missing |
+| `level: Intermediate` · `price: 49` · `type: mini-course` | the matching fields |
+| `tags: flutter, dart` · `description: …` | tags and a description override |
+| a photo with no caption (first one) | cover |
+| a photo captioned `lecturer` / `lecturer: Name` | lecturer photo (+ name if new) |
+| a photo captioned `org: Udemy` | organisation logo |
+| `resource: Figma shortcuts` + body/files | a Resource, not a Course |
+| the ZIPs | course parts, grouped into modules by filename |
+
+Every `field: value` line is removed from the prose before the announcement
+parser runs, so it never leaks into the description. `#description` on its own
+line takes the following paragraph; a known key on any line ends it.
+
+**Acceptance met** by `npm run test:drafts -w apps/api` — 54 checks covering
 detection, redelivery, file attach, module/part numbering, duplicate files,
-approval, second approval, discard, and cleanup. `npm run test:draft-parser`
-adds 30 pure assertions.
+approval, second approval, discard, explicit field overrides, auto-publish,
+late-file append, resource creation and resource media. The pure suites add
+`test:draft-fields` (32) and `test:draft-parser` (30 assertions).
 
-What the watcher is *not*: it does not read ZIP contents, cannot fix a title
-that the announcement template got wrong, and will not recognise a course
-posted as free-form prose. Those wait for approval, by design.
+What the watcher is *not*: it does not read inside ZIPs, cannot tell a course
+from a podcast by itself (use `resource:`), and will not repair a post whose
+template is unrecognisable — that is what the tap-to-fix card is for.
 
 Draft flow:
 
 ```
 announcement post ──▶ IngestDraft(pending) ──▶ bot card + /admin/drafts
-ZIP posts        ──▶ payload.files[]      ──┐
-                                             ▼
-                          ✅ Approve ─▶ Course + TelegramCourseLink[]
-                          🗑 Discard ─▶ audit row, never proposed again
+photos            ──▶ payload.images[]     ──┤
+ZIP posts         ──▶ payload.files[]      ──┤
+                                            ▼
+        complete? ──▶ ✅ auto-publish ──▶ Course + TelegramCourseLink[]
+        otherwise ──▶ ✅ Approve ────────▶ same, when a human taps
+                      ✏️ Fix a field ─────▶ payload updated in place
+                      🗑 Discard ─────────▶ audit row, never proposed again
 ```
 
 ### Phase 4 — Large-file worker (built ✅, waiting for the two Telegram keys)
@@ -298,6 +343,10 @@ GET  /api/assistant/status      { enabled, mode, provider, model, dailyCap }
 POST /api/assistant/ask         { question, courseSlug?, history? }
      -> { answer, mode: llm | extractive, provider, notice,
           citations[], courses[], premiumActive }
+POST /api/assistant/actions/propose   (staff) { instruction }
+     -> { kind, summary, fields, token, reply? }
+POST /api/assistant/actions/confirm   (staff) { token }
+     -> { ok, kind, message, slug, url }
 ```
 
 `history` is the client-owned thread (`[{ role, content }]`, last 8 turns kept).
@@ -320,14 +369,43 @@ Rules, all enforced in code:
 - Budget: 8 questions/minute per IP (in-process), plus a durable per-day cap of
   25 anonymous / 150 signed-in, stored in `AssistantUsage`. The in-memory burst
   guard alone would reset on every serverless instance.
-- No write actions: the assistant can only read and suggest.
+- Read and write are separate permissions. `/assistant/ask` stays read-only;
+  a staff account gets a second mode backed by
+  `POST /assistant/actions/propose` and `POST /assistant/actions/confirm`.
+
+### Assistant write mode (staff only)
+
+The **Ask / Add to catalogue** switch on `/assistant` is visible only to a
+`isStaff` account. Sentences are parsed deterministically — no model chooses
+what gets written:
+
+```
+create course Title | Instructor | Category | price | type | description
+create course "Title" by Instructor
+create resource Title | body | roadmap
+attach https://t.me/group/123 to course-slug
+publish draft ab12cd34
+```
+
+`propose` validates the instruction against the catalogue and returns a
+human summary plus an HMAC-signed token (10 minutes, bound to the user id).
+Nothing is written. `confirm` verifies the token, re-checks that the caller is
+staff, and executes exactly the summarised action. An unrecognised sentence
+returns the grammar instead of guessing; a course title, an instructor and a
+price are data, and a creative reinterpretation of them is a bug.
+
+Writes reuse the existing pipelines: `attach` calls the bot's
+`attachFromMessageLink`, `publish` calls `IngestDraftService.approve`, so an
+action from chat produces exactly what the same action in Telegram would.
 
 Frontend: `/assistant` is a threaded chat, not a one-shot box. Each answer keeps
 its sources and courses, `[n]` references jump to the cited file, follow-ups
 carry the thread back to the API, and the thread survives a reload in
-`sessionStorage`. The search page hands its query over with `?q=`; a course page
-opens it scoped with `?course=`. It is reachable from the desktop **Ask** pill,
-the mobile header icon and the Me menu — not only by typing the URL.
+`sessionStorage`. In write mode the same composer prepares a proposal card with
+**Confirm / Cancel** and then a receipt linking to the new page. The search page
+hands its query over with `?q=`; a course page opens it scoped with `?course=`.
+It is reachable from the desktop **Ask** pill, the mobile header icon and the Me
+menu — not only by typing the URL.
 
 **Acceptance met** by `npm run test:assistant -w apps/api` — 48 checks against
 the real catalogue and a temporary premium course + member, both deleted in
@@ -456,7 +534,8 @@ npx tsx --env-file=apps/api/.env apps/api/prisma/large-file-worker.ts --limit 3
 
 # 6. Draft watcher — pure rules, then the full DB round-trip
 npm run test:draft-parser -w apps/api
-npm run test:drafts -w apps/api        # creates and removes its own course
+npm run test:draft-fields -w apps/api  # field lines, photo roles, auto-publish gate
+npm run test:drafts -w apps/api        # creates and removes its own course + resource
 npm run test:drafts -w apps/api -- --cleanup   # remove leftovers from a crashed run
 
 # 7. Recommendations + click learning
@@ -466,18 +545,21 @@ npm run test:search -w apps/api        # ranking must still pass 14/14
 
 # 8. Assistant
 psql "$DATABASE_URL" -f apps/api/prisma/sql/2026-11-assistant.sql
+npm run test:actions -w apps/api       # write-mode grammar, pure
 npm run test:assistant -w apps/api     # no LLM key needed; creates + removes its own rows
 ```
 
 Draft review in Telegram: `/drafts`, `/draft <id>`, `/approve <id>`,
-`/discard <id>`, or tap **Create course** on the card the watcher posts.
-The same actions live at **Admin → Course drafts** (`/admin/drafts`).
+`/discard <id>`, or tap **Publish** on the card the watcher posts; **✏️ Fix a
+field** corrects any field without reposting. The same actions live at
+**Admin → Course drafts** (`/admin/drafts`).
 
 Required env additions (never committed):
 
 ```
 TELEGRAM_BOT_TOKEN=...          # indexer + delivery
 TELEGRAM_WATCHER_ENABLED=true   # Phase 3 kill switch
+TELEGRAM_AUTOPUBLISH=true       # false = always wait for a human tap
 TELEGRAM_SOURCE_CHATS=syncourse # allowlist: usernames or ids, comma separated
 TELEGRAM_TOPIC_CATEGORIES=12:ai-machine-learning,34:programming
 
@@ -491,7 +573,17 @@ GEMINI_API_KEY=...
 # OPENROUTER_API_KEY=...
 # ASSISTANT_DAILY_ANON=25
 # ASSISTANT_DAILY_USER=150
+
+# Signs the 10-minute confirmation token for assistant write mode.
+# Falls back to JWT_SECRET / AUTH_SECRET when unset; set it explicitly in
+# production so rotating one secret does not invalidate the other.
+ASSISTANT_ACTION_SECRET=...
 ```
+
+Photos posted with a course are mirrored to Cloudinary at approval time, so
+`CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY` and `CLOUDINARY_API_SECRET` must
+be present for covers, lecturer photos and organisation logos. Without them the
+course still publishes; only the images are skipped.
 
 The assistant needs no key to be correct, only to be fluent. Add the key to
 `apps/api/.env` **and** to Vercel (`vercel env add GEMINI_API_KEY production`
@@ -504,7 +596,12 @@ inside `apps/api`), then redeploy. `GET /api/assistant/status` reports
 
 - Search finds courses by title, tag, typo, synonym and lesson text.
 - The agent answers from real lesson content and cites it.
-- Posting a course in the group produces a draft that one tap can publish.
+- Posting a course in the group produces a draft that one tap can publish, or
+  zero taps when the post already carries title, lecturer, description and a file.
+- A photo's caption decides whether it is the cover, the lecturer or the logo,
+  and any field can be corrected in the chat without reposting.
+- The assistant can add to the catalogue only after a staff account confirms a
+  signed, expiring summary — and it cannot be tricked into writing by a reader.
 - Video bytes are never stored; the database stays within the free tier.
 - Premium content never reaches a non-premium account.
 - Every phase is independently revertible.

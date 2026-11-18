@@ -539,3 +539,65 @@
     padding: 18px;
   }
 }
+
+/* --- admin write mode -------------------------------------------------------
+   Only rendered for a staff account. The switch itself explains the difference
+   between reading and writing, because the same composer does both. */
+.modeBar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin: 0 0 18px;
+}
+
+.modeBtn {
+  padding: 7px 14px;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--r-full, 999px);
+  background: transparent;
+  color: hsl(var(--muted-foreground));
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color 120ms ease, color 120ms ease, background 120ms ease;
+}
+
+.modeBtn:hover {
+  border-color: hsl(var(--primary));
+  color: hsl(var(--foreground));
+}
+
+.modeBtnOn {
+  border-color: hsl(var(--primary));
+  background: hsl(var(--primary) / 0.12);
+  color: hsl(var(--foreground));
+  font-weight: 600;
+}
+
+.modeHint {
+  font-size: 12px;
+  color: hsl(var(--muted-foreground));
+}
+
+.confirmRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.ghostButton {
+  padding: 10px 22px;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--r-full, 999px);
+  background: transparent;
+  color: hsl(var(--foreground));
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.ghostButton:hover {
+  border-color: hsl(var(--primary));
+}
