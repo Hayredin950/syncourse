@@ -99,12 +99,6 @@ h3 { font-size: 16px; }
   padding: 14px 32px 8px;
 }
 .topbar-row--main { align-items: flex-start; }
-.topbar-row--types {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  padding: 2px 32px 12px;
-}
 
 .brand {
   display: inline-flex;
@@ -228,10 +222,11 @@ h3 { font-size: 16px; }
 .nav-pill--me .nav-me__chevron { transition: transform .15s ease; opacity: .8; }
 .nav-pill--me.open .nav-me__chevron { transform: rotate(180deg); }
 
-/* --- category chips (All / Movie / TV Show …) ------------------------------ */
-/* The chips sit on their own full-width row (`.topbar-row--types`), so all
-   five labels fit on one line with room on both sides. No hidden horizontal
-   scroller and no wrapping. */
+/* --- category chips (All Courses / Mini-courses / Resources) --------------- */
+/* Chips sit under the search field in the centre column. Three short labels fit
+   on one line inside the 460px search width, so nothing wraps and the row keeps
+   space on both sides. Roadmaps are a resource type, not a separate shelf, so
+   they stay inside Resources instead of taking a chip. */
 .nav-cats {
   display: flex;
   flex-wrap: nowrap;

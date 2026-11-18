@@ -12,7 +12,6 @@ import {
   FileText,
   Home,
   LayoutGrid,
-  Map,
   MessageCircle,
   Search,
   Sparkles,
@@ -22,11 +21,9 @@ import { useAuth } from "@/lib/auth";
 import { Wordmark } from "@/components/Wordmark";
 
 const CATS = [
-  { key: "all", label: "All", href: "/browse", icon: LayoutGrid },
-  { key: "course", label: "Courses", href: "/browse?type=course", icon: BookOpen },
+  { key: "all", label: "All Courses", href: "/browse", icon: LayoutGrid },
   { key: "mini", label: "Mini-courses", href: "/browse?type=mini-course", icon: Zap },
   { key: "resources", label: "Resources", href: "/resources", icon: FileText },
-  { key: "roadmaps", label: "Roadmaps", href: "/resources?type=roadmap", icon: Map },
 ];
 
 /* Category chips read `?type=` so the active pill matches the filter. They live
@@ -34,11 +31,12 @@ const CATS = [
    and the fallback is the same row with no selection rather than a gap. */
 function CatLinks({ pathname, type }: { pathname: string; type: string }) {
   const catOn = (key: string) => {
-    if (key === "all") return pathname === "/browse" && !type;
-    if (key === "course") return pathname === "/browse" && type === "course";
+    // "All Courses" covers the browse page at large; mini-courses and
+    // resources are the two narrower shelves, and roadmaps live inside
+    // Resources rather than getting a chip of their own.
+    if (key === "all") return pathname === "/browse" && type !== "mini-course";
     if (key === "mini") return pathname === "/browse" && type === "mini-course";
-    if (key === "resources") return pathname.startsWith("/resources") && type !== "roadmap";
-    if (key === "roadmaps") return pathname.startsWith("/resources") && type === "roadmap";
+    if (key === "resources") return pathname.startsWith("/resources");
     return false;
   };
   return (
@@ -120,6 +118,9 @@ export function TopNav() {
               onChange={(e) => setValue(e.target.value)}
             />
           </form>
+          <Suspense fallback={<CatLinks pathname={pathname} type="" />}>
+            <NavCats pathname={pathname} />
+          </Suspense>
         </div>
 
         <nav className="nav-links" aria-label="Primary">
@@ -238,15 +239,6 @@ export function TopNav() {
         </nav>
       </div>
 
-      {/* The type chips get their own full-width row. Inside the centre column
-          they were capped at the search field's width, so the last chip was
-          clipped on narrower desktops. Nothing else occupies this line, so the
-          row can use the whole header and keep every label on one line. */}
-      <div className="topbar-row topbar-row--types">
-        <Suspense fallback={<CatLinks pathname={pathname} type="" />}>
-          <NavCats pathname={pathname} />
-        </Suspense>
-      </div>
     </header>
   );
 }
