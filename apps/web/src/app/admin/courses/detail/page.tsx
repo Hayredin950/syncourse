@@ -1,6 +1,7 @@
 "use client";
 
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
+import { CoverImage } from "@/components/CoverImage";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
@@ -147,10 +148,7 @@ function CourseDetail() {
       <div className="admin-page-head">
         <div className="admin-detail-head">
           <span className="admin-thumb" style={{ width: 44, height: 58 }}>
-            {course.thumbnailUrl ? (
-              // eslint-disable-next-line @next/next/no-img-element
-              <img src={course.thumbnailUrl} alt="" />
-            ) : null}
+            <CoverImage src={course.thumbnailUrl} transform={{ width: 120, height: 160 }} className="absolute inset-0 h-full w-full object-cover" eager />
           </span>
           <div>
             <h1 className={row?.deleted ? "admin-strike" : undefined}>{course.title}</h1>

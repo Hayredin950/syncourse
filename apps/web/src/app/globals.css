@@ -1,31 +1,44 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700;800&display=swap');
 @import "tailwindcss";
 @import "tw-animate-css";
 
 /*
- * Syncourse design system — ported from the approved UI/UX replica (phonofilm
- * layout patterns, Syncourse branding). Warm near-black surfaces + amber
- * primary, Manrope sans + DM Mono accents.
+ * Syncourse design system — a direct port of the PhonoFilm (phono.cc) design
+ * language. Self-hosted Lufga / Urbanist / Fraunces / Geist Mono (the same four
+ * families the app ships), the warm near-black surface ramp, and the amber
+ * "ring" accent. Every value below is the one phono.cc actually renders.
  */
 
 :root {
-  --background: 30 10% 5%;
-  --foreground: 40 16% 94%;
-  --card: 30 8% 9%;
-  --card-foreground: 40 16% 94%;
-  --border: 30 6% 18%;
-  --primary: 32 96% 56%;
-  --primary-foreground: 25 20% 7%;
-  --muted: 30 7% 13%;
-  --muted-foreground: 30 8% 62%;
-  --accent: 38 100% 70%;
-  --accent-foreground: 25 20% 7%;
-  --destructive: 0 70% 56%;
-  --input: 30 6% 20%;
-  --ring: 32 96% 56%;
+  --background: 60 4% 5%;        /* #0e0e0d */
+  --foreground: 44 35% 94%;      /* #f5f2ea */
+  --card: 40 7% 8%;              /* #161513 */
+  --card-foreground: 44 35% 94%;
+  --popover: 36 11% 9%;          /* #1a1815 */
+  --popover-foreground: 44 35% 94%;
+  --border: 30 10% 16%;          /* #2e2a26 */
+  --primary: 36 79% 57%;         /* #e8a13a — the brand amber */
+  --primary-foreground: 30 16% 7%; /* #161310 */
+  --secondary: 36 8% 12%;        /* #201e1b */
+  --secondary-foreground: 44 35% 94%;
+  --muted: 36 8% 12%;            /* #201e1b */
+  --muted-foreground: 33 12% 68%; /* #b8afa4 */
+  --accent: 34 9% 15%;           /* #2a2723 */
+  --accent-foreground: 44 35% 94%;
+  --ring: 36 79% 57%;
+  --brand: 36 79% 57%;
+  --input: 30 10% 16%;
+  --destructive: 10 54% 50%;     /* #c4503a */
   --card-gap: 16px;
-  --app-font-sans: 'Manrope', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
-  --app-font-mono: 'DM Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  --app-font-sans: 'Urbanist', ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  --app-font-heading: 'Lufga', 'Urbanist', ui-sans-serif, system-ui, sans-serif;
+  --app-font-serif: 'Fraunces', Georgia, 'Times New Roman', serif;
+  --app-font-mono: 'Geist Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  /* PhonoFilm's poster silhouette: a rounded rect whose bottom-right corner is
+     cut on a diagonal. The mask is the shape — using it everywhere a poster or
+     tile appears is what makes the grid read as PhonoFilm and not Netflix. */
+  --poster-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 210 308'%3E%3Cpath fill='black' d='M15.8291 0.5H194.171C202.637 0.5 209.5 7.36318 209.5 15.8291V275.365C209.5 278.771 208.365 282.08 206.275 284.77L199.458 293.545L199.452 293.552L193.612 301.355C190.718 305.223 186.17 307.5 181.34 307.5H15.8291C7.36318 307.5 0.5 300.637 0.5 292.171V15.8291C0.5 7.36318 7.36318 0.5 15.8291 0.5Z'/%3E%3C/svg%3E");
+  --poster-shadow: 3.11px 3.11px 8.55px rgba(0,0,0,.25);
+
 
   /* One ladder each for radius, elevation and motion. The values below replace
      hand-picked literals that ran 8→22px in 1px steps and a dozen different
@@ -71,10 +84,10 @@
      for what sinks into one (inputs, rows, code); --s-3 and --s-4 are for what
      sits above it (buttons, hovers, menus). */
   --s-0: hsl(var(--background));
-  --s-1: hsl(30 8% 7%);
+  --s-1: #121110;
   --s-2: hsl(var(--card));
-  --s-3: hsl(30 8% 12%);
-  --s-4: hsl(30 7% 15%);
+  --s-3: hsl(var(--accent));
+  --s-4: #322e29;
 
   /* Two white-alpha hairlines, for the edges `--border` is wrong for. `--border`
      is an opaque warm grey; a chip on glass or a thumbnail over artwork needs an
@@ -99,11 +112,11 @@
        --ink-4             68%  a secondary line under a title
        --muted-foreground  62%  a category, a count, a caption
        --ink-5             52%  the dimmest metadata that is still text */
-  --ink-1: hsl(34 38% 88%);
-  --ink-2: hsl(34 26% 82%);
-  --ink-3: hsl(34 16% 76%);
-  --ink-4: hsl(33 11% 68%);
-  --ink-5: hsl(32 7% 52%);
+  --ink-1: #e9e3d7;
+  --ink-2: #ddd6c9;
+  --ink-3: #cec6b8;
+  --ink-4: #b8afa4;
+  --ink-5: #948b80;
 
   /* Destructive, in the three forms it is actually used in. `--destructive`
      itself (0 70% 56%) is the solid — and as the note on `.btn.danger` says, it
@@ -111,22 +124,22 @@
      label on the site is a lighter tint of it. Those tints were four hand-picked
      hexes (#f2807f, #f07f7f two units away from it, #f59796, #ef4444) and the
      same rgb triple typed out nine times at six alphas. */
-  --destructive-ink: hsl(0 80% 73%);
-  --destructive-ink-hi: hsl(0 84% 79%);
-  --destructive-rgb: 239, 68, 68;
+  --destructive-ink: #e1877b;
+  --destructive-ink-hi: #efa093;
+  --destructive-rgb: 196, 80, 58;
   /* Success, the same three ways. `.sheet-note` was drawing its text in one
      green (#6fe0a4) and its tint and border in another (#34d399) — one rule,
      two hues. */
-  --success-ink: #6fe0a4;
-  --success-rgb: 111, 224, 164;
+  --success-ink: #7fca9b;
+  --success-rgb: 127, 202, 155;
 
   /* The monogram plate. Six rules drew this gradient by hand — the avatar, the
      instructor card, the publisher logo, the collection chip, a search hit — so
      the same lecturer's initial came out a slightly different amber depending
      on which page you met them on. The light stop is the primary token now, so
      retheming the site moves every plate with it. */
-  --plate: linear-gradient(135deg, hsl(var(--primary)), hsl(23 62% 29%));
-  --plate-ink: hsl(30 45% 8%);
+  --plate: linear-gradient(150deg, #8b5cf6, #6d3ce8 55%, #4f2bb8);
+  --plate-ink: #ffffff;
 }
 
 /* Tailwind theme mapping — keeps existing utility usage (bg-surface, text-accent…) working */
@@ -138,13 +151,13 @@
   --color-border: hsl(var(--border));
   --color-text: hsl(var(--foreground));
   --color-muted: hsl(var(--muted-foreground));
-  --color-dim: hsl(30 6% 50%);
+  --color-dim: #948b80;
   --color-accent: hsl(var(--primary));
-  --color-accent-hover: hsl(34 100% 62%);
-  --color-accent-soft: rgba(243, 143, 39, 0.14);
+  --color-accent-hover: #f0b055;
+  --color-accent-soft: rgba(232, 161, 58, 0.14);
   --color-danger: var(--destructive-ink);
   --color-success: var(--success-ink);
-  --color-star: hsl(var(--accent));
+  --color-star: #e8a13a;
   --color-primary: hsl(var(--primary));
   --color-primary-foreground: hsl(var(--primary-foreground));
   --color-foreground: hsl(var(--foreground));
@@ -157,6 +170,10 @@
   --color-ring: hsl(var(--ring));
   --font-sans: var(--app-font-sans);
   --font-mono: var(--app-font-mono);
+  --font-heading: var(--app-font-heading);
+  --font-serif: var(--app-font-serif);
+  --color-ring: hsl(var(--ring));
+  --color-brand: #e8a13a;
   --radius-md: 12px;
   --radius-lg: 16px;
 }

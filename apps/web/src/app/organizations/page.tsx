@@ -31,7 +31,7 @@ export default function OrganizationsPage() {
     <main className="page">
       <MobileHeader title="Channels & Schools" />
       <span className="eyebrow">Publishers</span>
-      <h1 className="display" style={{ fontSize: 38, marginBottom: 5 }}>
+      <h1 className="display page-title">
         Channels &amp; Schools
       </h1>
       <p className="muted mono" style={{ fontSize: 11, margin: 0 }}>

@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { CoverImage } from "@/components/CoverImage";
 import { usePathname, useSearchParams } from "next/navigation";
 import { useAuth } from "@/lib/auth";
 
@@ -80,13 +81,9 @@ export function Sidebar() {
       <div className="mt-auto pt-4">
         {user ? (
           <Link href="/me" className="flex items-center gap-2 rounded-lg px-2 py-2 transition-colors hover:bg-surface-hover">
-            <span className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-surface-raised">
-              {user.avatarUrl ? (
-                // eslint-disable-next-line @next/next/no-img-element
-                <img src={user.avatarUrl} alt="" className="h-full w-full object-cover" />
-              ) : (
-                <span className="text-sm font-semibold text-accent">{(user.name || "?").charAt(0).toUpperCase()}</span>
-              )}
+            <span className="relative flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-surface-raised">
+              <span className="text-sm font-semibold text-accent">{(user.name || "?").charAt(0).toUpperCase()}</span>
+              <CoverImage src={user.avatarUrl} transform={{ width: 64, height: 64 }} className="absolute inset-0 h-full w-full object-cover" eager />
             </span>
             <span className="min-w-0 flex-1">
               <span className="block truncate text-sm font-medium text-text">{user.name}</span>

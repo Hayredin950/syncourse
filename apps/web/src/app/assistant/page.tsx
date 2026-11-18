@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ApiError, get, post } from "@/lib/api";
+import { MobileHeader } from "@/components/Nav";
 import styles from "./assistant.module.css";
 
 interface Status {
@@ -115,6 +116,8 @@ export default function AssistantPage() {
 
   return (
     <main className={styles.page}>
+      <MobileHeader title="Assistant" />
+      <div className={styles.inner}>
       <header className={styles.header}>
         <p className={styles.eyebrow}>Study assistant</p>
         <h1 className={styles.title}>Ask the catalogue</h1>
@@ -265,6 +268,7 @@ export default function AssistantPage() {
         No luck? <Link href="/search" className={styles.inlineLink}>Search the whole catalogue</Link> or ask a
         different way — a tool name, a subject or a lecturer works best.
       </p>
+      </div>
     </main>
   );
 }

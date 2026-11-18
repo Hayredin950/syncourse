@@ -2,10 +2,17 @@
    this page inherits the redesign instead of freezing a second design system. */
 
 .page {
-  width: min(760px, calc(100% - 32px));
+  width: 100%;
+  max-width: 1600px;
   margin: 0 auto;
-  padding: 56px 0 96px;
+  padding: 4px 24px 96px;
   color: hsl(var(--foreground));
+}
+
+.inner {
+  width: min(760px, 100%);
+  margin: 0 auto;
+  padding-top: 28px;
 }
 
 .header {
@@ -82,18 +89,19 @@
 
 .button {
   padding: 10px 22px;
-  border: 0;
+  border: 1px solid #f5f2ea;
   border-radius: var(--r-full, 999px);
-  background: hsl(var(--primary));
-  color: hsl(var(--primary-foreground));
+  background: #f5f2ea;
+  color: #141311;
   font: inherit;
   font-weight: 700;
   cursor: pointer;
-  transition: filter 120ms ease, transform 120ms ease;
+  transition: background 120ms ease, border-color 120ms ease, transform 120ms ease;
 }
 
 .button:hover:not(:disabled) {
-  filter: brightness(1.06);
+  background: #ece7db;
+  border-color: #ece7db;
 }
 
 .button:active:not(:disabled) {
@@ -306,7 +314,10 @@
 
 @media (max-width: 560px) {
   .page {
-    padding-top: 32px;
+    padding: 0 16px calc(84px + env(safe-area-inset-bottom));
+  }
+  .inner {
+    padding-top: 12px;
   }
 
   .result {

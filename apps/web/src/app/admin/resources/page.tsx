@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { CoverImage } from "@/components/CoverImage";
 import Link from "next/link";
 import { FileText, Pencil, Plus, Search } from "lucide-react";
 import { del, get } from "@/lib/api";
@@ -209,12 +210,8 @@ export default function AdminResourcesPage() {
               <tr key={r.id}>
                 <td data-role="media">
                   <span className="admin-thumb" style={{ display: "block" }}>
-                    {r.coverUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={r.coverUrl} alt="" />
-                    ) : (
-                      <FileText size={14} style={{ opacity: 0.4 }} />
-                    )}
+                    <FileText size={14} style={{ opacity: 0.4 }} />
+                    <CoverImage src={r.coverUrl} transform={{ width: 120, height: 160 }} className="absolute inset-0 h-full w-full object-cover" eager />
                   </span>
                 </td>
                 <td data-role="head" style={{ maxWidth: 360 }}>

@@ -33,6 +33,15 @@ export default function LecturerPage({ slug: slugProp }: { slug?: string } = {})
       .catch(() => setError(true));
   }, [slug]);
 
+  /* "Known for" is a shortcut, not a second copy of the catalogue: it only
+     appears when there is a catalogue to skim, and it ranks by downloads rather
+     than by the sort the Titles list below is using. With one or two courses the
+     section and the list were the same two cards printed twice. */
+  const knownFor = useMemo(() => {
+    if (!l) return [];
+    return [...l.courses].sort((a, b) => b.downloadCount - a.downloadCount || b.ratingCount - a.ratingCount).slice(0, 6);
+  }, [l]);
+
   const courses = useMemo(() => {
     if (!l) return [];
     let list = [...l.courses] as EntityCourse[];
@@ -82,7 +91,7 @@ export default function LecturerPage({ slug: slugProp }: { slug?: string } = {})
           </div>
           <div>
             <span className="eyebrow">Lecturer</span>
-            <h1 className="display" style={{ fontSize: 39, margin: "8px 0" }}>{l.name}</h1>
+            <h1 className="display page-title" style={{ margin: "8px 0" }}>{l.name}</h1>
             <p className="muted" style={{ margin: 0 }}>
               {l.credentials || "Practical teacher"} · {l.courses.length} courses taught
             </p>
@@ -95,16 +104,21 @@ export default function LecturerPage({ slug: slugProp }: { slug?: string } = {})
         <p className="muted" style={{ maxWidth: 700, lineHeight: 1.7, marginTop: 24 }}>{l.bio}</p>
       )}
 
-      <section className="rail">
-        <div className="section-head">
-          <h2>Known for</h2>
-        </div>
-        <div className="rail-row">
-          {l.courses.slice(0, 6).map((c) => (
-            <CourseCard key={c.id} course={toSummary(c)} />
-          ))}
-        </div>
-      </section>
+      {l.courses.length > 3 && (
+        <section className="rail">
+          <div className="section-head">
+            <h2>Known for</h2>
+            <span className="muted mono" style={{ fontSize: 10 }}>
+              Most downloaded of {l.courses.length}
+            </span>
+          </div>
+          <div className="rail-row">
+            {knownFor.map((c) => (
+              <CourseCard key={c.id} course={toSummary(c)} />
+            ))}
+          </div>
+        </section>
+      )}
 
       <TitleToolbar total={courses.length} sort={sort} setSort={setSort} view={view} setView={setView} onFilter={setFilterQ} />
 

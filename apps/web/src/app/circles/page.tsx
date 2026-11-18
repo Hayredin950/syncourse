@@ -154,7 +154,7 @@ export default function CirclesPage() {
     <main className="page">
       <MobileHeader title="Circles" />
       <span className="eyebrow">Study circles</span>
-      <h1 className="display" style={{ fontSize: 42 }}>Learn in public.<br />Keep the signal.</h1>
+      <h1 className="display page-title">Learn in public.<br />Keep the signal.</h1>
 
       {/* working pills — drive the right pane */}
       <div className="pills" style={{ margin: "18px 0 22px" }}>

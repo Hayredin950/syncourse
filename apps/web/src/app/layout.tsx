@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import "./phono.css";
 import { AuthProvider } from "@/lib/auth";
 import Shell from "@/components/Shell";
 

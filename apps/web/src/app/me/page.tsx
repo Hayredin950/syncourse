@@ -313,33 +313,19 @@ export default function MePage() {
   ];
 
   return (
-    <main className="page">
+    <main className="page me-page">
       <MobileHeader title="Me" />
 
-      {/* profile header card — amber gradient, persistent across tabs (phonofilm) */}
+      {/* profile card — a smoky amber cover with the identity sitting on its
+          lower edge, exactly the shape phono uses for YOUR PHONOFILM. */}
       <div className="profile-card">
-        <div className="profile-head">
-          <div className="profile-row">
-            <div className="avatar">
-              {/* Initial always, photo over it — see CoverImage. */}
-              {(user.name || "?").charAt(0).toUpperCase()}
-              <CoverImage src={user.avatarUrl} eager />
-            </div>
-            <div>
-              <span className="eyebrow">Your profile</span>
-              <h1 className="display" style={{ fontSize: 32, margin: "7px 0" }}>
-                {user.name} {user.isVerified && <Check size={16} className="rating" style={{ display: "inline" }} />}
-              </h1>
-              <p className="muted mono" style={{ margin: 0, fontSize: 11 }}>
-                @{user.username} · Member since {formatDate(user.memberSince)}
-              </p>
-            </div>
-          </div>
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-            <button className="btn" onClick={openEdit}>
-              <Settings size={14} /> Edit profile
+        <div className="profile-cover">
+          <span className="profile-kicker">Your Syncourse</span>
+          <div className="profile-actions">
+            <button className="profile-action" onClick={openEdit} title="Edit profile" aria-label="Edit profile">
+              <Settings size={14} /> Edit
             </button>
-            <button className="btn" onClick={onShareProfile}>
+            <button className="profile-action" onClick={onShareProfile} title="Share profile" aria-label="Share profile">
               <Share2 size={14} /> Share
             </button>
             {/* The console used to be a rail at the foot of Settings — behind a
@@ -347,7 +333,7 @@ export default function MePage() {
                 the thing staff open most, so it sits with the other identity
                 actions instead. */}
             {user.isStaff && (
-              <Link href="/admin" className="btn">
+              <Link href="/admin" className="profile-action" title="Admin console" aria-label="Admin console">
                 <Wrench size={14} /> Admin
               </Link>
             )}
@@ -356,8 +342,9 @@ export default function MePage() {
                 at the foot of Settings, behind a tab that scrolls off a 360px
                 screen. One place, always reachable. */}
             <button
-              className="btn"
-              style={{ color: "hsl(var(--destructive))" }}
+              className="profile-action profile-action--danger"
+              title="Sign out"
+              aria-label="Sign out"
               onClick={() => {
                 logout();
                 router.push("/");
@@ -365,6 +352,25 @@ export default function MePage() {
             >
               <LogOut size={14} /> Sign out
             </button>
+          </div>
+        </div>
+        <div className="profile-head">
+          <div className="profile-row">
+            <div className="avatar">
+              {/* Initial always, photo over it — see CoverImage. */}
+              {(user.name || "?").charAt(0).toUpperCase()}
+              <CoverImage src={user.avatarUrl} eager />
+            </div>
+            <div className="profile-id">
+              <h1 className="display">
+                {user.name} {user.isVerified && <Check size={16} className="rating" style={{ display: "inline" }} />}
+              </h1>
+              <p className="profile-meta">
+                <span>@{user.username}</span>
+                <span className="profile-meta__sep" aria-hidden>·</span>
+                <span className="profile-meta__joined">Member since {formatDate(user.memberSince)}</span>
+              </p>
+            </div>
           </div>
         </div>
       </div>
@@ -402,13 +408,19 @@ export default function MePage() {
             <div className="dark-panel dark-panel--rows">
               <Link href="/my-learning" className="lesson">
                 <span className="icon-badge icon-badge--amber"><BookOpen size={15} /></span>
-                <span>My Library</span>
-                <span className="muted" style={{ marginLeft: "auto" }}>›</span>
+                <span className="lesson__main">
+                  <span className="lesson__title">My Library</span>
+                  <span className="lesson__sub">Everything you&apos;ve saved and downloaded</span>
+                </span>
+                <ChevronRight size={16} className="row-chevron" />
               </Link>
               <Link href="/premium" className="lesson">
                 <span className="icon-badge icon-badge--purple"><CreditCard size={15} /></span>
-                <span>Premium plans</span>
-                <span className="muted" style={{ marginLeft: "auto" }}>›</span>
+                <span className="lesson__main">
+                  <span className="lesson__title">Premium plans</span>
+                  <span className="lesson__sub">{isPremium ? "Active — manage your plan" : "Unlock every course and full-speed downloads"}</span>
+                </span>
+                <ChevronRight size={16} className="row-chevron" />
               </Link>
             </div>
           </div>
@@ -452,8 +464,11 @@ export default function MePage() {
             <div className="dark-panel dark-panel--rows">
               <Link href="/lists" className="lesson">
                 <span className="icon-badge icon-badge--blue"><Layers size={15} /></span>
-                <span>My Lists</span>
-                <span className="muted" style={{ marginLeft: "auto" }}>{user.stats.lists} ›</span>
+                <span className="lesson__main">
+                  <span className="lesson__title">My Lists</span>
+                  <span className="lesson__sub">{user.stats.lists} {user.stats.lists === 1 ? "list" : "lists"} built</span>
+                </span>
+                <ChevronRight size={16} className="row-chevron" />
               </Link>
             </div>
           </div>
@@ -471,7 +486,7 @@ export default function MePage() {
                       <br />
                       <small className="muted">{p.downloaded}/{p.total} courses · {p.pct}%</small>
                     </span>
-                    <span className="muted" style={{ marginLeft: "auto" }}>›</span>
+                    <ChevronRight size={16} className="row-chevron" />
                   </div>
                 ))}
               </div>
@@ -551,12 +566,8 @@ export default function MePage() {
                       {stats.topInstructors.map((i) => (
                         <div className="avatar-cell" key={i.name}>
                           <div className="avatar-sm">
-                            {i.photoUrl ? (
-                              // eslint-disable-next-line @next/next/no-img-element
-                              <img src={i.photoUrl} alt="" />
-                            ) : (
-                              i.name.charAt(0)
-                            )}
+                            {i.name.charAt(0)}
+                            <CoverImage src={i.photoUrl} transform={{ width: 96, height: 96 }} alt={i.name} className="absolute inset-0 h-full w-full object-cover" />
                           </div>
                           <span className="avatar-name">{i.name}</span>
                         </div>

@@ -82,7 +82,7 @@ export default function LegalPage() {
     <main className="page legal">
       <MobileHeader title="Legal" />
       <span className="eyebrow">Syncourse legal</span>
-      <h1 className="display" style={{ fontSize: 46 }}>{title}</h1>
+      <h1 className="display page-title">{title}</h1>
 
       {doc && (
         <p className="muted" style={{ fontSize: 12, marginTop: -6 }}>

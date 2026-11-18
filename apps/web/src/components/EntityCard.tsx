@@ -35,7 +35,15 @@ function EntityCard({
             other by whether a URL exists: a blocked or missing avatar then reads
             as a monogram instead of an empty circle. */}
         {name.charAt(0).toUpperCase()}
-        <CoverImage src={imageUrl} transform={{ width: 160, height: 160 }} />
+        {/* Resize only, never crop here: a person's photo is portrait and a
+            publisher's logo is usually a wide wordmark. Asking Cloudinary for a
+            square used to cut the outer letters off a logo before `object-fit:
+            contain` ever saw it, so "Boot.dev" arrived as "OOT.DE". */}
+        <CoverImage
+          src={imageUrl}
+          transform={variant === "org" ? { width: 400 } : { width: 320 }}
+          eager
+        />
       </span>
       <span className="entity-card__body">
         <span className="entity-card__name">{name}</span>

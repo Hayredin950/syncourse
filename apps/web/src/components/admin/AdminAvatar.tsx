@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { CoverImage } from "@/components/CoverImage";
 
 /**
  * One avatar, five callers. Before this the users, lecturers, publishers and
@@ -38,7 +38,6 @@ export default function AdminAvatar({
   size?: number;
   contain?: boolean;
 }) {
-  const [failed, setFailed] = useState(false);
   const label = (name ?? "").trim();
   const initial = label ? label[0].toUpperCase() : "?";
   const style = size ? { width: size, height: size, fontSize: Math.round(size * 0.38) } : undefined;
@@ -49,17 +48,8 @@ export default function AdminAvatar({
       style={style}
       aria-hidden="true"
     >
-      {src && !failed ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={src}
-          alt=""
-          onError={() => setFailed(true)}
-          style={contain ? { objectFit: "contain" } : undefined}
-        />
-      ) : (
-        initial
-      )}
+      {initial}
+      {src ? <CoverImage src={src} transform={{ width: 128, height: 128 }} className="absolute inset-0 h-full w-full object-cover" eager style={contain ? { objectFit: "contain" } : undefined} /> : null}
     </span>
   );
 }

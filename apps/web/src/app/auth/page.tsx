@@ -1,11 +1,13 @@
 "use client";
 
 import { Suspense, useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Eye, EyeOff, Lock, Mail, User, UserRound } from "lucide-react";
 import { useAuth } from "@/lib/auth";
 import Modal from "@/components/Modal";
 import { apiUrl, post, setToken } from "@/lib/api";
+import { Wordmark } from "@/components/Wordmark";
 
 function AuthInner() {
   const router = useRouter();
@@ -221,26 +223,17 @@ function AuthInner() {
 
   return (
     <main className="auth-screen">
-      {/* left — hero image + headline (desktop) */}
-      <div className="auth-hero desktop-only">
-        <div className="brand" style={{ position: "absolute", top: 28, left: 32 }}>
-          sync<i />ourse
-        </div>
-        <div className="auth-hero-copy">
-          {/* Marketing copy, not the page title — and this whole column is
-              `desktop-only`, so as an <h1> it left every phone with none. The
-              heading on the card is the <h1> now. */}
-          <p className="auth-hero-copy__lead">Your go-to place for courses.</p>
-          <p>Trending picks, full curricula, instructor-led tracks — discover what to learn next.</p>
-        </div>
-      </div>
+      {/* A blurred still of people learning, so the sign-in page belongs to the
+          same film-still world as the catalogue instead of being a bare form. */}
+      <div className="auth-art" aria-hidden />
 
-      {/* right — floating auth card */}
+      <header className="auth-top">
+        <Link href="/" className="auth-logo" aria-label="Syncourse home">
+          <Wordmark />
+        </Link>
+      </header>
+
       <div className="auth-panel">
-        <div className="mobile-only" style={{ textAlign: "center", marginBottom: 20 }}>
-          <div className="brand" style={{ fontSize: 28 }}>sync<i />ourse</div>
-        </div>
-
         <div className="auth-card">
           <h1 className="display" style={{ fontSize: 24, margin: "0 0 4px" }}>
             {verifying ? "Check your email" : mode === "login" ? "Welcome back" : "Create your account"}
@@ -278,7 +271,7 @@ function AuthInner() {
               <button
                 type="submit"
                 disabled={busy || verifyCode.length !== 6}
-                className="w-full rounded-full bg-accent py-2.5 text-sm font-bold text-black hover:bg-accent-hover disabled:opacity-40"
+                className="auth-submit"
               >
                 {busy ? "Checking…" : "Verify & sign in"}
               </button>
@@ -286,7 +279,7 @@ function AuthInner() {
                 type="button"
                 onClick={resendCode}
                 disabled={resendBusy}
-                className="w-full text-center text-xs text-muted hover:text-text"
+                className="auth-link"
               >
                 {/* plain apostrophe: this is a JS string, not JSX text — &apos; would render literally */}
                 {resendBusy ? "Sending…" : "Didn't get it? Resend the code"}
@@ -298,7 +291,7 @@ function AuthInner() {
                   setError("");
                   setVerifyMsg("");
                 }}
-                className="w-full text-center text-xs text-muted hover:text-text"
+                className="auth-link"
               >
                 Back to sign in
               </button>
@@ -385,7 +378,7 @@ function AuthInner() {
             <button
               type="submit"
               disabled={busy || !email || !password || (mode === "register" && (!name || !username))}
-              className="w-full rounded-full bg-accent py-2.5 text-sm font-bold text-black hover:bg-accent-hover disabled:opacity-40"
+              className="auth-submit"
             >
               {busy ? "One sec…" : mode === "login" ? "Sign in" : "Create account"}
             </button>
@@ -396,7 +389,7 @@ function AuthInner() {
               type="button"
               onClick={startGoogle}
               disabled={googleBusy}
-              className="flex w-full items-center justify-center gap-2 rounded-full border border-border py-2.5 text-sm font-medium text-text hover:bg-surface-hover disabled:opacity-40"
+              className="auth-google"
             >
               <svg width="16" height="16" viewBox="0 0 48 48" aria-hidden>
                 <path fill="#FFC107" d="M43.6 20.1H42V20H24v8h11.3C33.7 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.9 1.2 8 3l5.7-5.7C34.5 6.1 29.5 4 24 4 13 4 4 13 4 24s9 20 20 20 20-9 20-20c0-1.3-.1-2.6-.4-3.9z"/>
@@ -410,13 +403,17 @@ function AuthInner() {
             <button
               type="button"
               onClick={() => setMode(mode === "login" ? "register" : "login")}
-              className="w-full text-center text-xs text-muted hover:text-text"
+              className="auth-link"
             >
               {mode === "login" ? "No account yet? Create one" : "Already have an account? Sign in"}
             </button>
             </form>
           )}
         </div>
+
+        <p className="auth-tagline">
+          Trending picks, full curricula and instructor-led tracks — discover what to learn next.
+        </p>
       </div>
 
       {/* password recovery — email -> code -> new password, one panel per step.

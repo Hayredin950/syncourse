@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { CoverImage } from "@/components/CoverImage";
 import Link from "next/link";
 import { BookOpen, ChevronRight, Pencil, Plus, Search } from "lucide-react";
 import { del, get } from "@/lib/api";
@@ -188,10 +189,7 @@ export default function AdminCourses() {
               <tr key={c.id}>
                 <td data-role="media">
                   <span className="admin-thumb" style={{ display: "block" }}>
-                    {c.thumbnailUrl ? (
-                      // eslint-disable-next-line @next/next/no-img-element
-                      <img src={c.thumbnailUrl} alt="" />
-                    ) : null}
+                    <CoverImage src={c.thumbnailUrl} transform={{ width: 120, height: 160 }} className="absolute inset-0 h-full w-full object-cover" eager />
                   </span>
                 </td>
                 <td data-role="head" style={{ maxWidth: 340 }}>

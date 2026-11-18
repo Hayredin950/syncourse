@@ -2,7 +2,16 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowRight, ChevronRight, Play, Star } from "lucide-react";
+import {
+  ArrowRight,
+  BookOpen,
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  Play,
+  Star,
+  Zap,
+} from "lucide-react";
 import { get } from "@/lib/api";
 import type { CourseSummary, HomeData, LibraryData } from "@/lib/types";
 import { CourseCard } from "@/components/CourseCard";
@@ -11,42 +20,24 @@ import { LecturerCard, PublisherCard } from "@/components/EntityCard";
 import { HomeCollections } from "@/components/HomeCollections";
 import { HomeResources } from "@/components/HomeResources";
 import { MobileHeader } from "@/components/Nav";
+import { Rail } from "@/components/Rail";
+import { Menu } from "@/components/Menu";
 import { Sk, SkCard } from "@/components/Skeleton";
 import { useAuth } from "@/lib/auth";
 import { formatDuration } from "@/lib/format";
+import { cloudinaryUrl } from "@/lib/cloudinary";
 
 export default function HomePage() {
   const [home, setHome] = useState<HomeData | null>(null);
   const [library, setLibrary] = useState<LibraryData | null>(null);
   const [error, setError] = useState(false);
-  // Per-viewer picks. Kept separate from `home`, which is a cached
-  // catalogue-wide snapshot shared by every visitor.
-  const [forYou, setForYou] = useState<{ courses: CourseSummary[]; source: string } | null>(null);
   const { user } = useAuth();
 
-  // Ranking tabs. These were labelled Day / Week / Month but did not measure
-  // time at all — they switched between the trending, top-rated and newest
-  // rails, so "Week" could show a course added five minutes ago. Name what each
-  // one actually sorts by.
   const [trendTab, setTrendTab] = useState<"popular" | "top" | "newest">("popular");
 
   // "Best of" — one row with a dropdown to switch organizations
   const [bestOfOrgId, setBestOfOrgId] = useState("");
 
-  /**
-   * The three dropdown rails below, ordered by how much each option actually
-   * holds.
-   *
-   * All three used to open on `[0]`, and in a library this size `[0]` was the
-   * emptiest choice in every one of them at once — one course by Andrei Neagoie,
-   * one from LinkedIn Learning, two under Artificial Intelligence — so the home
-   * page led with three rails holding a single poster each in a row six wide,
-   * which reads as five cards that failed to load rather than as a filter. The
-   * fullest option is the honest default for a row whose whole job is to show a
-   * selection, and the picker leading with the substantial names is what someone
-   * scanning it wants first. The standalone category and lecturer grids further
-   * down keep their own order.
-   */
   const categoriesByCount = useMemo(
     () => (home ? [...home.categories].sort((a, b) => b.courseCount - a.courseCount) : []),
     [home],
@@ -78,11 +69,15 @@ export default function HomePage() {
   const instructorRow = lecturersByCount.find((l) => l.slug === instructorRowSlug) ?? lecturersByCount[0];
   useEffect(() => {
     if (!catRow) return;
-    get<{ results: CourseSummary[] }>(`/courses?category=${catRow.slug}&limit=10`).then((r) => setCatRowCourses(r.results)).catch(() => undefined);
+    get<{ results: CourseSummary[] }>(`/courses?category=${catRow.slug}&limit=12`)
+      .then((r) => setCatRowCourses(r.results))
+      .catch(() => undefined);
   }, [catRow]);
   useEffect(() => {
     if (!instructorRow) return;
-    get<{ results: CourseSummary[] }>(`/courses?lecturer=${instructorRow.slug}&limit=10`).then((r) => setInstructorRowCourses(r.results)).catch(() => undefined);
+    get<{ results: CourseSummary[] }>(`/courses?lecturer=${instructorRow.slug}&limit=12`)
+      .then((r) => setInstructorRowCourses(r.results))
+      .catch(() => undefined);
   }, [instructorRow]);
 
   useEffect(() => {
@@ -91,41 +86,47 @@ export default function HomePage() {
       .catch(() => setError(true));
   }, []);
 
-  // Signed-in users get real progress numbers in "Your Next Course"
   useEffect(() => {
     if (user) get<LibraryData>("/me/learning").then(setLibrary).catch(() => undefined);
   }, [user]);
 
-  // "For you" needs a reader to have a taste profile, so it is requested only
-  // when signed in. The API answers with the popular list until there is one,
-  // which is why this rail never renders empty.
-  useEffect(() => {
-    if (!user) {
-      setForYou(null);
-      return;
+  /**
+   * The hero is a carousel of the week's headline titles, deduped across the
+   * three rails so the same course cannot appear twice as you page through.
+   */
+  const featuredList = useMemo(() => {
+    if (!home) return [] as CourseSummary[];
+    const seen = new Set<string>();
+    const out: CourseSummary[] = [];
+    for (const c of [...home.trending.slice(0, 4), ...home.topRated.slice(0, 3), ...home.latest.slice(0, 3)]) {
+      if (!seen.has(c.id)) {
+        seen.add(c.id);
+        out.push(c);
+      }
     }
-    let alive = true;
-    get<{ courses: CourseSummary[]; source: string }>("/recommendations/for-you?limit=10")
-      .then((r) => alive && setForYou(r))
-      .catch(() => alive && setForYou(null));
-    return () => {
-      alive = false;
-    };
-  }, [user]);
+    return out.slice(0, 6);
+  }, [home]);
+  const [slide, setSlide] = useState(0);
+  const featured = featuredList[slide] ?? featuredList[0];
+
+  useEffect(() => {
+    if (featuredList.length < 2) return;
+    if (typeof window !== "undefined" && window.matchMedia?.("(prefers-reduced-motion: reduce)").matches) return;
+    const t = setInterval(() => setSlide((s) => (s + 1) % featuredList.length), 8000);
+    return () => clearInterval(t);
+  }, [featuredList.length]);
 
   if (error) {
     return (
       <main className="page">
         <MobileHeader />
-        <div className="empty-state" style={{ padding: "54px 26px" }}>
+        <div className="empty-state" style={{ padding: "54px 26px", marginTop: 20 }}>
           <div className="empty-icon">📡</div>
-          <h3 style={{ margin: "0 0 6px" }}>We couldn&apos;t load the catalogue</h3>
-          {/* The old copy here told the reader to run `npm run dev:api`, which is
-              advice for whoever wrote the site rather than whoever is reading it. */}
+          <h3>We couldn&apos;t load the catalogue</h3>
           <p style={{ margin: "0 auto", maxWidth: "44ch" }}>
             The connection dropped on the way to our servers. Your courses are still there.
           </p>
-          <button className="btn primary" style={{ marginTop: 18 }} onClick={() => window.location.reload()}>
+          <button className="btn primary" style={{ marginTop: 12 }} onClick={() => window.location.reload()}>
             Try again
           </button>
         </div>
@@ -139,7 +140,7 @@ export default function HomePage() {
         <MobileHeader />
         <div role="status" aria-busy="true">
           <span className="sk-label">Loading the catalogue…</span>
-          <Sk className="sk-hero" style={{ minHeight: 440, borderRadius: "var(--r-2xl)" }} />
+          <Sk className="sk-hero" style={{ minHeight: 440, borderRadius: 22, marginTop: 12 }} />
           {[0, 1].map((i) => (
             <div key={i} style={{ marginTop: 42 }}>
               <Sk className="sk-line sk-line--lg" style={{ width: 168, marginBottom: 16 }} />
@@ -155,7 +156,6 @@ export default function HomePage() {
     );
   }
 
-  const featured = home.latest[0] ?? home.trending[0] ?? home.topRated[0];
   const trendSource =
     trendTab === "popular" ? home.trending : trendTab === "top" ? home.topRated : home.latest;
 
@@ -167,79 +167,245 @@ export default function HomePage() {
     <main className="page">
       <MobileHeader />
 
-      {/* Featured hero */}
+      {/* phone-only category strip (the desktop one lives inside the top bar) */}
+      <div className="mobile-cats no-scrollbar" aria-label="Catalogue types">
+        <Link href="/browse" className="nav-cat active">
+          <BookOpen size={16} /> All
+        </Link>
+        <Link href="/browse?type=course" className="nav-cat">
+          Courses
+        </Link>
+        <Link href="/browse?type=mini-course" className="nav-cat">
+          <Zap size={16} /> Mini
+        </Link>
+        <Link href="/resources" className="nav-cat">
+          Resources
+        </Link>
+        <Link href="/lists" className="nav-cat">
+          Collections
+        </Link>
+      </div>
+
+      {/* Featured hero carousel */}
       {featured && (
-        <div className="hero">
+        <div
+          className="hero"
+          style={
+            featured.thumbnailUrl
+              ? { backgroundImage: `linear-gradient(rgba(14,14,13,.35), rgba(14,14,13,.55)), url("${cloudinaryUrl(featured.thumbnailUrl, { width: 1200 })}")` }
+              : undefined
+          }
+        >
+          <span className="hero-blur" aria-hidden />
+          <Link href={`/courses/${featured.slug}`} className="hero-art" aria-label={featured.title}>
+            <CoverImage
+              src={featured.thumbnailUrl}
+              transform={{ width: 1600 }}
+              alt=""
+              eager
+              className="h-full w-full object-cover"
+            />
+          </Link>
+          <div className="hero-shade" />
           <div className="hero-content">
-            <span className="eyebrow">Featured course</span>
-            <h1 className="display">{featured.title}</h1>
-            <p>{featured.description || "A hands-on course for engineers who care about the details users can feel."}</p>
+            <span className="hero-rank">#{slide + 1} today</span>
+            <h1>{featured.title}</h1>
             <div className="detail-meta">
-              {/* The hero prints the biggest version of every one of these, so an
-                  unrated course claiming 0.0 and a Telegram course claiming no
-                  runtime and no lessons are all suppressed rather than shown as
-                  zeroes. */}
               {featured.ratingCount > 0 && (
-                <span><Star size={13} fill="currentColor" className="rating" /> {featured.ratingAvg.toFixed(1)}</span>
+                <span className="rating">
+                  <Star size={14} fill="currentColor" /> {featured.ratingAvg.toFixed(1)}
+                </span>
               )}
+              <span>{featured.level}</span>
               {featured.durationMin > 0 && <span>{formatDuration(featured.durationMin)}</span>}
               {featured.lessonCount > 0 && <span>{featured.lessonCount} lessons</span>}
-              <span>{featured.level}</span>
+              {featured.categoryNames?.[0] && <span>{featured.categoryNames[0]}</span>}
             </div>
+            <p>{featured.description || "A hands-on course for engineers who care about the details users can feel."}</p>
             <div className="actions">
-              <Link href={`/courses/${featured.slug}`} className="btn primary">
-                <Play size={14} fill="currentColor" /> Start learning
+              <Link href={`/courses/${featured.slug}`} className="hero-cta">
+                <Play size={19} fill="currentColor" /> <span>Start learning</span>
               </Link>
-              <Link href={`/courses/${featured.slug}`} className="btn">View course</Link>
+              <Link href={`/courses/${featured.slug}?download=1`} className="hero-dl">
+                <Download size={19} /> Download
+              </Link>
             </div>
           </div>
+          {featuredList.length > 1 && (
+            <>
+              <button
+                type="button"
+                className="hero-nav hero-nav--prev"
+                aria-label="Previous featured course"
+                onClick={() => setSlide((s) => (s - 1 + featuredList.length) % featuredList.length)}
+              >
+                <ChevronLeft size={22} />
+              </button>
+              <button
+                type="button"
+                className="hero-nav hero-nav--next"
+                aria-label="Next featured course"
+                onClick={() => setSlide((s) => (s + 1) % featuredList.length)}
+              >
+                <ChevronRight size={22} />
+              </button>
+              <div className="hero-dots">
+                {featuredList.map((c, i) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    className={`hero-dot ${i === slide ? "active" : ""}`}
+                    aria-label={`Featured ${i + 1}`}
+                    onClick={() => setSlide(i)}
+                  />
+                ))}
+              </div>
+            </>
+          )}
         </div>
       )}
 
+      {/* New drops */}
+      <Rail
+        title="New drops"
+        subtitle="New courses and fresh lessons, newest first."
+        href="/browse?sort=newest"
+      >
+        {home.latest.slice(0, 12).map((c) => (
+          <CourseCard key={c.id} course={c} />
+        ))}
+      </Rail>
+
       {/* Trending — ranked, with Popular / Top rated / Newest tabs */}
-      <section className="rail">
-        <div className="section-head">
-          <h2>Trending</h2>
-          <div className="pills">
+      <Rail
+        title="The courses everyone's watching this week"
+        href="/browse?sort=top-rated"
+        right={
+          <div className="tabs" role="tablist" aria-label="Sort trending">
             {(["popular", "top", "newest"] as const).map((p) => (
               <button
                 key={p}
-                className={`badge ${trendTab === p ? "primary" : ""}`}
+                role="tab"
+                aria-selected={trendTab === p}
+                className={`tab ${trendTab === p ? "active" : ""}`}
                 onClick={() => setTrendTab(p)}
               >
                 {p === "popular" ? "Popular" : p === "top" ? "Top rated" : "Newest"}
               </button>
             ))}
           </div>
-          <Link href="/browse?sort=top-rated">See all <ChevronRight size={14} style={{ verticalAlign: "middle" }} /></Link>
-        </div>
-        <div className="rail-row">
-          {trendSource.slice(0, 10).map((c, i) => (
-            <CourseCard key={c.id} course={c} rank={i + 1} />
-          ))}
-        </div>
-      </section>
+        }
+      >
+        {trendSource.slice(0, 12).map((c) => (
+          <CourseCard key={c.id} course={c} />
+        ))}
+      </Rail>
 
-      {/* Latest added */}
-      <section className="rail">
-        <div className="section-head">
-          <h2>Latest added</h2>
-          <Link href="/browse?sort=newest">See all <ChevronRight size={14} style={{ verticalAlign: "middle" }} /></Link>
-        </div>
-        <div className="rail-row">
-          {/* `isNew` comes from the API, which stamps it on anything published in
-              the last 30 days. Overriding it to `true` here put an "Added" badge on
-              all ten cards — including the tenth-newest, which on a quiet month is
-              a year old. The badge means something again. */}
-          {home.latest.slice(0, 10).map((c) => (
+      {/* Top 10 — the signed rank numerals */}
+      <Rail
+        title="Top 10 on Syncourse today"
+        subtitle="What everyone is learning right now."
+        href="/browse?sort=top-rated"
+        rank
+      >
+        {home.topRated.slice(0, 10).map((c, i) => (
+          <div key={c.id} className="rank-card">
+            <span className="rank-num" aria-hidden="true">
+              {i + 1}
+            </span>
+            <CourseCard course={c} />
+          </div>
+        ))}
+      </Rail>
+
+      {/* Editors' picks — landscape, like phono's acclaimed row */}
+      {home.topRated.length > 3 && (
+        <Rail title="Our editors' most acclaimed" subtitle="Hand-picked, highest rated first." href="/browse?sort=top-rated">
+          {home.topRated.slice(0, 8).map((c) => (
+            <Link key={c.id} href={`/courses/${c.slug}`} className="wide-card">
+              <span className="wide-card__art">
+                <CoverImage src={c.thumbnailUrl} transform={{ width: 640, height: 360 }} alt="" />
+                <span className="wide-card__shade" />
+                <span className="wide-card__title">{c.title}</span>
+              </span>
+              <span className="card-meta">
+                {c.ratingCount > 0 && (
+                  <span className="rating">
+                    <Star size={12} fill="currentColor" /> {c.ratingAvg.toFixed(1)}
+                  </span>
+                )}
+                {c.durationMin > 0 && <span>{formatDuration(c.durationMin)}</span>}
+                {c.lessonCount > 0 && <span>{c.lessonCount} lessons</span>}
+              </span>
+            </Link>
+          ))}
+        </Rail>
+      )}
+
+      {/* Explore by Category — dropdown row */}
+      {catRow && catRowCourses.length > 0 && (
+        <Rail
+          title="Explore by category"
+          href={`/browse?category=${catRow.slug}`}
+          right={
+            <Menu
+              value={catRow.slug}
+              onChange={setCatRowSlug}
+              label="Category"
+              align="right"
+              options={categoriesByCount.map((c) => ({ value: c.slug, label: c.name }))}
+            />
+          }
+        >
+          {catRowCourses.map((c) => (
             <CourseCard key={c.id} course={c} />
           ))}
-        </div>
-      </section>
+        </Rail>
+      )}
 
-      {/* Cheat-sheets, roadmaps and notes — the library beside the catalogue.
-          Placed after the newest courses because it is a change of gear: short
-          reads rather than something to sit down with. */}
+      {/* By Instructor — dropdown row */}
+      {instructorRow && instructorRowCourses.length > 0 && (
+        <Rail
+          title="By instructor"
+          href={`/lecturers/${instructorRow.slug}`}
+          right={
+            <Menu
+              value={instructorRow.slug}
+              onChange={setInstructorRowSlug}
+              label="Instructor"
+              align="right"
+              options={lecturersByCount.map((l) => ({ value: l.slug, label: l.name }))}
+            />
+          }
+        >
+          {instructorRowCourses.map((c) => (
+            <CourseCard key={c.id} course={c} />
+          ))}
+        </Rail>
+      )}
+
+      {/* Best of — one row, dropdown to switch organization */}
+      {activeOrg && activeOrg.courses.length > 0 && (
+        <Rail
+          title="Best of"
+          href={`/organizations/${activeOrg.slug}`}
+          right={
+            <Menu
+              value={activeOrg.id}
+              onChange={setBestOfOrgId}
+              label="Publisher"
+              align="right"
+              options={bestOfByCount.map((o) => ({ value: o.id, label: o.name }))}
+            />
+          }
+        >
+          {activeOrg.courses.map((c) => (
+            <CourseCard key={c.id} course={c} />
+          ))}
+        </Rail>
+      )}
+
+      {/* Cheat-sheets, roadmaps and notes — the library beside the catalogue. */}
       <HomeResources />
 
       {/* Your next course — personalized nudge */}
@@ -247,19 +413,24 @@ export default function HomePage() {
         <section className="rail dark-panel recommend">
           <div>
             <span className="eyebrow">Your next course</span>
-            <h3 style={{ margin: "7px 0 0" }}>Recommendations made for your pace.</h3>
-            <p>Sign in, then learn and rate what you love. Syncourse learns the topics and lecturers you gravitate toward, then keeps a fresh set of picks ready.</p>
+            <h3 style={{ margin: "8px 0 0", fontSize: 20 }}>Recommendations made for your pace.</h3>
+            <p className="muted" style={{ margin: "6px 0 0", maxWidth: "58ch" }}>
+              Sign in, then learn and rate what you love. Syncourse learns the topics and lecturers you
+              gravitate toward, then keeps a fresh set of picks ready.
+            </p>
           </div>
           <Link href="/auth" className="btn primary">
-            Sign in <ArrowRight size={13} />
+            Sign in <ArrowRight size={14} />
           </Link>
         </section>
       ) : (
         <section className="rail dark-panel recommend">
           <div>
             <span className="eyebrow">Your next course</span>
-            <h3 style={{ margin: "7px 0 0" }}>Pick up where you left off.</h3>
-            <p>Rate what you learn and Syncourse keeps your next picks fresh.</p>
+            <h3 style={{ margin: "8px 0 0", fontSize: 20 }}>Pick up where you left off.</h3>
+            <p className="muted" style={{ margin: "6px 0 0" }}>
+              Rate what you learn and Syncourse keeps your next picks fresh.
+            </p>
             <div style={{ marginTop: 16, maxWidth: 360 }}>
               <ProgressRow label="Downloaded" value={downloaded} total={marked} />
               <div style={{ height: 10 }} />
@@ -267,209 +438,79 @@ export default function HomePage() {
             </div>
           </div>
           <Link href="/my-learning" className="btn primary">
-            Open your library <ArrowRight size={13} />
+            Open your library <ArrowRight size={14} />
           </Link>
         </section>
       )}
 
-      {/* For you — the same signals the reader gives by downloading, saving,
-          liking, rating and opening search results, scored by the API. */}
-      {user && forYou && forYou.courses.length > 0 && (
-        <section className="rail">
-          <div className="section-head">
-            <h2>
-              For you{" "}
-              <span className="eyebrow" style={{ marginLeft: 8 }}>
-                {forYou.source === "personalised" ? "Based on your activity" : "Popular right now"}
-              </span>
-            </h2>
-            <Link href="/browse">
-              See all <ChevronRight size={14} style={{ verticalAlign: "middle" }} />
-            </Link>
-          </div>
-          <div className="rail-row">
-            {forYou.courses.map((c) => (
-              <CourseCard key={c.id} course={c} />
-            ))}
-          </div>
-        </section>
-      )}
-
       {/* Top rated */}
-      <section className="rail">
-        <div className="section-head">
-          <h2>Top rated</h2>
-          <Link href="/browse?sort=top-rated">See all <ChevronRight size={14} style={{ verticalAlign: "middle" }} /></Link>
-        </div>
-        <div className="rail-row">
-          {home.topRated.slice(0, 10).map((c) => (
-            <CourseCard key={c.id} course={c} />
-          ))}
-        </div>
-      </section>
-
-      {/* Explore by Category — dropdown row */}
-      {catRow && catRowCourses.length > 0 && (
-        <section className="rail">
-          <div className="section-head">
-            <h2>Explore by Category</h2>
-            <select
-              value={catRow.slug}
-              onChange={(e) => setCatRowSlug(e.target.value)}
-              className="badge"
-              style={{ cursor: "pointer", outline: "none" }}
-            >
-              {categoriesByCount.map((c) => (
-                <option key={c.slug} value={c.slug}>{c.name}</option>
-              ))}
-            </select>
-            <Link href={`/browse?category=${catRow.slug}`}>See all <ChevronRight size={14} style={{ verticalAlign: "middle" }} /></Link>
-          </div>
-          <div className="rail-row">
-            {catRowCourses.map((c) => (
-              <CourseCard key={c.id} course={c} />
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* By Instructor — dropdown row */}
-      {instructorRow && instructorRowCourses.length > 0 && (
-        <section className="rail">
-          <div className="section-head">
-            <h2>By Instructor</h2>
-            <select
-              value={instructorRow.slug}
-              onChange={(e) => setInstructorRowSlug(e.target.value)}
-              className="badge"
-              style={{ cursor: "pointer", outline: "none" }}
-            >
-              {lecturersByCount.map((l) => (
-                <option key={l.slug} value={l.slug}>{l.name}</option>
-              ))}
-            </select>
-            <Link href={`/lecturers/${instructorRow.slug}`}>See all <ChevronRight size={14} style={{ verticalAlign: "middle" }} /></Link>
-          </div>
-          <div className="rail-row">
-            {instructorRowCourses.map((c) => (
-              <CourseCard key={c.id} course={c} />
-            ))}
-          </div>
-        </section>
-      )}
-
-      {/* Best of — one row, dropdown to switch organization */}
-      {activeOrg && activeOrg.courses.length > 0 && (
-        <section className="rail">
-          <div className="section-head">
-            <h2>Best of</h2>
-            <select
-              value={activeOrg.id}
-              onChange={(e) => setBestOfOrgId(e.target.value)}
-              className="badge"
-              style={{ cursor: "pointer", outline: "none" }}
-            >
-              {bestOfByCount.map((o) => (
-                <option key={o.id} value={o.id}>
-                  {o.name}
-                </option>
-              ))}
-            </select>
-            <Link href={`/organizations/${activeOrg.slug}`}>See all <ChevronRight size={14} style={{ verticalAlign: "middle" }} /></Link>
-          </div>
-          <div className="rail-row">
-            {activeOrg.courses.map((c) => (
-              <CourseCard key={c.id} course={c} />
-            ))}
-          </div>
-        </section>
-      )}
+      <Rail title="Top rated" href="/browse?sort=top-rated">
+        {home.topRated.slice(0, 12).map((c) => (
+          <CourseCard key={c.id} course={c} />
+        ))}
+      </Rail>
 
       {/* Featured learning paths — franchise-style cards with a thumbnail strip */}
       {home.featuredPaths.length > 0 && (
-        <section className="rail">
-          <div className="section-head">
-            <h2>Featured learning paths</h2>
-            <Link href="/paths">See all <ChevronRight size={14} style={{ verticalAlign: "middle" }} /></Link>
-          </div>
-          <div className="rail-row">
-            {home.featuredPaths.map((p) => (
-              <Link key={p.id} href={`/paths/${p.id}`} className="dark-panel path-card">
-                <span className="eyebrow">Learning path</span>
-                <h3 style={{ margin: "14px 0 8px", fontSize: 17 }}>{p.title}</h3>
-                {p.description && <p className="muted" style={{ margin: 0, fontSize: 11 }}>{p.description}</p>}
-                {/* thumbnail strip — like PhonoFilm's franchise cards */}
-                {p.courses.length > 0 && (
-                  <div className="path-card__strip">
-                    {p.courses.slice(0, 4).map((c) => (
-                      <div key={c.id} className="cover" style={{ aspectRatio: "0.8", borderRadius: "var(--r-xs)", margin: 0 }}>
-                        {/* Glyph behind the poster, not instead of it — see CoverImage. */}
-                        <span className="cover__ph" style={{ fontSize: 16 }} aria-hidden>🎓</span>
-                        <CoverImage src={c.thumbnailUrl} transform={{ width: 200, height: 250 }} alt={c.title} />
-                      </div>
-                    ))}
-                  </div>
-                )}
-                <p className="muted" style={{ margin: "12px 0 0", fontSize: 11 }}>
-                  {p.courseCount} courses
-                  {p.totalVotes > 0 && ` · ★ ${p.ratingAvg.toFixed(1)} avg · ${p.totalVotes.toLocaleString()} votes`}
-                </p>
-              </Link>
-            ))}
-          </div>
-        </section>
+        <Rail title="Featured learning paths" subtitle="Follow a route from first lesson to last." href="/paths">
+          {home.featuredPaths.map((p) => (
+            <Link key={p.id} href={`/paths/${p.id}`} className="path-card">
+              <span className="path-card__strip">
+                {(p.courses.length > 0 ? p.courses.slice(0, 4) : []).map((c) => (
+                  <span key={c.id} className="path-card__thumb">
+                    <CoverImage src={c.thumbnailUrl} transform={{ width: 200, height: 230 }} alt="" />
+                  </span>
+                ))}
+                {p.courses.length === 0 && <span className="path-card__thumb path-card__thumb--empty" />}
+              </span>
+              <span className="path-card__title">{p.title}</span>
+              {p.description && <span className="path-card__desc">{p.description}</span>}
+              <span className="path-card__meta">
+                {p.courseCount} courses
+                {p.totalVotes > 0 && ` · ★ ${p.ratingAvg.toFixed(1)} avg · ${p.totalVotes.toLocaleString()} votes`}
+              </span>
+            </Link>
+          ))}
+        </Rail>
       )}
 
       {/* Community shelves — self-fetching, and absent unless someone has built one */}
       <HomeCollections />
 
-      {/* The complete directory, as against the curated "Explore by Category"
-          rail higher up. Both were called the same thing bar one letter's case,
-          which on one page reads as a section that rendered twice. */}
+      {/* The complete directory, as against the curated "Explore by category" rail. */}
       {home.categories.length > 0 && (
-        <section className="rail">
-          <div className="section-head">
-            <h2>All categories</h2>
-          </div>
+        <>
+          <p className="section-label">Browse all categories</p>
           <div className="category-grid">
             {home.categories.map((c) => (
               <Link href={`/browse?category=${c.slug}`} className="category-tile" key={c.id}>
-                <strong>{c.icon} {c.name}</strong>
-                <span>{c.courseCount} courses <ChevronRight size={12} style={{ float: "right" }} /></span>
+                <strong>
+                  {c.icon} {c.name}
+                </strong>
+                <span>
+                  {c.courseCount} courses <ChevronRight size={12} style={{ float: "right" }} />
+                </span>
               </Link>
             ))}
           </div>
-        </section>
+        </>
       )}
 
       {/* Lecturers + Channels */}
-      <section className="rail">
-        <div className="section-head">
-          <h2>Lecturers</h2>
-          <Link href="/lecturers">See all <ChevronRight size={14} style={{ verticalAlign: "middle" }} /></Link>
-        </div>
-        <div className="rail-row">
-          {home.lecturers.map((l) => (
-            <LecturerCard key={l.id} lecturer={l} />
-          ))}
-        </div>
-      </section>
+      <Rail title="Lecturers" href="/lecturers">
+        {home.lecturers.map((l) => (
+          <LecturerCard key={l.id} lecturer={l} />
+        ))}
+      </Rail>
 
-      <section className="rail">
-        <div className="section-head">
-          <h2>Channels &amp; Schools</h2>
-          <Link href="/organizations">See all <ChevronRight size={14} style={{ verticalAlign: "middle" }} /></Link>
-        </div>
-        <div className="rail-row">
-          {home.organizations.map((o) => (
-            <PublisherCard key={o.id} org={o} />
-          ))}
-        </div>
-      </section>
+      <Rail title="Channels & schools" href="/organizations">
+        {home.organizations.map((o) => (
+          <PublisherCard key={o.id} org={o} />
+        ))}
+      </Rail>
 
-      {/* Not a load-more: this is a link to the full catalogue, so say so. */}
-      <div style={{ marginTop: 42, display: "flex", justifyContent: "center" }}>
-        <Link href="/browse" className="btn" style={{ display: "inline-flex", alignItems: "center", padding: "12px 28px" }}>
+      <div style={{ marginTop: 48, display: "flex", justifyContent: "center" }}>
+        <Link href="/browse" className="btn ghost" style={{ minHeight: 48, padding: "0 32px" }}>
           Browse all courses
         </Link>
       </div>
@@ -481,12 +522,15 @@ function ProgressRow({ label, value, total }: { label: string; value: number; to
   const pct = total > 0 ? Math.round((value / total) * 100) : 0;
   return (
     <div>
-      <div className="flex items-center justify-between text-[11px] text-muted">
+      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: "#b8afa4" }}>
         <span>{label}</span>
-        <span>{value}{total > 0 ? `/${total}` : ""}</span>
+        <span>
+          {value}
+          {total > 0 ? `/${total}` : ""}
+        </span>
       </div>
-      <div className="mt-1 h-1.5 overflow-hidden rounded-full bg-surface">
-        <div className="h-full rounded-full bg-accent transition-all" style={{ width: `${pct}%` }} />
+      <div style={{ marginTop: 5, height: 6, borderRadius: 999, background: "#2a2723", overflow: "hidden" }}>
+        <div style={{ height: "100%", borderRadius: 999, background: "#e8a13a", width: `${pct}%` }} />
       </div>
     </div>
   );

@@ -412,11 +412,14 @@ export function CourseDetailView({ slug }: { slug: string }) {
         <CoverImage
           className="detail-hero__img"
           src={course.bannerUrl || course.thumbnailUrl}
-          transform={{ width: 840, height: 472 }}
+          transform={{ width: 1600, height: 900 }}
           alt={course.title}
           eager
         />
-        <div className="hero-content">
+        <Link href="/browse" className="detail-back">
+          <ChevronRight size={16} style={{ transform: "rotate(180deg)" }} /> Browse
+        </Link>
+        <div className="hero-content detail-hero__content">
           <span className="eyebrow">
             {course.categoryNames.join(" · ") || "Course"} · {course.level}
           </span>
@@ -433,53 +436,54 @@ export function CourseDetailView({ slug }: { slug: string }) {
             {course.lessonCount > 0 && <span>{course.lessonCount} lessons</span>}
             <span>{course.language || "English"}</span>
           </div>
-        </div>
-      </div>
 
-      {/* action row — sits on the plain page background, off the hero image (phonofilm) */}
-      <div className="detail-actions">
-        <div className="actions">
-          {firstLesson && (
-            <Link href={`/courses/${course.slug}/lessons/${firstLesson.id}`} className="btn primary">
-              <Play size={14} fill="currentColor" /> Start course
-            </Link>
-          )}
-          {/* The archive *is* the course, so downloading is the primary action
-              whenever there are no lessons to open on the site. */}
-          <button onClick={() => setDownloadOpen(true)} className={firstLesson ? "btn" : "btn primary"}>
-            <Download size={14} /> Download materials
-          </button>
-          {course.previewVideoUrl && (
-            <a href={course.previewVideoUrl} target="_blank" rel="noreferrer" className="btn">
-              <SparklesInline /> Preview
-            </a>
-          )}
-        </div>
-        {/* The icon carries the state, not the label. A button that swaps "Like"
-            for "Liked" makes you read a word to find out what you did; a filled
-            heart and a count you can watch tick up says it at a glance, and the
-            label stays put so the row doesn't reflow under your thumb. */}
-        <div className="icon-actions">
-          <button className="icon-btn" onClick={onSave} aria-pressed={saved} data-on={saved || undefined}>
-            {saved ? <BookmarkCheck size={14} fill="currentColor" /> : <Bookmark size={14} />} Save
-          </button>
-          <button
-            className="icon-btn"
-            onClick={() => (token ? setListOpen(true) : router.push(`/auth?next=/courses/${slug}`))}
-          >
-            <ListPlus size={14} /> List
-          </button>
-          <button className="icon-btn" onClick={onLike} aria-pressed={liked} data-on={liked || undefined}>
-            <Heart size={14} fill={liked ? "currentColor" : "none"} />
-            <span>Like</span>
-            {likeCount > 0 && <span className="icon-btn__count">{compact(likeCount)}</span>}
-          </button>
-          <button className="icon-btn" onClick={onShare}>
-            <Share2 size={14} /> Share
-          </button>
+          {/* Stream / download and the watchlist actions live on the artwork, as
+              phono does — the image is the page's identity, not a banner above it. */}
+          <div className="detail-actions">
+            <div className="actions">
+              {firstLesson && (
+                <Link href={`/courses/${course.slug}/lessons/${firstLesson.id}`} className="hero-cta">
+                  <Play size={18} fill="currentColor" /> Start course
+                </Link>
+              )}
+              {/* The archive *is* the course, so downloading is the primary action
+                  whenever there are no lessons to open on the site. */}
+              <button onClick={() => setDownloadOpen(true)} className={firstLesson ? "hero-dl" : "hero-cta"}>
+                <Download size={18} /> Download
+              </button>
+              {course.previewVideoUrl && (
+                <a href={course.previewVideoUrl} target="_blank" rel="noreferrer" className="hero-dl">
+                  <SparklesInline /> Preview
+                </a>
+              )}
+            </div>
+            {/* The icon carries the state, not the label. A button that swaps "Like"
+                for "Liked" makes you read a word to find out what you did; a filled
+                heart and a count you can watch tick up says it at a glance, and the
+                label stays put so the row doesn't reflow under your thumb. */}
+            <div className="icon-actions">
+              <button className="icon-btn" onClick={onSave} aria-pressed={saved} data-on={saved || undefined}>
+                {saved ? <BookmarkCheck size={14} fill="currentColor" /> : <Bookmark size={14} />} Save
+              </button>
+              <button
+                className="icon-btn"
+                onClick={() => (token ? setListOpen(true) : router.push(`/auth?next=/courses/${slug}`))}
+              >
+                <ListPlus size={14} /> List
+              </button>
+              <button className="icon-btn" onClick={onLike} aria-pressed={liked} data-on={liked || undefined}>
+                <Heart size={14} fill={liked ? "currentColor" : "none"} />
+                <span>Like</span>
+                {likeCount > 0 && <span className="icon-btn__count">{compact(likeCount)}</span>}
+              </button>
+              <button className="icon-btn" onClick={onShare}>
+                <Share2 size={14} /> Share
+              </button>
+            </div>
+          </div>
         </div>
         {user?.isStaff && (
-          <div style={{ marginTop: 4 }}>
+          <div className="detail-admin">
             <button className="btn ghost" onClick={() => coverInputRef.current?.click()} disabled={coverBusy}>
               {coverBusy ? "Uploading…" : "✎ Edit cover"}
             </button>

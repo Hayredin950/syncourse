@@ -40,32 +40,32 @@
      step is ~8/255 lighter than the last, which is the smallest gap that still
      reads as depth on a dim phone screen; the old ramp moved in 4s and washed
      out to one flat grey the moment brightness dropped. */
-  --adm-plane: #0a0908;
-  --adm-surface: #1a1714;
-  --adm-raised: #221f1b;
-  --adm-overlay: #2b2723;
+  --adm-plane: #0e0e0d;
+  --adm-surface: #161513;
+  --adm-raised: #201e1b;
+  --adm-overlay: #2e2a26;
 
   /* Hairlines. Two weights only: quiet dividers, and edges that need to read. */
-  --adm-line: rgba(255, 255, 255, 0.07);
-  --adm-line-strong: rgba(255, 255, 255, 0.13);
+  --adm-line: rgba(245, 242, 234, 0.07);
+  --adm-line-strong: rgba(245, 242, 234, 0.14);
   /* A third, for the edge of something you are meant to type into. A form control
      borrowing `--adm-line-strong` sat at 13% white on a #221f1b fill, which is
      under 1.4:1 — the field read as a disabled one, and a screen of them read as a
      read-only summary. These two are the resting and hover edges of every input,
      select, textarea and combobox. */
-  --adm-field-line: rgba(255, 255, 255, 0.22);
-  --adm-field-line-hi: rgba(255, 255, 255, 0.34);
+  --adm-field-line: rgba(245, 242, 234, 0.2);
+  --adm-field-line-hi: rgba(245, 242, 234, 0.34);
 
   /* Ink ramp. Four steps is enough; a fifth always ends up unreadable. */
-  --adm-ink: #f8f7f5;
-  --adm-ink-2: #c9c4bd;
-  --adm-ink-3: #948f87;
-  --adm-ink-4: #726d66;
+  --adm-ink: #f5f2ea;
+  --adm-ink-2: #ddd6c9;
+  --adm-ink-3: #b8afa4;
+  --adm-ink-4: #948b80;
 
   /* Functional colour. One job each — see note 2 above. */
-  --adm-accent: #f59e0b;
-  --adm-accent-hi: #fbbf24;
-  --adm-accent-soft: rgba(245, 158, 11, 0.12);
+  --adm-accent: #e8a13a;
+  --adm-accent-hi: #f0b055;
+  --adm-accent-soft: rgba(232, 161, 58, 0.12);
   --adm-good: #22c55e;
   --adm-good-soft: rgba(34, 197, 94, 0.12);
   /* Attention is amber-*red*, not amber. At #fab219 it was three degrees of hue
@@ -98,18 +98,18 @@
      obvious reading order instead of one grey wall: hero numbers, page title,
      body/table, then labels and meta. */
   --adm-t-hero: 30px;
-  --adm-t-h1: 22px;
+  --adm-t-h1: 30px;
   --adm-t-h2: 15px;
   --adm-t-body: 12.5px;
   --adm-t-meta: 11px;
   --adm-t-label: 10px;
 
-  --adm-r-sm: 6px;
-  --adm-r: 9px;
-  --adm-r-lg: 14px;
+  --adm-r-sm: 8px;
+  --adm-r: 12px;
+  --adm-r-lg: 18px;
   --adm-r-pill: 999px;
 
-  --adm-gutter: 28px;
+  --adm-gutter: 32px;
   --adm-sidebar-w: 232px;
   --adm-topbar-h: 50px;
 
@@ -423,22 +423,24 @@
 /* --- typography ------------------------------------------------------------ */
 .admin-content {
   padding: 22px var(--adm-gutter) 56px;
-  max-width: 1360px;
+  max-width: 1520px;
   width: 100%;
 }
 .admin-content h1 {
   margin: 0;
+  font-family: var(--app-font-heading);
   font-size: var(--adm-t-h1);
-  font-weight: 660;
-  letter-spacing: -0.022em;
-  line-height: 1.15;
+  font-weight: 600;
+  letter-spacing: -0.028em;
+  line-height: 1.08;
   color: var(--adm-ink);
 }
 .admin-content h2 {
   margin: 0;
+  font-family: var(--app-font-heading);
   font-size: var(--adm-t-h2);
-  font-weight: 650;
-  letter-spacing: -0.012em;
+  font-weight: 600;
+  letter-spacing: -0.018em;
   color: var(--adm-ink);
 }
 /* Explanatory copy earns its own leading. Set at body line-height it read as
@@ -475,9 +477,10 @@
 .admin-gate { padding: 80px 24px; text-align: center; color: var(--adm-ink-3); }
 
 .admin-label {
+  font-family: var(--app-font-mono);
   font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.09em;
+  font-weight: 500;
+  letter-spacing: 0.13em;
   text-transform: uppercase;
   color: var(--adm-ink-4);
 }
@@ -495,9 +498,10 @@
 .admin-card--flush { padding: 0; overflow: hidden; }
 .admin-card h3 {
   margin: 0 0 12px;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
+  font-family: var(--app-font-heading);
+  font-size: 14px;
+  font-weight: 600;
+  letter-spacing: -0.01em;
   color: var(--adm-ink);
 }
 .admin-card__head {
@@ -614,9 +618,10 @@ a.admin-tile:hover {
   padding: 9px 14px;
   background: var(--adm-surface);
   border-bottom: 1px solid var(--adm-line);
+  font-family: var(--app-font-mono);
   font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.09em;
+  font-weight: 500;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--adm-ink-4);
   white-space: nowrap;
@@ -650,6 +655,7 @@ a.admin-tile:hover {
    from the name so a column of letter-fallbacks is scannable instead of being
    thirty identical amber circles. */
 .admin-avatar {
+  position: relative;
   display: grid;
   place-items: center;
   flex: 0 0 auto;
@@ -663,7 +669,7 @@ a.admin-tile:hover {
   font-weight: 700;
   line-height: 1;
 }
-.admin-avatar img { width: 100%; height: 100%; object-fit: cover; }
+.admin-avatar img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .admin-avatar--sq { border-radius: var(--adm-r-sm); }
 .admin-avatar--h0 { background: rgba(110, 168, 254, 0.16); color: #9cc2ff; }
 .admin-avatar--h1 { background: rgba(181, 140, 247, 0.16); color: #c9adfa; }
@@ -672,6 +678,7 @@ a.admin-tile:hover {
 .admin-avatar--h4 { background: rgba(236, 106, 149, 0.16); color: #f59ab8; }
 .admin-avatar--h5 { background: rgba(45, 212, 191, 0.15); color: #7de3d4; }
 .admin-thumb {
+  position: relative;
   flex: 0 0 auto;
   width: 34px;
   height: 46px;
@@ -679,7 +686,7 @@ a.admin-tile:hover {
   border-radius: var(--adm-r-sm);
   background: var(--adm-raised);
 }
-.admin-thumb img { width: 100%; height: 100%; object-fit: cover; }
+.admin-thumb img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 
 /* Styled empty state — icon, one line, and the action that fills it. It replaced
    `.admin-empty`, a centred grey sentence that named the form it did not link to;
@@ -793,7 +800,7 @@ a.admin-tile:hover {
   color: var(--adm-ink);
   font: inherit;
   font-size: var(--adm-t-body);
-  padding: 7px 10px;
+  padding: 9px 13px;
   min-width: 0;
   max-width: 100%;
   outline: none;
@@ -820,7 +827,7 @@ a.admin-tile:hover {
   box-shadow: 0 0 0 3px var(--adm-accent-soft);
 }
 .admin-textarea { min-height: 74px; resize: vertical; line-height: 1.55; width: 100%; }
-.admin-select { padding-right: 26px; cursor: pointer; }
+.admin-select { padding-right: 32px; cursor: pointer; }
 /* Read-only values (Settings) use the field silhouette without pretending to
    be editable: same box, quieter text, selectable for copying. */
 .admin-readonly {
@@ -1124,9 +1131,10 @@ a.admin-tile:hover {
 .admin-btn--sm { padding: 4px 9px; font-size: 11px; }
 .admin-btn--icon { padding: 5px; }
 
-/* Amber = primary action. One per view, ideally. */
-.admin-btn--primary { background: var(--adm-accent); color: #17130a; border-color: var(--adm-accent); }
-.admin-btn--primary:hover:not(:disabled) { background: var(--adm-accent-hi); border-color: var(--adm-accent-hi); }
+/* Primary = the cream pill used on the public site; amber stays the accent for
+   selection, links and status, so the console shares one visual language. */
+.admin-btn--primary { background: #f5f2ea; color: #141311; border-color: #f5f2ea; font-weight: 650; }
+.admin-btn--primary:hover:not(:disabled) { background: #ece7db; border-color: #ece7db; color: #141311; }
 .admin-btn--ghost { background: transparent; border-color: var(--adm-line-strong); color: var(--adm-ink-2); }
 .admin-btn--ghost:hover:not(:disabled) { background: var(--adm-raised); color: var(--adm-ink); border-color: rgba(255, 255, 255, 0.17); }
 .admin-btn--quiet { background: transparent; color: var(--adm-ink-3); }
@@ -1172,21 +1180,33 @@ a.admin-tile:hover {
 .admin-status--idle { color: var(--adm-ink-4); }
 
 /* Segmented filter control. */
-.admin-seg { display: inline-flex; padding: 2px; gap: 2px; background: var(--adm-surface); border: 1px solid var(--adm-line); border-radius: var(--adm-r); }
+.admin-seg {
+  display: inline-flex;
+  padding: 4px;
+  gap: 2px;
+  background: rgba(32, 30, 27, 0.55);
+  border: 1px solid rgba(245, 242, 234, 0.16);
+  border-radius: 999px;
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.admin-seg::-webkit-scrollbar { display: none; }
 .admin-seg button {
-  padding: 4px 10px;
+  padding: 6px 13px;
   border: 0;
-  border-radius: var(--adm-r-sm);
+  border-radius: 999px;
   background: transparent;
   color: var(--adm-ink-3);
   font: inherit;
-  font-size: 11px;
-  font-weight: 600;
+  font-size: 12.5px;
+  font-weight: 500;
+  white-space: nowrap;
   cursor: pointer;
   transition: background var(--adm-fast), color var(--adm-fast);
 }
-.admin-seg button:hover { color: var(--adm-ink); }
-.admin-seg button[aria-pressed='true'] { background: var(--adm-raised); color: var(--adm-ink); box-shadow: var(--adm-shadow); }
+.admin-seg button:hover { color: var(--adm-ink); background: rgba(245, 242, 234, 0.06); }
+.admin-seg button[aria-pressed='true'] { background: var(--adm-accent); color: #0e0e0d; font-weight: 600; box-shadow: none; }
 
 /* --- toasts ---------------------------------------------------------------- */
 .admin-toast-stack {
@@ -1742,7 +1762,7 @@ a.admin-tile:hover {
 /* --- responsive ----------------------------------------------------------- */
 /* Tablet — the rail stays; every two-column grid gives up its second column. */
 @media (max-width: 1100px) {
-  .admin-shell { --adm-gutter: 20px; }
+  .admin-shell { --adm-gutter: 16px; }
   .admin-stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .admin-grid-2, .admin-grid-even, .admin-detail-grid, .admin-form-split { grid-template-columns: minmax(0, 1fr); }
   .admin-form-split__aside { position: static; max-height: none; overflow: visible; }
@@ -1969,3 +1989,7 @@ a.admin-tile:hover {
    rather than the amber reserved for buttons that change something. */
 .md-tab.is-active { background: var(--adm-overlay); color: var(--adm-ink); box-shadow: var(--adm-shadow); }
 .md-preview { min-height: 320px; max-height: 60vh; overflow-y: auto; background: var(--adm-raised); border: 1px solid var(--adm-line-strong); border-radius: var(--adm-r); padding: 16px 18px; }
+
+/* The same wordmark as the rest of the app, scaled to the rail. */
+.admin-sidebar__word { font-size: 16px; letter-spacing: -0.015em; color: var(--adm-ink); }
+.admin-sidebar__word .brand-ourse { color: #e8a13a; }

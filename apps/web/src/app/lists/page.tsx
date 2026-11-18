@@ -98,7 +98,7 @@ export default function ListsPage() {
       <div className="profile-head">
         <div>
           <span className="eyebrow">Collections</span>
-          <h1 className="display" style={{ fontSize: 42 }}>Course lists</h1>
+          <h1 className="display page-title">Course lists</h1>
           <p className="muted" style={{ margin: 0 }}>Browse lists made by people who learn with intent.</p>
         </div>
         <button className="btn primary" onClick={() => setShowCreate(true)}>

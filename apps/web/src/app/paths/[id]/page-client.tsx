@@ -71,7 +71,7 @@ export default function PathDetailPage() {
       >
         <div className="hero-content">
           <span className="eyebrow">Learning path · {path.courseCount} courses</span>
-          <h1 className="display" style={{ fontSize: 38 }}>{path.title}</h1>
+          <h1 className="display page-title">{path.title}</h1>
           {path.description && <p>{path.description}</p>}
           <div className="detail-meta">
             {path.totalVotes > 0 && (

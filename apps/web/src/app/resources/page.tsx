@@ -118,12 +118,12 @@ function ResourcesInner() {
 
   return (
     <main className="page">
-      <MobileHeader title="Browse" />
+      <MobileHeader title="Resources" />
       <BrowseTabs />
 
       <header className="res-head">
         <span className="eyebrow">Library · reference</span>
-        <h1 className="display" style={{ fontSize: "clamp(30px,3.6vw,44px)", marginBottom: 8 }}>
+        <h1 className="display page-title">
           Resources
         </h1>
         <p className="muted res-head__lede">

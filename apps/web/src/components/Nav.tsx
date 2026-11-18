@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { useEffect, useState, useRef, useCallback, type FormEvent, type ReactNode } from "react";
+import { CoverImage } from "@/components/CoverImage";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { Suspense, useEffect, useState, useRef, useCallback, type FormEvent, type ReactNode } from "react";
 import {
   Bookmark,
   BookOpen,
@@ -10,29 +11,65 @@ import {
   Crown,
   FileText,
   Home,
-  Layers3,
+  LayoutGrid,
+  Map,
   MessageCircle,
   Search,
+  Zap,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
+import { Wordmark } from "@/components/Wordmark";
+
+const CATS = [
+  { key: "all", label: "All", href: "/browse", icon: LayoutGrid },
+  { key: "course", label: "Courses", href: "/browse?type=course", icon: BookOpen },
+  { key: "mini", label: "Mini-courses", href: "/browse?type=mini-course", icon: Zap },
+  { key: "resources", label: "Resources", href: "/resources", icon: FileText },
+  { key: "roadmaps", label: "Roadmaps", href: "/resources?type=roadmap", icon: Map },
+];
+
+/* Category chips read `?type=` so the active pill matches the filter. They live
+   behind their own Suspense boundary: the rest of the bar still server-renders,
+   and the fallback is the same row with no selection rather than a gap. */
+function CatLinks({ pathname, type }: { pathname: string; type: string }) {
+  const catOn = (key: string) => {
+    if (key === "all") return pathname === "/browse" && !type;
+    if (key === "course") return pathname === "/browse" && type === "course";
+    if (key === "mini") return pathname === "/browse" && type === "mini-course";
+    if (key === "resources") return pathname.startsWith("/resources") && type !== "roadmap";
+    if (key === "roadmaps") return pathname.startsWith("/resources") && type === "roadmap";
+    return false;
+  };
+  return (
+    <div className="nav-cats no-scrollbar" aria-label="Catalogue types">
+      {CATS.map((c) => {
+        const on = catOn(c.key);
+        return (
+          <Link key={c.key} href={c.href} className={`nav-cat ${on ? "active" : ""}`}>
+            <c.icon size={17} strokeWidth={1.8} />
+            <span>{c.label}</span>
+          </Link>
+        );
+      })}
+    </div>
+  );
+}
+
+function NavCats({ pathname }: { pathname: string }) {
+  const type = useSearchParams().get("type") ?? "";
+  return <CatLinks pathname={pathname} type={type} />;
+}
 
 /* ---------- TopNav — desktop top bar ---------- */
-/**
- * One row, not two. The second row repeated the same six destinations the pills
- * and the resources page already cover, and half of them only differed by a
- * query string — so it read as navigation but behaved like a filter that had
- * wandered out of the page it belonged to. Course/mini-course now live as tabs
- * on /browse, and the resource types as tabs on /resources.
- */
 export function TopNav() {
   const pathname = usePathname();
   const router = useRouter();
   const { user, isPremium, logout } = useAuth();
   const [value, setValue] = useState("");
   const [meOpen, setMeOpen] = useState(false);
+  const [stuck, setStuck] = useState(false);
   const meRef = useRef<HTMLDivElement>(null);
 
-  // Close dropdown on outside click
   const closeMe = useCallback(() => setMeOpen(false), []);
   useEffect(() => {
     if (!meOpen) return;
@@ -42,8 +79,13 @@ export function TopNav() {
     document.addEventListener("mousedown", handler);
     return () => document.removeEventListener("mousedown", handler);
   }, [meOpen]);
-  // Close on route change
   useEffect(() => setMeOpen(false), [pathname]);
+  useEffect(() => {
+    const onScroll = () => setStuck(window.scrollY > 8);
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
@@ -52,51 +94,52 @@ export function TopNav() {
 
   const active = (href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href));
 
-  // phonofilm: auth screens have no site navbar. This must sit *below* every
-  // hook — an early return above them changes the hook count between routes,
-  // which React rejects outright.
   if (pathname.startsWith("/auth")) return null;
 
   return (
-    <header className="topbar desktop-only">
+    <header className={`topbar desktop-only ${stuck ? "is-stuck" : ""}`}>
       <div className="topbar-row topbar-row--main">
-        <Link href="/" className="brand">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo.png" alt="" className="brand-logo" />
-          <span className="brand-ourse">yncourse</span>
+        <Link href="/" className="brand" aria-label="Syncourse home">
+          <Wordmark />
         </Link>
-        <form className="top-search" onSubmit={submit}>
-          <Search size={15} />
-          <input
-            aria-label="Search courses"
-            placeholder="Search courses"
-            value={value}
-            onChange={(e) => setValue(e.target.value)}
-          />
-        </form>
-        <nav className="nav-links">
+
+        <div className="topbar-center">
+          <form className="top-search" onSubmit={submit} role="search">
+            <Search size={18} strokeWidth={1.8} />
+            <input
+              aria-label="Search courses"
+              placeholder="Search courses"
+              value={value}
+              onChange={(e) => setValue(e.target.value)}
+            />
+          </form>
+          <Suspense fallback={<CatLinks pathname={pathname} type="" />}>
+            <NavCats pathname={pathname} />
+          </Suspense>
+        </div>
+
+        <nav className="nav-links" aria-label="Primary">
           <Link href="/browse" className={`nav-pill ${active("/browse") ? "active" : ""}`}>
-            <BookOpen size={14} /> Courses
-          </Link>
-          <Link href="/resources" className={`nav-pill ${active("/resources") ? "active" : ""}`}>
-            <FileText size={14} /> Resources
+            <LayoutGrid size={19} strokeWidth={1.8} /> <span className="nav-label">Browse</span>
           </Link>
           <Link href="/circles" className={`nav-pill ${active("/circles") ? "active" : ""}`}>
-            <MessageCircle size={14} /> Circles
+            <MessageCircle size={19} strokeWidth={1.8} /> <span className="nav-label">Circles</span>
           </Link>
           <Link href="/lists" className={`nav-pill ${active("/lists") ? "active" : ""}`}>
-            <Bookmark size={14} /> Collections
+            <Bookmark size={19} strokeWidth={1.8} /> <span className="nav-label">Collections</span>
           </Link>
           {isPremium ? (
-            <span className="nav-pill nav-pill--premium">Premium</span>
+            <span className="nav-pill nav-pill--premium">
+              <Crown size={17} strokeWidth={1.8} /> <span className="nav-label">Premium</span>
+            </span>
           ) : (
             <Link href="/premium" className="nav-pill nav-pill--cta">
-              <Crown size={14} /> Go Premium
+              <Crown size={17} strokeWidth={1.8} /> <span className="nav-label">Go Premium</span>
             </Link>
           )}
           {user?.isStaff && (
             <Link href="/admin" className={`nav-pill nav-pill--admin ${active("/admin") ? "active" : ""}`}>
-              <Crown size={14} /> Admin
+              Admin
             </Link>
           )}
           {user ? (
@@ -106,49 +149,73 @@ export function TopNav() {
                 className={`nav-pill nav-pill--me ${active("/me") ? "active" : ""} ${meOpen ? "open" : ""}`}
                 title={user.name}
                 onClick={() => setMeOpen((o) => !o)}
+                aria-expanded={meOpen}
               >
                 <span className="nav-me__avatar">
-                  {user.avatarUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img src={user.avatarUrl} alt="" className="h-full w-full object-cover" />
-                  ) : (
-                    <span className="text-xs font-bold">{(user.name || "?").charAt(0).toUpperCase()}</span>
-                  )}
+                  {/* Initial stays put; the photo covers it once it decodes. */}
+                  <span>{(user.name || "?").charAt(0).toUpperCase()}</span>
+                  <CoverImage src={user.avatarUrl} transform={{ width: 72, height: 72 }} className="absolute inset-0 h-full w-full object-cover" eager />
                 </span>
-                Me
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className={`nav-me__chevron ${meOpen ? "open" : ""}`}><path d="m6 9 6 6 6-6"/></svg>
+                <span className="nav-label">Me</span>
+                <svg
+                  className="nav-me__chevron"
+                  width="12"
+                  height="12"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <path d="m6 9 6 6 6-6" />
+                </svg>
               </button>
               {meOpen && (
                 <div className="me-dropdown">
                   <div className="me-dropdown__header">
-                    <span className="nav-me__avatar" style={{ width: 32, height: 32 }}>
-                      {user.avatarUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img src={user.avatarUrl} alt="" className="h-full w-full object-cover" />
-                      ) : (
-                        <span className="text-sm font-bold">{(user.name || "?").charAt(0).toUpperCase()}</span>
-                      )}
+                    <span className="nav-me__avatar" style={{ width: 36, height: 36 }}>
+                      <span>{(user.name || "?").charAt(0).toUpperCase()}</span>
+                      <CoverImage src={user.avatarUrl} transform={{ width: 72, height: 72 }} className="absolute inset-0 h-full w-full object-cover" eager />
                     </span>
-                    <div>
+                    <div style={{ minWidth: 0 }}>
                       <div className="me-dropdown__name">{user.name}</div>
                       <div className="me-dropdown__email">{user.email}</div>
                     </div>
                   </div>
                   <div className="me-dropdown__sep" />
                   <Link href="/me" className="me-dropdown__item" onClick={closeMe}>
-                    <CircleUserRound size={15} /> Profile
+                    <CircleUserRound size={16} strokeWidth={1.8} /> Your profile
+                  </Link>
+                  <Link href="/my-learning" className="me-dropdown__item" onClick={closeMe}>
+                    <BookOpen size={16} strokeWidth={1.8} /> My learning
+                  </Link>
+                  <Link href="/premium" className="me-dropdown__item" onClick={closeMe}>
+                    <Crown size={16} strokeWidth={1.8} /> Subscription
                   </Link>
                   <div className="me-dropdown__sep" />
-                  <button type="button" className="me-dropdown__item me-dropdown__item--danger" onClick={() => { closeMe(); logout(); router.push("/"); }}>
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg>
-                    Sign out
+                  <button
+                    type="button"
+                    className="me-dropdown__item me-dropdown__item--danger"
+                    onClick={() => {
+                      closeMe();
+                      logout();
+                      router.push("/");
+                    }}
+                  >
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />
+                      <polyline points="16 17 21 12 16 7" />
+                      <line x1="21" x2="9" y1="12" y2="12" />
+                    </svg>
+                    Log out
                   </button>
                 </div>
               )}
             </div>
           ) : (
             <Link href="/auth" className={`nav-pill ${active("/auth") ? "active" : ""}`}>
-              <CircleUserRound size={14} /> Sign in
+              <CircleUserRound size={19} strokeWidth={1.8} /> <span className="nav-label">Sign in</span>
             </Link>
           )}
         </nav>
@@ -157,35 +224,26 @@ export function TopNav() {
   );
 }
 
-/* ---------- MobileHeader — per-page title (mobile only) ---------- */
-/**
- * Phone-only, and the styling has to live in a class for that to hold: this used
- * to carry `style={{ display: "flex" }}` beside `.mobile-only`, and an inline
- * style outranks any stylesheet rule — so `.mobile-only { display: none }` never
- * applied and all 34 call sites rendered a second brand link and search button on
- * desktop, stacked under the real top bar.
- */
-export function MobileHeader({ title = "Syncourse" }: { title?: string }) {
+/* ---------- MobileHeader ---------- */
+export function MobileHeader({ title }: { title?: string }) {
   return (
     <div className="mobile-head">
-      <Link href="/" className="brand">
-        {title}
+      <Link href="/" className="brand" aria-label="Syncourse home">
+        {title && title !== "Syncourse" ? <span className="mobile-page-title">{title}</span> : <Wordmark small />}
       </Link>
-      <Link href="/search" className="icon-btn" aria-label="Search">
-        <Search size={18} />
-      </Link>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <Link href="/search" className="icon-btn" aria-label="Search">
+          <Search size={19} strokeWidth={1.8} />
+        </Link>
+        <Link href="/me" className="icon-btn" aria-label="Your profile">
+          <CircleUserRound size={19} strokeWidth={1.8} />
+        </Link>
+      </div>
     </div>
   );
 }
 
 /* ---------- BottomNav — fixed mobile tab bar ---------- */
-/**
- * The whole top bar is desktop-only, so this is the entire site navigation on a
- * phone. Five slots, and Courses and Resources used to take two of them for what
- * is one job — browsing the library — which left Collections with no way in at
- * all. They are now one Browse tab that lands on /browse and stays lit on
- * /resources, with `BrowseTabs` switching between the two halves.
- */
 export function BottomNav() {
   const pathname = usePathname();
   if (pathname.startsWith("/auth")) return null;
@@ -194,38 +252,40 @@ export function BottomNav() {
     {
       href: "/browse",
       label: "Browse",
-      icon: BookOpen,
+      icon: LayoutGrid,
       on: pathname.startsWith("/browse") || pathname.startsWith("/resources") || pathname.startsWith("/courses"),
     },
+    { href: "/search", label: "Search", icon: Search, on: pathname.startsWith("/search") },
     { href: "/lists", label: "Collections", icon: Bookmark, on: pathname.startsWith("/lists") },
-    { href: "/circles", label: "Circles", icon: MessageCircle, on: pathname.startsWith("/circles") },
-    { href: "/me", label: "Me", icon: CircleUserRound, on: pathname.startsWith("/me") },
+    { href: "/me", label: "Me", icon: CircleUserRound, on: pathname.startsWith("/me") || pathname.startsWith("/my-learning") },
   ];
   return (
-    <nav className="mobile-nav mobile-only">
-      {tabs.map((t) => (
-        <Link key={t.href} href={t.href} className={t.on ? "active" : ""}>
-          <t.icon />
-          <span>{t.label}</span>
-        </Link>
-      ))}
+    <nav className="mobile-nav mobile-only" aria-label="Primary">
+      <div className="mnav-grid">
+        {tabs.map((t) => (
+          <Link key={t.href} href={t.href} className={t.on ? "active" : ""} aria-current={t.on ? "page" : undefined}>
+            <t.icon strokeWidth={t.on ? 2 : 1.7} />
+            <span>{t.label}</span>
+          </Link>
+        ))}
+      </div>
     </nav>
   );
 }
 
-/* ---------- Footer — desktop only ---------- */
+/* ---------- Footer ---------- */
 export function Footer() {
   const pathname = usePathname();
   if (pathname.startsWith("/auth")) return null;
   return (
     <footer className="footer desktop-only">
       <div>
-        <div className="brand">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/logo.png" alt="" className="brand-logo" />
-          <span className="brand-ourse">yncourse</span>
-        </div>
-        <p className="muted">Practical skills for people who build.</p>
+        <Link href="/" className="brand">
+          <Wordmark />
+        </Link>
+        <p className="muted" style={{ margin: "8px 0 0" }}>
+          Practical skills for people who build.
+        </p>
       </div>
       <div>
         <div className="mono">GET THE APP</div>
@@ -258,7 +318,12 @@ export function SectionHead({
 }) {
   return (
     <div className="section-head">
-      <h2>{title}</h2>
+      <div className="section-head__left">
+        <h2>
+          {title}
+          <ChevronRightInline />
+        </h2>
+      </div>
       <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
         {right}
         {href && (
@@ -273,11 +338,11 @@ export function SectionHead({
 
 function ChevronRightInline() {
   return (
-    <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" style={{ verticalAlign: "middle" }}>
+    <svg className="chev" width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
       <path d="m9 18 6-6-6-6" />
     </svg>
   );
 }
 
 /* re-export a few icons commonly needed by pages */
-export { Bookmark, Home as HomeIcon, Layers3 as LayersIcon };
+export { Bookmark, Home as HomeIcon, Layers3 as LayersIcon } from "lucide-react";

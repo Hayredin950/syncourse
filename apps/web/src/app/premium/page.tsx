@@ -103,7 +103,7 @@ export default function PremiumPage() {
   const heroImages = (home?.trending ?? []).slice(0, 6).map((c) => c.thumbnailUrl).filter(Boolean) as string[];
 
   return (
-    <main className="page" style={{ maxWidth: 1000 }}>
+    <main className="page">
       <MobileHeader title="Premium" />
 
       {/* hero — blurred course collage background */}

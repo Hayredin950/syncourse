@@ -88,7 +88,7 @@ function MyLibrary() {
       <main className="page">
         <MobileHeader title="My Library" />
         <span className="eyebrow">Your library</span>
-        <h1 className="display" style={{ fontSize: 42 }}>My Library</h1>
+        <h1 className="display page-title">My Library</h1>
         <div style={{ marginTop: 18 }}>
           {failed ? (
             <LoadError title="We couldn't load your library" onRetry={load} />
@@ -106,7 +106,7 @@ function MyLibrary() {
     <main className="page">
       <MobileHeader title="My Library" />
       <span className="eyebrow">Your library</span>
-      <h1 className="display" style={{ fontSize: 42 }}>My Library</h1>
+      <h1 className="display page-title">My Library</h1>
 
       <div className="pills" style={{ marginTop: 18 }}>
         {(

@@ -128,6 +128,12 @@ export function CourseCard({
     <Link href={`/courses/${course.slug}`} className={`course-card ${fill ? "course-card-fill" : ""}`} data-testid={`card-course-${course.slug}`}>
       <div className="cover-wrap" style={{ position: "relative" }}>
         <CoverArt course={course} large={wide} />
+        <span className="poster-mark" aria-hidden>
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.9">
+            <circle cx="12" cy="12" r="9" />
+            <circle cx="13.5" cy="13.5" r="3.2" />
+          </svg>
+        </span>
         {rank !== undefined && (
           <span
             className="cover-badge rank"
@@ -144,7 +150,7 @@ export function CourseCard({
             className="quick-action"
             aria-label="Save"
           >
-            {saved ? <Check size={14} /> : <Bookmark size={14} />}
+            {saved ? <Check size={15} /> : <Bookmark size={15} />}
           </button>
           <button
             onClick={(e) => {
@@ -156,7 +162,7 @@ export function CourseCard({
             className="quick-action"
             aria-label="Preview"
           >
-            <Eye size={14} />
+            <Eye size={15} />
           </button>
           <button
             onClick={(e) => {
@@ -168,20 +174,22 @@ export function CourseCard({
             className="quick-action"
             aria-label="Download"
           >
-            <Download size={14} />
+            <Download size={15} />
           </button>
         </div>
       </div>
       <div className="card-title">{course.title}</div>
+      {course.isNew && <span className="card-added">Added</span>}
       <div className="card-meta">
         {/* An unrated course scored 0.0 out of five, which is worse than saying
             nothing: it reads as a verdict rather than as a course nobody has
             reviewed yet. */}
-        {course.ratingCount > 0 && (
+        {course.ratingCount > 0 && course.ratingAvg > 0 && (
           <span className="rating">
-            <Star size={10} fill="currentColor" /> {course.ratingAvg.toFixed(1)}
+            <Star size={12} fill="currentColor" /> {course.ratingAvg.toFixed(1)}
           </span>
         )}
+        {course.isPremium && <span>Premium</span>}
         {facts.length > 0 && <span>{facts.join(" · ")}</span>}
       </div>
     </Link>
@@ -215,7 +223,7 @@ export function CourseRow({
         <div className="line-clamp-1 text-sm font-medium text-text">{course.title}</div>
         <div className="line-clamp-1 text-xs text-muted">{course.description}</div>
         <div className="mt-1 flex items-center gap-1.5 text-[11px]">
-          {course.ratingCount > 0 && (
+          {course.ratingCount > 0 && course.ratingAvg > 0 && (
             <>
               <Star size={11} fill="currentColor" className="rating" />
               <span className="rating">{course.ratingAvg.toFixed(1)}</span>

@@ -6,6 +6,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ChevronsLeft, ChevronsRight, ExternalLink, Menu, Search, Shield, X } from "lucide-react";
 import { get } from "@/lib/api";
 import type { AdminStats } from "@/lib/types";
+import { Wordmark } from "@/components/Wordmark";
 import { ADMIN_NAV, activeNavItem } from "./nav";
 import CommandPalette from "./CommandPalette";
 import { AdminToastProvider } from "./AdminToast";
@@ -149,7 +150,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
               <Shield size={14} />
             </span>
             <span>
-              <span className="admin-sidebar__name">Syncourse</span>
+              <span className="admin-sidebar__name"><Wordmark className="admin-sidebar__word" /></span>
               <span className="admin-sidebar__role">Admin console</span>
             </span>
           </Link>
@@ -225,7 +226,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
                 <Shield size={14} />
               </span>
               <span>
-                <span className="admin-sidebar__name">Syncourse</span>
+                <span className="admin-sidebar__name"><Wordmark className="admin-sidebar__word" /></span>
                 <span className="admin-sidebar__role">Admin console</span>
               </span>
             </Link>
