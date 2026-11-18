@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import React, { useEffect, useRef, useState } from "react";
 import { AppState, StyleSheet, View } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
+import { Note } from "./Note";
 import { Press } from "./Press";
 import { Text } from "./Type";
 import * as api from "../lib/api";
@@ -25,6 +26,9 @@ export default function UpdateBanner() {
   const insets = useSafeAreaInsets();
   const [dismissedVersion, setDismissedVersion] = useState<string | null>(null);
   const [updating, setUpdating] = useState(false);
+  // A failed apply used to clear the spinner and leave the banner unchanged, so
+  // the tap looked ignored. Say what happened instead.
+  const [failed, setFailed] = useState(false);
   const appState = useRef(AppState.currentState);
 
   const { data: versions, refetch } = useQuery({
@@ -58,8 +62,11 @@ export default function UpdateBanner() {
 
   const onUpdate = async () => {
     setUpdating(true);
+    setFailed(false);
     try {
       await applyUpdate();
+    } catch {
+      setFailed(true);
     } finally {
       setUpdating(false);
     }
@@ -92,6 +99,9 @@ export default function UpdateBanner() {
             </Text>
           </View>
         </View>
+        {failed && (
+          <Note text="The update didn't finish. Check your connection and try again." bad />
+        )}
         <View style={styles.actions}>
           <Press
             style={styles.laterBtn}
