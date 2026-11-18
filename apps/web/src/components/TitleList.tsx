@@ -2,10 +2,13 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Bookmark, Check, Download, LayoutGrid, List, Play } from "lucide-react";
 import { useAuth } from "@/lib/auth";
+import { post } from "@/lib/api";
 import { CoverImage } from "@/components/CoverImage";
+import { Toast } from "@/components/Toast";
+import { useToast } from "@/lib/useToast";
 import { compact, formatDuration, plural } from "@/lib/format";
 import { hueFromString } from "@/components/CourseCard";
 
@@ -20,6 +23,9 @@ export type EntityCourse = {
   ratingAvg: number;
   ratingCount: number;
   downloadCount: number;
+  lessonCount?: number;
+  isPremium?: boolean;
+  saved?: boolean;
   publishedAt?: string;
   contentType?: string;
 };
@@ -45,7 +51,12 @@ export function Stars({ value, votes }: { value: number; votes: number }) {
 export function TitleRow({ course, index }: { course: EntityCourse; index: number }) {
   const router = useRouter();
   const { token } = useAuth();
-  const [saved, setSaved] = useState(false);
+  const [saved, setSaved] = useState(Boolean(course.saved));
+  const [saving, setSaving] = useState(false);
+  const { toast, setToast } = useToast();
+  useEffect(() => {
+    setSaved(Boolean(course.saved));
+  }, [course.saved]);
   const hue = hueFromString(course.slug || course.id);
   const typeLabel =
     course.contentType === "mini-course" ? "Mini-course"
@@ -54,23 +65,30 @@ export function TitleRow({ course, index }: { course: EntityCourse; index: numbe
       : "Course";
   const year = course.publishedAt ? new Date(course.publishedAt).getUTCFullYear() : null;
 
-  const toggleSave = (e: React.MouseEvent) => {
+  const toggleSave = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     if (!token) {
       router.push("/auth?next=" + encodeURIComponent(`/courses/${course.slug}`));
       return;
     }
-    void fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/courses/${course.slug}/save`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    })
-      .then((r) => r.json())
-      .then((d: { saved?: boolean }) => setSaved(Boolean(d.saved)))
-      .catch(() => undefined);
+    if (saving) return;
+    const prior = saved;
+    setSaved(!prior);
+    setSaving(true);
+    try {
+      const result = await post<{ saved?: boolean }>(`/courses/${course.slug}/save`);
+      if (typeof result?.saved === "boolean") setSaved(result.saved);
+    } catch (err) {
+      setSaved(prior);
+      setToast(err instanceof Error ? err.message : "Could not update your library");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
+    <>
     <Link href={`/courses/${course.slug}`} className="title-row">
       <span className="title-row__index">{String(index).padStart(2, "0")}</span>
       <div className="title-row__thumb" style={{ background: `linear-gradient(145deg, hsl(${hue} 42% 20%), hsl(${(hue + 55) % 360} 50% 10%))` }}>
@@ -117,6 +135,8 @@ export function TitleRow({ course, index }: { course: EntityCourse; index: numbe
         </button>
       </div>
     </Link>
+    <Toast message={toast} />
+    </>
   );
 }
 

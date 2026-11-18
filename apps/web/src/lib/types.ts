@@ -22,6 +22,8 @@ export interface CourseSummary {
   publishedAt: string;
   rank?: number;
   isNew?: boolean;
+  /** True when the signed-in reader already saved this course. */
+  saved?: boolean;
 }
 
 export interface LessonLite {
@@ -364,6 +366,7 @@ export interface CollectionItemRow {
   isPremium?: boolean;
   contentType?: string;
   lecturerNames?: string[];
+  saved?: boolean;
 }
 
 export interface CollectionDetail {
@@ -458,6 +461,7 @@ export interface AdminStats {
   users: number;
   premiumSubscribers: number;
   revenue30d: number;
+  revenue30dUsd?: number;
   pendingPayments: number;
   reviewsTotal: number;
   reviews7d: number;

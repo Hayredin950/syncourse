@@ -659,7 +659,11 @@ export class AdminService {
             OR: [{ planExpiresAt: null }, { planExpiresAt: { gt: now } }],
           },
         }),
-        this.prisma.subscription.aggregate({
+        // Money is per currency, not one mixed number: summing ETB and USD
+        // produced a figure with no unit. ETB is the primary market, so it
+        // stays in `revenue30d` for compatibility and USD gets its own field.
+        this.prisma.subscription.groupBy({
+          by: ['currency'],
           where: { status: 'approved', createdAt: { gte: monthAgo } },
           _sum: { amount: true },
         }),
@@ -673,7 +677,8 @@ export class AdminService {
       courses,
       users,
       premiumSubscribers: premium,
-      revenue30d: revenue._sum.amount ?? 0,
+      revenue30d: revenue.find((r) => r.currency === 'ETB')?._sum.amount ?? 0,
+      revenue30dUsd: revenue.find((r) => r.currency === 'USD')?._sum.amount ?? 0,
       pendingPayments,
       reviewsTotal,
       reviews7d,

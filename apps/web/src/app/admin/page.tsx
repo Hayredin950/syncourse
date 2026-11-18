@@ -121,7 +121,7 @@ export default function AdminDashboard() {
         <div className="admin-stat-grid">
           <StatTile
             label={`Revenue · last ${WINDOW} days`}
-            value={compactNumber(stats.revenue30d)}
+            value={`${compactNumber(stats.revenue30d)} ETB${stats.revenue30dUsd ? ` · ${compactNumber(stats.revenue30dUsd)} USD` : ""}`}
             icon={<CircleDollarSign size={13} />}
             delta={trends.revenueDelta}
             trend={trends.revenue}

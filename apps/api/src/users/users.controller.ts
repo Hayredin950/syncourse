@@ -13,9 +13,11 @@ class UpdateProfileDto {
   @IsString()
   username?: string;
 
+  // `null` clears the choice ("Prefer not"), so it is deliberately allowed
+  // through alongside a real value.
   @IsOptional()
   @IsString()
-  gender?: string;
+  gender?: string | null;
 
   @IsOptional()
   @IsString()

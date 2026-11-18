@@ -83,7 +83,7 @@ export class UsersService {
     data: {
       name?: string;
       username?: string;
-      gender?: string;
+      gender?: string | null;
       avatarUrl?: string;
       settings?: Record<string, unknown>;
       privacy?: Record<string, string>;
@@ -104,7 +104,9 @@ export class UsersService {
       data: {
         ...(data.name ? { name: data.name } : {}),
         ...(username ? { username } : {}),
-        ...(data.gender ? { gender: data.gender } : {}),
+        // An explicit null/empty means "prefer not to say" and must clear the
+        // column; skipping it left the old value stuck forever.
+        ...(data.gender !== undefined ? { gender: data.gender || null } : {}),
         ...(data.avatarUrl ? { avatarUrl: data.avatarUrl } : {}),
         ...(data.settings !== undefined ? { settings: data.settings as Prisma.InputJsonValue } : {}),
         ...(data.privacy !== undefined ? { privacy: data.privacy as Prisma.InputJsonValue } : {}),

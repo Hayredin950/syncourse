@@ -42,7 +42,7 @@ export class CatalogService {
   // Latest (Added badge), Top Rated, Best of {org}, Featured paths,
   // categories, lecturers, organizations.
   // ---------------------------------------------------------------
-  async home() {
+  async home(userId?: string) {
     const now = new Date();
     const [trending, latest, topRated, featuredPaths, categories, lecturers, organizations] =
       await Promise.all([
@@ -86,17 +86,22 @@ export class CatalogService {
         }),
       ]);
 
+    // Saved is a per-viewer fact; browser cards start in the right state when
+    // this list carries it. Trending is the widest set (latest/topRated are
+    // subsets in practice), but resolve over all three to be safe.
+    const saved = await this.savedSet(userId, [...trending, ...latest, ...topRated]);
+
     return {
-      trending: trending.map((c) => ({ ...this.summary(c), rank: trending.indexOf(c) + 1 })),
-      latest: latest.map((c) => ({ ...this.summary(c), isNew: this.isNew(c.publishedAt, now) })),
-      topRated: topRated.map((c) => this.summary(c)),
+      trending: trending.map((c) => ({ ...this.summary(c, saved), rank: trending.indexOf(c) + 1 })),
+      latest: latest.map((c) => ({ ...this.summary(c, saved), isNew: this.isNew(c.publishedAt, now) })),
+      topRated: topRated.map((c) => this.summary(c, saved)),
       bestOf: organizations.slice(0, 6).map((org) => ({
         id: org.id,
         name: org.name,
         slug: org.slug,
         logoUrl: org.logoUrl,
         courseCount: org._count.courses,
-        courses: trending.filter((c) => c.organizationId === org.id).slice(0, 8).map((c) => this.summary(c)),
+        courses: trending.filter((c) => c.organizationId === org.id).slice(0, 8).map((c) => this.summary(c, saved)),
       })),
       featuredPaths: featuredPaths.map((p) => {
         const sorted = [...p.courses].sort((a, b) => a.order - b.order);
@@ -165,7 +170,7 @@ export class CatalogService {
       }));
   }
 
-  async categoryCourses(slug: string) {
+  async categoryCourses(slug: string, userId?: string) {
     const cat = await this.prisma.category.findUnique({ where: { slug } });
     if (!cat) throw new NotFoundException('Category not found');
     const courses = await this.prisma.course.findMany({
@@ -173,7 +178,8 @@ export class CatalogService {
       orderBy: { publishedAt: 'desc' },
       include: courseInclude,
     });
-    return { category: cat, courses: courses.map((c) => this.summary(c)) };
+    const saved = await this.savedSet(userId, courses);
+    return { category: cat, courses: courses.map((c) => this.summary(c, saved)) };
   }
 
   // ---------------------------------------------------------------
@@ -191,7 +197,7 @@ export class CatalogService {
     lecturer?: string;
     limit?: number;
     offset?: number;
-  }) {
+  }, userId?: string) {
     const where: Prisma.CourseWhereInput = { deletedAt: null };
     if (filters.category) {
       where.categories = { some: { category: { slug: filters.category } } };
@@ -263,7 +269,8 @@ export class CatalogService {
     }
     counts.all = all;
 
-    return { total, counts, results: courses.map((c) => this.summary(c)) };
+    const saved = await this.savedSet(userId, courses);
+    return { total, counts, results: courses.map((c) => this.summary(c, saved)) };
   }
 
   // ---------------------------------------------------------------
@@ -442,7 +449,7 @@ export class CatalogService {
     }));
   }
 
-  async lecturerDetail(slug: string) {
+  async lecturerDetail(slug: string, userId?: string) {
     const lecturer = await this.prisma.lecturer.findUnique({ where: { slug } });
     if (!lecturer) throw new NotFoundException('Lecturer not found');
     const courses = await this.prisma.course.findMany({
@@ -459,10 +466,11 @@ export class CatalogService {
         socialLinks = {};
       }
     }
+    const saved = await this.savedSet(userId, courses);
     return {
       ...lecturer,
       socialLinks,
-      courses: courses.map((c) => this.summary(c)),
+      courses: courses.map((c) => this.summary(c, saved)),
     };
   }
 
@@ -482,7 +490,7 @@ export class CatalogService {
     }));
   }
 
-  async organizationDetail(slug: string) {
+  async organizationDetail(slug: string, userId?: string) {
     const org = await this.prisma.organization.findUnique({ where: { slug } });
     if (!org) throw new NotFoundException('Organization not found');
     const courses = await this.prisma.course.findMany({
@@ -490,7 +498,8 @@ export class CatalogService {
       orderBy: { publishedAt: 'desc' },
       include: courseInclude,
     });
-    return { ...org, courses: courses.map((c) => this.summary(c)) };
+    const saved = await this.savedSet(userId, courses);
+    return { ...org, courses: courses.map((c) => this.summary(c, saved)) };
   }
 
   async levels() {
@@ -519,13 +528,14 @@ export class CatalogService {
   }
 
   /** One learning path with full course summaries (franchise-style detail page). */
-  async learningPathDetail(id: string) {
+  async learningPathDetail(id: string, userId?: string) {
     const p = await this.prisma.learningPath.findUnique({
       where: { id },
       include: { courses: { include: { course: { include: courseInclude } } } },
     });
     if (!p) throw new NotFoundException('Learning path not found');
     const ordered = [...p.courses].sort((a, b) => a.order - b.order);
+    const saved = await this.savedSet(userId, ordered.map((pc) => pc.course));
     return {
       id: p.id,
       title: p.title,
@@ -536,7 +546,7 @@ export class CatalogService {
         ? +(ordered.reduce((s, pc) => s + pc.course.ratingAvg, 0) / ordered.length).toFixed(1)
         : 0,
       totalVotes: ordered.reduce((s, pc) => s + pc.course.ratingCount, 0),
-      courses: ordered.map((pc) => this.summary(pc.course)),
+      courses: ordered.map((pc) => this.summary(pc.course, saved)),
     };
   }
 
@@ -585,7 +595,7 @@ export class CatalogService {
     return now.getTime() - publishedAt.getTime() < 30 * 24 * 60 * 60 * 1000;
   }
 
-  private summary(c: CourseWith) {
+  private summary(c: CourseWith, saved?: Set<string>) {
     return {
       id: c.id,
       title: c.title,
@@ -608,7 +618,23 @@ export class CatalogService {
       lecturerNames: lecturersOf(c).map((l) => l.name),
       organizationName: c.organization?.name ?? null,
       publishedAt: c.publishedAt,
+      // Whether the requesting reader already saved it. False for signed-out
+      // callers, which is the correct starting state for the save button.
+      saved: saved?.has(c.id) ?? false,
     };
+  }
+
+  /** Saved-course ids for a viewer across a batch of cards, in one query. */
+  private async savedSet(
+    userId: string | undefined,
+    courses: { id: string }[],
+  ): Promise<Set<string> | undefined> {
+    if (!userId || courses.length === 0) return undefined;
+    const rows = await this.prisma.savedCourse.findMany({
+      where: { userId, courseId: { in: [...new Set(courses.map((c) => c.id))] } },
+      select: { courseId: true },
+    });
+    return new Set(rows.map((row) => row.courseId));
   }
 
   private async downloadStats(courseId: string) {

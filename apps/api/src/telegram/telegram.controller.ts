@@ -1,14 +1,29 @@
-import { Body, Controller, Get, Headers, HttpCode, HttpStatus, Post } from '@nestjs/common';
+import { Body, Controller, Get, Headers, HttpCode, HttpStatus, Post, ForbiddenException } from '@nestjs/common';
 import { Public } from '../common/public.decorator';
+import { CurrentUser } from '../common/current-user.decorator';
+import { AuthUser } from '../common/jwt-auth.guard';
+import { PrismaService } from '../prisma/prisma.service';
 import { TelegramService, TelegramUpdate } from './telegram.service';
 
 @Controller('telegram')
 export class TelegramController {
-  constructor(private readonly telegram: TelegramService) {}
+  constructor(
+    private readonly telegram: TelegramService,
+    private readonly prisma: PrismaService,
+  ) {}
 
-  @Public()
+  /**
+   * Bot health and activity. This used to be public, which leaked chat ids,
+   * channel usernames, file names and who did what to anyone who asked. It is
+   * console data for operators, so it now requires staff.
+   */
   @Get('status')
-  status() {
+  async status(@CurrentUser() user: AuthUser) {
+    const dbUser = await this.prisma.user.findUnique({
+      where: { id: user.id },
+      select: { isStaff: true },
+    });
+    if (!dbUser?.isStaff) throw new ForbiddenException('Staff access required');
     return this.telegram.status();
   }
 

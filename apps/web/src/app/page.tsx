@@ -151,8 +151,8 @@ export default function HomePage() {
       {featured && (
         <div className="hero">
           <div className="hero-content">
-            <span className="eyebrow">Featured course · build week</span>
-            <h1 className="display">Make fast feel<br />intentional.</h1>
+            <span className="eyebrow">Featured course</span>
+            <h1 className="display">{featured.title}</h1>
             <p>{featured.description || "A hands-on course for engineers who care about the details users can feel."}</p>
             <div className="detail-meta">
               {/* The hero prints the biggest version of every one of these, so an
@@ -424,10 +424,10 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Load More */}
+      {/* Not a load-more: this is a link to the full catalogue, so say so. */}
       <div style={{ marginTop: 42, display: "flex", justifyContent: "center" }}>
         <Link href="/browse" className="btn" style={{ display: "inline-flex", alignItems: "center", padding: "12px 28px" }}>
-          Load More
+          Browse all courses
         </Link>
       </div>
     </main>

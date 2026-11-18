@@ -50,6 +50,8 @@ export default function StatsScreen() {
   const s: UserStats = data;
   const maxRating = Math.max(...s.ratingDistribution.map((r) => r.count), 1);
   const maxCat = Math.max(...s.categoryCounts.map((c) => c.count), 1);
+  const maxInstructor = Math.max(...s.instructorCounts.map((c) => c.count), 1);
+  const maxLanguage = Math.max(...s.languageCounts.map((c) => c.count), 1);
   const maxTag = Math.max(...s.topTags.map((t) => t.count), 1);
 
   return (
@@ -87,11 +89,11 @@ export default function StatsScreen() {
       </Section>
 
       <Section title="Instructors">
-        <BarRows rows={s.instructorCounts.map((c) => ({ label: c.label, count: c.count, max: maxCat }))} />
+        <BarRows rows={s.instructorCounts.map((c) => ({ label: c.label, count: c.count, max: maxInstructor }))} />
       </Section>
 
       <Section title="Languages">
-        <BarRows rows={s.languageCounts.map((c) => ({ label: c.label, count: c.count, max: maxCat }))} />
+        <BarRows rows={s.languageCounts.map((c) => ({ label: c.label, count: c.count, max: maxLanguage }))} />
       </Section>
 
       {s.topInstructors.length > 0 && (

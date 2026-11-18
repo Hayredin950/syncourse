@@ -74,6 +74,9 @@ export default function CourseDetailScreen() {
     queryFn: api.me,
     retry: false,
   });
+  const hasPremium =
+    me?.planType === "premium" &&
+    (!me.planExpiresAt || new Date(me.planExpiresAt).getTime() > Date.now());
 
   /**
    * Saved, liked, the like tally and your own stars all come with the course now.
@@ -989,7 +992,7 @@ export default function CourseDetailScreen() {
                   Module {si + 1} — {s.title}
                 </Text>
                 <Text style={styles.muted}>{plural(s.lessons.length, "lesson")}</Text>
-                {c.isPremium && <Text style={styles.bestText}>FAST</Text>}
+                {c.isPremium && <Text style={styles.bestText}>{hasPremium ? "FAST" : "PREMIUM"}</Text>}
               </Press>
             </Link>
             {s.lessons.map((l) => (
@@ -1002,7 +1005,7 @@ export default function CourseDetailScreen() {
                   <Ionicons name="download-outline" size={15} color={colors.dim} />
                   <Text style={styles.lessonDownloadTitle} numberOfLines={1}>{l.title}</Text>
                   <Text style={styles.muted}>{formatDurationSec(l.durationSec)}</Text>
-                  {c.isPremium && <Text style={styles.bestText}>FAST</Text>}
+                  {c.isPremium && <Text style={styles.bestText}>{hasPremium ? "FAST" : "PREMIUM"}</Text>}
                 </Press>
               </Link>
             ))}

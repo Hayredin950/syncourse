@@ -165,7 +165,21 @@ export default function MePage() {
       </main>
     );
   }
-  if (!token || !user) return null;
+  if (!token) return null;
+  // A token without a profile means the /users/me request failed (a dropped
+  // connection, a 5xx). Returning null here left the whole page blank with no
+  // explanation; offer the retry instead.
+  if (!user) {
+    return (
+      <main className="page">
+        <LoadError
+          title="We couldn't load your profile"
+          body="You are still signed in — the connection dropped on the way to our servers."
+          onRetry={() => void refresh()}
+        />
+      </main>
+    );
+  }
 
   const onShareProfile = () => {
     if (navigator.share) {
@@ -211,7 +225,7 @@ export default function MePage() {
       await patch("/users/me", {
         name: editName.trim() || undefined,
         username: editUsername.trim().replace(/^@/, "") || undefined,
-        gender: editGender.trim() || undefined,
+        gender: editGender.trim() || null,
         avatarUrl: editAvatar.trim() || undefined,
       });
       setEditing(false);

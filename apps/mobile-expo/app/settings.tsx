@@ -3,7 +3,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import * as ImagePicker from "expo-image-picker";
 import * as Linking from "expo-linking";
 import { useRouter } from "expo-router";
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
   Image,
   RefreshControl,
@@ -153,6 +153,19 @@ export default function SettingsScreen() {
   const [username, setUsername] = useState("");
   const [gender, setGender] = useState("");
   const [telegram, setTelegram] = useState("");
+  /* Hydrate the editable fields from the loaded profile. They used to start
+     empty and only be filled by `defaultValue`, so choosing "Prefer not" fell
+     back to `profile.gender` and the selection could never be cleared. Hydrate
+     once per account so a background refetch cannot overwrite what is being
+     typed. */
+  const hydratedFor = useRef<string | null>(null);
+  useEffect(() => {
+    if (!profile || hydratedFor.current === profile.id) return;
+    hydratedFor.current = profile.id;
+    setName(profile.name ?? "");
+    setUsername(profile.username ?? "");
+    setGender(profile.gender ?? "");
+  }, [profile]);
   /* Was a `note` state plus a bare `setTimeout` that nothing cleared — it fired
      into a dead component if you left the page while a toast was up, and stacked
      if two outcomes landed together. */
@@ -194,7 +207,7 @@ export default function SettingsScreen() {
       api.updateProfile({
         name: name.trim() || undefined,
         username: username.trim().replace(/^@/, "") || undefined,
-        gender: gender.trim() || undefined,
+        gender: gender.trim() || null,
       }),
     onSuccess: () => {
       say("Profile updated");
@@ -317,7 +330,7 @@ export default function SettingsScreen() {
           <Text style={styles.label}>Display name</Text>
           <TextInput
             style={styles.input}
-            defaultValue={profile.name}
+            value={name}
             onChangeText={setName}
             placeholder="Your name"
             placeholderTextColor={colors.dim}
@@ -327,7 +340,7 @@ export default function SettingsScreen() {
           <Text style={styles.label}>Username</Text>
           <TextInput
             style={styles.input}
-            defaultValue={profile.username}
+            value={username}
             onChangeText={(t) => setUsername(t.replace(/[^a-zA-Z0-9_@]/g, ""))}
             placeholder="username"
             placeholderTextColor={colors.dim}
@@ -340,7 +353,7 @@ export default function SettingsScreen() {
           <Choice
             label="Gender"
             options={GENDERS}
-            value={gender || profile.gender || ""}
+            value={gender}
             onChange={setGender}
           />
 

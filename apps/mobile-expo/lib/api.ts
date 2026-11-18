@@ -327,7 +327,7 @@ export const activityFeed = () => get<ActivityFeed>("/activity");
 // --- users ---
 export const me = () => get<UserProfile>("/users/me");
 export const stats = () => get<UserStats>("/users/me/stats");
-export const updateProfile = (data: { name?: string; username?: string; gender?: string; avatarUrl?: string }) =>
+export const updateProfile = (data: { name?: string; username?: string; gender?: string | null; avatarUrl?: string }) =>
   request<UserProfile>("/users/me", {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },

@@ -1,13 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { Bookmark, Check, Download, Eye, Star, Play } from "lucide-react";
 import type { CourseSummary } from "@/lib/types";
 import { compact, formatDuration } from "@/lib/format";
 import { CoverImage } from "@/components/CoverImage";
+import { Toast } from "@/components/Toast";
 import { useAuth } from "@/lib/auth";
+import { useToast } from "@/lib/useToast";
+import { post } from "@/lib/api";
 
 export function hueFromString(s: string): number {
   let h = 0;
@@ -81,7 +84,15 @@ export function CourseCard({
 }) {
   const router = useRouter();
   const { token } = useAuth();
-  const [saved, setSaved] = useState(false);
+  // Start from what the API already knows. The old `useState(false)` made the
+  // first click on an already-saved course perform an unsave while the icon
+  // still said "save".
+  const [saved, setSaved] = useState(Boolean(course.saved));
+  const [saving, setSaving] = useState(false);
+  const { toast, setToast } = useToast();
+  useEffect(() => {
+    setSaved(Boolean(course.saved));
+  }, [course.saved]);
 
   // Only the facts this course actually has. Level is always known; a runtime
   // usually is not, and printing the separator anyway left every card reading
@@ -89,23 +100,31 @@ export function CourseCard({
   // is no separator without something on both sides of it.
   const facts = [course.level, formatDuration(course.durationMin)].filter(Boolean);
 
-  const toggleSave = (e: React.MouseEvent) => {
+  const toggleSave = async (e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
     if (!token) {
       router.push("/auth?next=" + encodeURIComponent(`/courses/${course.slug}`));
       return;
     }
-    void fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/courses/${course.slug}/save`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-    })
-      .then((r) => r.json())
-      .then((d: { saved?: boolean }) => setSaved(Boolean(d.saved)))
-      .catch(() => undefined);
+    if (saving) return;
+    // Optimistic flip, rolled back with a real message if the request fails.
+    const prior = saved;
+    setSaved(!prior);
+    setSaving(true);
+    try {
+      const result = await post<{ saved?: boolean }>(`/courses/${course.slug}/save`);
+      if (typeof result?.saved === "boolean") setSaved(result.saved);
+    } catch (err) {
+      setSaved(prior);
+      setToast(err instanceof Error ? err.message : "Could not update your library");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
+    <>
     <Link href={`/courses/${course.slug}`} className={`course-card ${fill ? "course-card-fill" : ""}`} data-testid={`card-course-${course.slug}`}>
       <div className="cover-wrap" style={{ position: "relative" }}>
         <CoverArt course={course} large={wide} />
@@ -166,6 +185,8 @@ export function CourseCard({
         {facts.length > 0 && <span>{facts.join(" · ")}</span>}
       </div>
     </Link>
+    <Toast message={toast} />
+    </>
   );
 }
 

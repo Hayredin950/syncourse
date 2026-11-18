@@ -51,6 +51,17 @@ export class CollectionsService {
     if (list.visibility === 'private' && list.userId !== userId) {
       throw new NotFoundException('List not found');
     }
+    // Which items the viewer already saved, so the card's bookmark is honest.
+    const savedIds = userId
+      ? new Set(
+          (
+            await this.prisma.savedCourse.findMany({
+              where: { userId, courseId: { in: list.items.map((i) => i.course.id) } },
+              select: { courseId: true },
+            })
+          ).map((r) => r.courseId),
+        )
+      : new Set<string>();
     return {
       id: list.id,
       name: list.name,
@@ -82,6 +93,7 @@ export class CollectionsService {
         isPremium: i.course.isPremium,
         contentType: i.course.contentType,
         lecturerNames: i.course.lecturers.map((cl) => cl.lecturer.name),
+        saved: savedIds.has(i.course.id),
         addedAt: i.addedAt,
       })),
     };

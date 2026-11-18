@@ -21,9 +21,9 @@ class PremiumScreen extends StatelessWidget {
           const _Benefit(icon: Icons.download_for_offline, title: 'Full-speed downloads', desc: 'Offline lessons with quality picker'),
           const _Benefit(icon: Icons.block, title: 'Zero ads', desc: 'An ad-free experience across web and app'),
           const SizedBox(height: 24),
-          _PlanCard(months: 1, price: '150 ETB', weekly: '~35 ETB/week', best: false),
-          _PlanCard(months: 3, price: '400 ETB', weekly: '~30 ETB/week', best: false),
-          _PlanCard(months: 6, price: '750 ETB', weekly: '~29 ETB/week', best: true),
+          _PlanCard(months: 1, price: '149 ETB', weekly: '~35 ETB/week', best: false),
+          _PlanCard(months: 3, price: '349 ETB', weekly: '~27 ETB/week', best: false),
+          _PlanCard(months: 6, price: '549 ETB', weekly: '~21 ETB/week', best: true),
           const SizedBox(height: 12),
           const Text(
             'Payment methods: Telebirr · Card · Crypto (USDT/BTC/ETH/SOL) · Patreon',

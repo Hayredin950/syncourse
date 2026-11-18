@@ -14,7 +14,7 @@ import { useAdminToast } from "@/components/admin/AdminToast";
 const PLANS = [
   { name: "1 Month", days: 30, price: "$1.99", badge: null },
   { name: "3 Months", days: 90, price: "$3.99", badge: null },
-  { name: "6 Months", days: 180, price: "$5.99", badge: "Best value" },
+  { name: "6 Months", days: 182, price: "$5.99", badge: "Best value" },
 ];
 
 export default function AdminSettings() {

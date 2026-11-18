@@ -69,6 +69,7 @@ function asSummary(c: CollectionItemRow): CourseSummary {
     lecturerNames: c.lecturerNames ?? [],
     organizationName: null,
     publishedAt: c.addedAt,
+    saved: Boolean(c.saved),
   };
 }
 

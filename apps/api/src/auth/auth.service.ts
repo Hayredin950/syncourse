@@ -31,6 +31,14 @@ const MAX_VERIFY_ATTEMPTS = 5;
 /** Minimum gap between resend requests. */
 const RESEND_MIN_MS = 60 * 1000;
 
+/**
+ * Compared against when the email has no account or no password. Without a
+ * real bcrypt round the unknown-user path returned in ~1 ms while a wrong
+ * password took ~70 ms, which was a reliable oracle for "does this address
+ * have a password account?".
+ */
+const DUMMY_PASSWORD_HASH = '$2a$10$/8tGDtt0VYgziX46XYYRA.ffoQf3Ka4LJSa.GYWJtQtmKee/Fqz4S';
+
 @Injectable()
 export class AuthService {
   constructor(
@@ -222,17 +230,28 @@ export class AuthService {
     const sent = await this.email.sendVerificationCode(user.email, user.name, code);
     if (!sent.sent) {
       // Email is not configured (BREVO_API_KEY missing) or the send failed.
-      // Falling back to auto-verify keeps signups working instead of bricking
-      // every new account on a dead mailbox — the previous "hard verify"
-      // outage. The moment a real key is configured, hard verify kicks in.
-      await this.prisma.user.update({
-        where: { id: user.id },
-        data: { isVerified: true, verifyCode: null, verifyExpiresAt: null, verifyAttempts: 0, verifySentAt: null },
-      });
-      const session = await this.prisma.session.create({
-        data: { userId: user.id, device: 'registration', ip: 'n/a', active: true },
-      });
-      return this.buildAuthResponse(user, session.id);
+      //
+      // In development the previous fallback — auto-verify — is convenient and
+      // harmless. In production it silently skipped verification for every
+      // account whenever the mailer had a bad minute, which defeated the whole
+      // point of the code. Production keeps the account unverified and the
+      // stored code intact; `resend-verification` can retry the send.
+      if (process.env.NODE_ENV !== 'production') {
+        await this.prisma.user.update({
+          where: { id: user.id },
+          data: { isVerified: true, verifyCode: null, verifyExpiresAt: null, verifyAttempts: 0, verifySentAt: null },
+        });
+        const session = await this.prisma.session.create({
+          data: { userId: user.id, device: 'registration', ip: 'n/a', active: true },
+        });
+        return this.buildAuthResponse(user, session.id);
+      }
+      return {
+        requiresVerification: true,
+        email: user.email.toLowerCase(),
+        emailSent: false,
+        message: 'Your account was created, but the verification email could not be sent. Use "resend code" to try again.',
+      };
     }
 
     return { requiresVerification: true, email: user.email.toLowerCase() };
@@ -241,6 +260,9 @@ export class AuthService {
   async login(email: string, password: string) {
     const user = await this.prisma.user.findUnique({ where: { email: email.toLowerCase() } });
     if (!user || !user.passwordHash) {
+      // Burn the same bcrypt time as a real check so response latency does not
+      // reveal whether the address exists / has a password.
+      await bcrypt.compare(password, DUMMY_PASSWORD_HASH);
       throw new UnauthorizedException('Invalid credentials');
     }
     const ok = await bcrypt.compare(password, user.passwordHash);

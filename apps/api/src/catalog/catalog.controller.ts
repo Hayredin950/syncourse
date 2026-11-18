@@ -15,8 +15,8 @@ export class CatalogController {
   }
 
   @Get('home')
-  home() {
-    return this.catalog.home();
+  home(@CurrentUser() user?: AuthUser) {
+    return this.catalog.home(user?.id);
   }
 
   @Get('categories')
@@ -25,12 +25,13 @@ export class CatalogController {
   }
 
   @Get('categories/:slug/courses')
-  categoryCourses(@Param('slug') slug: string) {
-    return this.catalog.categoryCourses(slug);
+  categoryCourses(@Param('slug') slug: string, @CurrentUser() user?: AuthUser) {
+    return this.catalog.categoryCourses(slug, user?.id);
   }
 
   @Get('courses')
   browse(
+    @CurrentUser() user?: AuthUser,
     @Query('category') category?: string,
     @Query('level') level?: string,
     @Query('q') q?: string,
@@ -53,7 +54,7 @@ export class CatalogController {
       lecturer,
       limit: limit ? Number(limit) : undefined,
       offset: offset ? Number(offset) : undefined,
-    });
+    }, user?.id);
   }
 
   @Get('courses/:slug')
@@ -67,8 +68,8 @@ export class CatalogController {
   }
 
   @Get('lecturers/:slug')
-  lecturerDetail(@Param('slug') slug: string) {
-    return this.catalog.lecturerDetail(slug);
+  lecturerDetail(@Param('slug') slug: string, @CurrentUser() user?: AuthUser) {
+    return this.catalog.lecturerDetail(slug, user?.id);
   }
 
   @Get('organizations')
@@ -77,8 +78,8 @@ export class CatalogController {
   }
 
   @Get('organizations/:slug')
-  organizationDetail(@Param('slug') slug: string) {
-    return this.catalog.organizationDetail(slug);
+  organizationDetail(@Param('slug') slug: string, @CurrentUser() user?: AuthUser) {
+    return this.catalog.organizationDetail(slug, user?.id);
   }
 
   @Get('levels')
@@ -92,8 +93,8 @@ export class CatalogController {
   }
 
   @Get('learning-paths/:id')
-  learningPath(@Param('id') id: string) {
-    return this.catalog.learningPathDetail(id);
+  learningPath(@Param('id') id: string, @CurrentUser() user?: AuthUser) {
+    return this.catalog.learningPathDetail(id, user?.id);
   }
 
   @Get('legal')

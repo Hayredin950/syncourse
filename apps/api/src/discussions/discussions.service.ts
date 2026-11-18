@@ -98,25 +98,50 @@ export class DiscussionsService {
     const review = await this.prisma.review.findUnique({ where: { id: reviewId } });
     if (!review) throw new NotFoundException('Thread not found');
 
-    const existing = await this.prisma.reviewUpvote.findUnique({
-      where: { userId_reviewId: { userId, reviewId } },
-    });
-    if (existing) {
-      await this.prisma.reviewUpvote.delete({ where: { userId_reviewId: { userId, reviewId } } });
-      const updated = await this.prisma.review.update({
+    // The vote row and the denormalised counter used to be two separate
+    // statements, so a failure between them drifted `upvotes` away from the
+    // real tally. Both now happen in one transaction, and a lost race (the
+    // unique row already exists / was just removed) reports the actual state
+    // instead of double-counting.
+    const result = await this.prisma.$transaction(async (tx) => {
+      const existing = await tx.reviewUpvote.findUnique({
+        where: { userId_reviewId: { userId, reviewId } },
+      });
+      if (existing) {
+        const removed = await tx.reviewUpvote.deleteMany({ where: { userId, reviewId } });
+        if (removed.count === 0) return null;
+        const updated = await tx.review.update({
+          where: { id: reviewId },
+          data: { upvotes: { decrement: 1 } },
+          select: { upvotes: true },
+        });
+        return { upvoted: false, upvotes: Math.max(0, updated.upvotes) };
+      }
+      const created = await tx.reviewUpvote.createMany({
+        data: [{ userId, reviewId }],
+        skipDuplicates: true,
+      });
+      if (created.count === 0) return null;
+      const updated = await tx.review.update({
         where: { id: reviewId },
-        data: { upvotes: { decrement: 1 } },
+        data: { upvotes: { increment: 1 } },
         select: { upvotes: true },
       });
-      return { upvoted: false, upvotes: Math.max(0, updated.upvotes) };
-    }
-    await this.prisma.reviewUpvote.create({ data: { userId, reviewId } });
-    const updated = await this.prisma.review.update({
-      where: { id: reviewId },
-      data: { upvotes: { increment: 1 } },
-      select: { upvotes: true },
+      return { upvoted: true, upvotes: updated.upvotes };
     });
-    return { upvoted: true, upvotes: updated.upvotes };
+
+    if (result) return result;
+
+    // Another request toggled at the same moment; answer with what is stored
+    // now so the client can reconcile instead of flipping a wrong count.
+    const [current, mine] = await Promise.all([
+      this.prisma.review.findUnique({ where: { id: reviewId }, select: { upvotes: true } }),
+      this.prisma.reviewUpvote.findUnique({
+        where: { userId_reviewId: { userId, reviewId } },
+        select: { userId: true },
+      }),
+    ]);
+    return { upvoted: Boolean(mine), upvotes: Math.max(0, current?.upvotes ?? 0) };
   }
 
   private async findCourse(idOrSlug: string) {
