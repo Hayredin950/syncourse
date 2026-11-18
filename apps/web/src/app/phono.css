@@ -2280,7 +2280,7 @@ a.lesson:hover, button.lesson:hover { background: #1a1815; border-color: rgba(24
 }
 .auth-input input::placeholder { color: #8f877d; }
 .auth-input input:focus { border-color: rgba(232,161,58,.6); background: #161513; box-shadow: 0 0 0 3px rgba(232,161,58,.1); }
-.auth-eye { right: 12px; color: #8f877d; }
+.auth-eye { right: 10px; color: #8f877d; }
 .auth-eye:hover { color: #f5f2ea; }
 /* The submit is cream with near-black ink — the one high-contrast control. */
 .auth-submit {
