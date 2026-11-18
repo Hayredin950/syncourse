@@ -37,6 +37,7 @@ export class AssistantController {
       courseSlug: dto.courseSlug,
       userId: user?.id,
       ip: forwarded || req?.ip,
+      history: dto.history,
     });
   }
 }

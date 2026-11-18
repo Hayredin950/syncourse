@@ -13,7 +13,7 @@ import { PrismaClient } from '@prisma/client';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { SearchService } from '../src/search/search.service';
 import { RetrievalService, keywordsOf, snippetOf } from '../src/assistant/retrieval/retrieval.service';
-import { AssistantService } from '../src/assistant/assistant.service';
+import { AssistantService, cleanHistory, retrievalQuery } from '../src/assistant/assistant.service';
 import { resolveLlm } from '../src/assistant/llm/llm.provider';
 import { warmUp } from './lib/db-warmup';
 
@@ -60,6 +60,13 @@ async function main() {
   // cold start is not reported as a product failure.
   await warmUp(prisma);
 
+  // The behavioural sections must not call a real model: this test asserts the
+  // extractive floor, so a key sitting in `.env` would make it slow and
+  // non-deterministic. Provider selection is still tested above with explicit
+  // env objects, and the kill switch itself is covered further down.
+  const previousLlm = process.env.ASSISTANT_LLM;
+  process.env.ASSISTANT_LLM = 'none';
+
   console.log('assistant: keywords and snippets');
   {
     const kw = keywordsOf('How do I build a RAG pipeline with Python?');
@@ -79,6 +86,42 @@ async function main() {
     check('gemini selected when its key exists', gem.provider?.name === 'gemini' && gem.provider?.model.length ? true : false, gem);
     const groq = resolveLlm({ GROQ_API_KEY: 'k' });
     check('groq is the fallback', groq.provider?.name === 'groq', groq);
+    const both = resolveLlm({ GEMINI_API_KEY: 'a', GROQ_API_KEY: 'b' });
+    check(
+      'every configured key joins the fallback chain',
+      both.providers.map((p) => p.name).join(',') === 'gemini,groq',
+      both.providers.map((p) => p.name),
+    );
+    const explicit = resolveLlm({ ASSISTANT_LLM: 'groq', GEMINI_API_KEY: 'a', GROQ_API_KEY: 'b' });
+    check(
+      'an explicit provider leads but does not strand the others',
+      explicit.providers.map((p) => p.name).join(',') === 'groq,gemini',
+      explicit.providers.map((p) => p.name),
+    );
+  }
+
+  console.log('assistant: follow-up questions');
+  {
+    const prior = [
+      { role: 'user' as const, content: 'How do n8n workflows handle webhooks?' },
+      { role: 'assistant' as const, content: 'They start with a webhook trigger node.' },
+    ];
+    const followUp = retrievalQuery('and the second one?', prior);
+    check('a pronoun-heavy follow-up inherits the previous subject', followUp.includes('n8n'), followUp);
+    const fresh = retrievalQuery('how do I install Flutter?', prior);
+    check('a self-contained question keeps its own words', fresh === 'how do I install Flutter?', fresh);
+
+    const cleaned = cleanHistory([
+      { role: 'user' as const, content: '  what   is   rag  ' },
+      { role: 'system' as unknown as 'user', content: 'ignored' },
+      { role: 'assistant' as const, content: 'x'.repeat(5_000) },
+    ]);
+    check('history drops unknown roles and flattens whitespace', cleaned.length === 2 && cleaned[0].content === 'what is rag', cleaned);
+    check('history caps a single turn', cleaned[1].content.length <= 1_200, cleaned[1].content.length);
+    check('history keeps only the recent window', cleanHistory(Array.from({ length: 20 }, () => ({ role: 'user', content: 'q' }))).length === 8);
+
+    const res = await assistant.ask('and the second one?', { ip: IP, history: prior });
+    check('a follow-up is answered, not rejected', res.answer.length > 0, res.answer.slice(0, 80));
   }
 
   console.log('assistant: status');
@@ -299,6 +342,9 @@ async function main() {
   }
 
   await prisma.assistantUsage.deleteMany({ where: { subject } });
+
+  if (previousLlm === undefined) delete process.env.ASSISTANT_LLM;
+  else process.env.ASSISTANT_LLM = previousLlm;
 
   console.log(`\nassistant: ${passed} passed, ${failed} failed`);
   if (failed > 0) process.exitCode = 1;

@@ -1,8 +1,8 @@
 import { HttpException, HttpStatus, Injectable, Logger } from '@nestjs/common';
 import { createHash } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
-import { resolveLlm } from './llm/llm.provider';
-import { RetrievalService, snippetOf, type Retrieval } from './retrieval/retrieval.service';
+import { completeWithFallback, resolveLlm } from './llm/llm.provider';
+import { RetrievalService, keywordsOf, snippetOf, type Retrieval } from './retrieval/retrieval.service';
 
 export interface AssistantCitation {
   /** 1-based, matching `[n]` in the answer. */
@@ -41,6 +41,43 @@ export interface AssistantAnswer {
 
 const MAX_QUESTION_CHARS = 500;
 const MAX_ANSWER_CHARS = 4_000;
+/** Enough for the pronouns in a follow-up, small enough for a cheap model. */
+const MAX_HISTORY_TURNS = 8;
+const MAX_HISTORY_CHARS = 1_200;
+
+export interface ChatTurn {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+/**
+ * A short question that leans on the previous turn ("and the second one?")
+ * retrieves nothing useful on its own. For those, prepend the last thing the
+ * reader asked. The model still receives the real history; this only widens the
+ * search terms.
+ */
+export function retrievalQuery(question: string, history: ChatTurn[]): string {
+  const previous = [...history].reverse().find((t) => t.role === 'user');
+  if (!previous) return question;
+
+  const followUp =
+    /^(?:and|so|but|then|also|what about|how about|why|which one|tell me more|more|explain|the (?:first|second|third|last|other)|that|it)\b/i.test(
+      question,
+    ) || keywordsOf(question).length === 0;
+  if (!followUp) return question;
+
+  return `${previous.content} ${question}`.slice(0, MAX_QUESTION_CHARS);
+}
+
+/** Strip what the client sent down to the shape the prompt budget allows. */
+export function cleanHistory(history?: ChatTurn[]): ChatTurn[] {
+  if (!Array.isArray(history)) return [];
+  return history
+    .filter((t) => t && (t.role === 'user' || t.role === 'assistant') && typeof t.content === 'string')
+    .map((t) => ({ role: t.role, content: t.content.replace(/\s+/g, ' ').trim().slice(0, MAX_HISTORY_CHARS) }))
+    .filter((t) => t.content.length > 0)
+    .slice(-MAX_HISTORY_TURNS);
+}
 
 /**
  * The grounded study assistant.
@@ -87,7 +124,7 @@ export class AssistantService {
 
   async ask(
     question: string,
-    opts: { courseSlug?: string; userId?: string; ip?: string } = {},
+    opts: { courseSlug?: string; userId?: string; ip?: string; history?: ChatTurn[] } = {},
   ): Promise<AssistantAnswer> {
     if (!this.enabled()) {
       throw new HttpException(
@@ -112,7 +149,8 @@ export class AssistantService {
 
     await this.spendBudget(this.subjectFor(opts.userId, opts.ip));
 
-    const retrieval = await this.retrieval.retrieve(clean, {
+    const history = cleanHistory(opts.history);
+    const retrieval = await this.retrieval.retrieve(retrievalQuery(clean, history), {
       courseSlug: opts.courseSlug,
       userId: opts.userId,
     });
@@ -130,9 +168,11 @@ export class AssistantService {
       });
     }
 
-    const { provider } = resolveLlm();
-    if (provider && retrieval.sources.length > 0) {
-      const result = await provider.complete(this.buildPrompt(clean, retrieval), { maxTokens: 650 });
+    const selection = resolveLlm();
+    if (selection.provider && retrieval.sources.length > 0) {
+      const result = await completeWithFallback(selection, this.buildPrompt(clean, retrieval, history), {
+        maxTokens: 650,
+      });
       if (result) {
         return this.respond(retrieval, {
           answer: this.clamp(result.text),
@@ -142,12 +182,12 @@ export class AssistantService {
           notice: null,
         });
       }
-      // Provider configured but unavailable: fall through, keep the product up.
+      // Providers configured but unavailable: fall through, keep the product up.
       return this.respond(retrieval, {
         answer: this.extractive(retrieval),
         mode: 'extractive',
-        provider: provider.name,
-        model: provider.model,
+        provider: selection.provider.name,
+        model: selection.provider.model,
         notice: 'The AI writer is at its limit right now, so this answer is quoted straight from the catalogue.',
       });
     }
@@ -210,7 +250,7 @@ export class AssistantService {
     };
   }
 
-  private buildPrompt(question: string, retrieval: Retrieval) {
+  private buildPrompt(question: string, retrieval: Retrieval, history: ChatTurn[] = []) {
     const sources = retrieval.sources
       .map((s, i) => {
         const where = [s.moduleTitle, s.name].filter(Boolean).join(' · ');
@@ -237,6 +277,9 @@ export class AssistantService {
       '- If the sources do not answer the question, say plainly what is missing and',
       '  suggest the closest course by name.',
       '- Be concise: 120 words or fewer. Plain sentences; no headings, no preamble.',
+      '',
+      'Earlier turns in this conversation are context for what the reader means.',
+      'They are not evidence: only the numbered sources below support this answer.',
     ].join('\n');
 
     const user = [
@@ -251,6 +294,7 @@ export class AssistantService {
 
     return [
       { role: 'system' as const, content: system },
+      ...history.map((t) => ({ role: t.role, content: t.content })),
       { role: 'user' as const, content: user },
     ];
   }
