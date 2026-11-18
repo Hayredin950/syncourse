@@ -147,7 +147,9 @@ h3 { font-size: 16px; }
    too. Without an explicit basis they shrink when the header is measured, and
    the 46px field collapsed to 20px — text touching both borders. */
 .topbar-center > .top-search { flex: 0 0 46px; }
-.topbar-center > .nav-cats { flex: 0 0 auto; }
+/* Full width (and allowed to shrink) is what lets the chip row wrap at the
+   centre column's edge instead of overflowing it. */
+.topbar-center > .nav-cats { flex: 0 1 auto; width: 100%; }
 
 .top-search svg { flex: none; color: #b8afa4; }
 .top-search input {
@@ -225,15 +227,20 @@ h3 { font-size: 16px; }
 .nav-pill--me.open .nav-me__chevron { transform: rotate(180deg); }
 
 /* --- category chips (All / Movie / TV Show …) ------------------------------ */
+/* The five chips need ~500px. When the centre column is narrower they used to
+   scroll horizontally with the scrollbar hidden, so "Roadmaps" looked cut off
+   and there was no hint that the row moved. Wrap instead: every category stays
+   visible, centred, with breathing room on both sides. */
 .nav-cats {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
+  justify-content: center;
   gap: 6px;
   max-width: 100%;
-  overflow-x: auto;
-  scrollbar-width: none;
+  padding-inline: 4px;
+  overflow: visible;
 }
-.nav-cats::-webkit-scrollbar { display: none; }
 .nav-cat {
   display: inline-flex;
   align-items: center;
