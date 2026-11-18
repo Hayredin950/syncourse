@@ -163,10 +163,35 @@ export class AuthService {
         },
       });
     }
-    const session = await this.prisma.session.create({
-      data: { userId: user.id, device: 'google-oauth', ip: 'n/a', active: true },
-    });
+    const session = await this.openSession(user.id, 'google-oauth');
     return { user: this.publicUser(user), raw: user, sessionId: session.id };
+  }
+
+  /**
+   * Open the session a new token is bound to, and retire the oldest ones.
+   *
+   * Verification retries, repeated logins and Google sign-ins each used to add
+   * a row forever. Keeping the ten newest active sessions bounds the table, and
+   * marking the rest inactive means the guard revokes those tokens immediately
+   * instead of leaving a growing pile of valid ones behind.
+   */
+  private async openSession(userId: string, device: string) {
+    const session = await this.prisma.session.create({
+      data: { userId, device, ip: 'n/a', active: true },
+    });
+    const stale = await this.prisma.session.findMany({
+      where: { userId, active: true },
+      orderBy: { createdAt: 'desc' },
+      skip: 10,
+      select: { id: true },
+    });
+    if (stale.length > 0) {
+      await this.prisma.session.updateMany({
+        where: { id: { in: stale.map((s) => s.id) } },
+        data: { active: false },
+      });
+    }
+    return session;
   }
 
   private signToken(user: { id: string; email: string; username: string }, sessionId: string) {
@@ -241,9 +266,7 @@ export class AuthService {
           where: { id: user.id },
           data: { isVerified: true, verifyCode: null, verifyExpiresAt: null, verifyAttempts: 0, verifySentAt: null },
         });
-        const session = await this.prisma.session.create({
-          data: { userId: user.id, device: 'registration', ip: 'n/a', active: true },
-        });
+        const session = await this.openSession(user.id, 'registration');
         return this.buildAuthResponse(user, session.id);
       }
       return {
@@ -272,9 +295,7 @@ export class AuthService {
         'Please verify your email first — check your inbox for the 6-digit code.',
       );
     }
-    const session = await this.prisma.session.create({
-      data: { userId: user.id, device: 'login', ip: 'n/a', active: true },
-    });
+    const session = await this.openSession(user.id, 'login');
     return this.buildAuthResponse(user, session.id);
   }
 
@@ -311,9 +332,7 @@ export class AuthService {
       where: { id: user.id },
       data: { isVerified: true, verifyCode: null, verifyExpiresAt: null, verifyAttempts: 0, verifySentAt: null },
     });
-    const session = await this.prisma.session.create({
-      data: { userId: user.id, device: 'verify', ip: 'n/a', active: true },
-    });
+    const session = await this.openSession(user.id, 'verify');
     return this.buildAuthResponse(verified, session.id);
   }
 

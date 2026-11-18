@@ -1,7 +1,9 @@
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
 import { json, urlencoded } from 'express';
+import { randomUUID } from 'node:crypto';
 import { AppModule } from './app.module';
+import { AllExceptionsFilter } from './common/all-exceptions.filter';
 
 /**
  * Browser origins allowed to call this API.
@@ -64,6 +66,14 @@ async function bootstrap() {
     credentials: true,
     methods: ['GET', 'POST', 'PATCH', 'PUT', 'DELETE', 'OPTIONS'],
   });
+  // Every request gets an id, echoed back and included in error logs, so a
+  // caller can quote one failing request instead of "it broke".
+  app.use((req, res, next) => {
+    const incoming = req.headers['x-request-id'];
+    const id = typeof incoming === 'string' && incoming.trim() ? incoming.trim() : randomUUID();
+    res.setHeader('x-request-id', id);
+    next();
+  });
   // Baseline headers for a JSON API. TLS is terminated at Vercel's edge, so
   // HSTS is safe to send from here. The CSP is deliberately directive-only
   // (`frame-ancestors`/`default-src`) because this app never returns HTML —
@@ -84,6 +94,7 @@ async function bootstrap() {
       transformOptions: { enableImplicitConversion: true },
     }),
   );
+  app.useGlobalFilters(new AllExceptionsFilter());
   // Vercel injects PORT and supervises the listener; API_PORT stays the local
   // default so `npm run start:dev` keeps working unchanged.
   const port = Number(process.env.PORT || process.env.API_PORT || 4000);

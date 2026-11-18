@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -19,6 +20,8 @@ export { PLANS } from './plans';
 
 @Injectable()
 export class PaymentsService {
+  private readonly logger = new Logger(PaymentsService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly email: EmailService,
@@ -234,11 +237,25 @@ export class PaymentsService {
       // Best-effort receipt — skipped until BREVO_API_KEY is configured
       const user = await this.prisma.user.findUnique({ where: { id: userId } });
       if (user) {
-        void this.email.sendReceipt(user.email, user.name, {
-          plan: plan?.name ?? sub.planName,
-          amount: `${(plan?.priceEtb ?? 0).toLocaleString()} ETB`,
-          method: 'Syncourse premium',
-        });
+        // A missing receipt must not block an entitlement that is already
+        // granted, but it must not disappear either: the old `void` turned a
+        // failed send into silence.
+        void this.email
+          .sendReceipt(user.email, user.name, {
+            plan: plan?.name ?? sub.planName,
+            amount: `${(plan?.priceEtb ?? 0).toLocaleString()} ETB`,
+            method: 'Syncourse premium',
+          })
+          .then((result) => {
+            if (!result.sent) {
+              this.logger.warn(`Receipt not sent for subscription ${sub.id} (${user.email})`);
+            }
+          })
+          .catch((err) => {
+            this.logger.warn(
+              `Receipt failed for subscription ${sub.id}: ${(err as Error).message}`,
+            );
+          });
       }
     }
     return activated;
