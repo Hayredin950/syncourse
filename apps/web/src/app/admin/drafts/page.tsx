@@ -13,8 +13,9 @@ import ConfirmButton from "@/components/admin/ConfirmButton";
  * Course drafts proposed by the Telegram group watcher.
  *
  * The watcher reads the announcement template the group already uses and
- * attaches the ZIPs posted after it. It never publishes on its own: this page
- * and the bot's inline buttons are the two ways a draft becomes a course.
+ * attaches the ZIPs posted after it. A complete post (title, lecturer,
+ * description, a file) publishes itself and appears under Approved; everything
+ * else waits here for a human, in this page or in the bot.
  *
  * Local types on purpose. The API shape is page-specific and this console
  * should not force the public client types to carry an admin-only payload.
@@ -35,6 +36,8 @@ interface DraftRow {
   error: string | null;
   approvedCourseId: string | null;
   payload: {
+    kind?: "course" | "resource";
+    autoPublished?: boolean;
     announcement: {
       title: string;
       lecturerNames: string[];
@@ -90,10 +93,13 @@ export default function AdminDraftsPage() {
     setBusy(draft.id);
     try {
       if (action === "approve") {
-        const r = await post<{ course?: { slug: string; title: string }; filesAdded: number }>(
-          `/telegram-ingest/drafts/${draft.id}/approve`,
-        );
-        toast.success(`Published ${r.course?.title ?? "course"} with ${r.filesAdded} files`);
+        const r = await post<{
+          course?: { slug: string; title: string };
+          resource?: { slug: string; title: string };
+          filesAdded: number;
+        }>(`/telegram-ingest/drafts/${draft.id}/approve`);
+        const title = r.course?.title ?? r.resource?.title ?? "draft";
+        toast.success(`Published ${title} with ${r.filesAdded} file${r.filesAdded === 1 ? "" : "s"}`);
       } else {
         await post(`/telegram-ingest/drafts/${draft.id}/discard`);
         toast.success("Draft discarded — it will not be proposed again");
@@ -133,8 +139,9 @@ export default function AdminDraftsPage() {
         <div>
           <h1>Course drafts</h1>
           <p className="page-desc">
-            Courses the group watcher found. Posting an announcement in the source group opens a draft; the ZIPs
-            posted after it are attached automatically. Nothing goes live until you approve it here or in the bot.
+            Posts the group watcher found. An announcement opens a draft and the ZIPs after it attach themselves; a
+            post that already carries title, lecturer, description and a file publishes on its own and is listed under
+            Approved. Everything else waits here or in the bot.
           </p>
         </div>
         <div className="admin-page-head__actions">
@@ -209,6 +216,8 @@ export default function AdminDraftsPage() {
                       {a?.title ?? "Untitled"}{" "}
                       <span className="admin-table__quiet">
                         · {Math.round((draft.payload?.confidence ?? 0) * 100)}%
+                        {draft.payload?.autoPublished ? " · auto-published" : ""}
+                        {draft.payload?.kind === "resource" ? " · resource" : ""}
                       </span>
                     </div>
                     <div className="admin-row__meta">
@@ -242,8 +251,8 @@ export default function AdminDraftsPage() {
                     {draft.status === "pending" ? (
                       <>
                         <ConfirmButton
-                          label="Create course"
-                          question={`Publish “${a?.title ?? "this course"}” with ${files.length} files?`}
+                          label={draft.payload?.kind === "resource" ? "Publish resource" : "Create course"}
+                          question={`Publish “${a?.title ?? "this draft"}” with ${files.length} file${files.length === 1 ? "" : "s"}?`}
                           confirmLabel="Publish"
                           className="admin-btn admin-btn--primary admin-btn--sm"
                           busy={busy === draft.id}
@@ -258,16 +267,18 @@ export default function AdminDraftsPage() {
                           onConfirm={() => act(draft, "discard")}
                         />
                       </>
-                    ) : draft.approvedCourseId ? (
+                    ) : draft.approvedCourseId || draft.payload?.approvedCourseSlug ? (
                       <Link
                         className="admin-btn admin-btn--ghost admin-btn--sm"
                         href={
-                          draft.payload?.approvedCourseSlug
-                            ? `/admin/courses/detail?slug=${encodeURIComponent(draft.payload.approvedCourseSlug)}`
-                            : "/admin/courses"
+                          draft.payload?.kind === "resource" && draft.payload.approvedCourseSlug
+                            ? `/resources/${encodeURIComponent(draft.payload.approvedCourseSlug)}`
+                            : draft.payload?.approvedCourseSlug
+                              ? `/admin/courses/detail?slug=${encodeURIComponent(draft.payload.approvedCourseSlug)}`
+                              : "/admin/courses"
                         }
                       >
-                        <Check size={12} /> Open course
+                        <Check size={12} /> Open {draft.payload?.kind === "resource" ? "resource" : "course"}
                       </Link>
                     ) : draft.status === "discarded" ? (
                       <span className="admin-table__quiet">

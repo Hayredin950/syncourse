@@ -6,6 +6,7 @@ import { CloudinaryService } from '../cloudinary/cloudinary.service';
 import { partFromFile, organizeParts } from '../telegram-ingest/telegram-feed.parser';
 import { IngestDraftService } from '../telegram-ingest/draft.service';
 import type { DraftPayload } from '../telegram-ingest/draft-parser';
+import { autoPublishBlockers } from '../telegram-ingest/draft-fields';
 import { withPartNumbers } from './part-numbering';
 
 /** One attached Telegram file row — a course has many (one per module part). */
@@ -96,7 +97,7 @@ interface KbButton {
 /** Interactive wizard state, keyed by Telegram user id — persisted to Postgres
  *  so a Render restart/redeploy mid-flow never loses the user's progress. */
 interface CourseWizard {
-  kind: 'course' | 'search' | 'download' | 'broadcast' | 'coursefind' | 'edit';
+  kind: 'course' | 'search' | 'download' | 'broadcast' | 'coursefind' | 'edit' | 'draftfield';
   step:
     | 'title'
     | 'instructor'
@@ -127,6 +128,9 @@ interface CourseWizard {
     editCourseSlug?: string;
     /** /edit wizard — which of the 7 fields is being edited */
     editField?: 'title' | 'instructor' | 'category' | 'level' | 'type' | 'price' | 'image';
+    /** `draftfield` — the pending draft and the field being corrected */
+    draftId?: string;
+    draftField?: string;
   };
   /** the bot's wizard bubble — edited in place on every step (Argo-style) */
   messageId?: number;
@@ -651,15 +655,31 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       await this.logActivity(fromId, chatId, 'file', `${msgDoc.file_name ?? 'file'} (${(msgDoc.file_size ?? 0) / 1024 / 1024} MB) cached`);
     }
 
+    // If an interactive wizard is in progress, plain text feeds it — unless
+    // the user explicitly sends /cancel (handled below). Loaded from Postgres
+    // so a deploy mid-flow doesn't lose the wizard. Loaded *before* the watcher
+    // because a photo being used to correct a draft must not also be attached
+    // to that draft as a second image.
+    const wizard = await this.loadWizard(fromId);
+
+    if (
+      photo &&
+      !msg.text &&
+      wizard?.kind === 'draftfield' &&
+      wizard.step === 'value' &&
+      wizard.data.draftField &&
+      TelegramService.DRAFT_IMAGE_FIELDS.has(wizard.data.draftField)
+    ) {
+      if (msg.chat.type === 'private') await this.deleteMessage(chatId, msg.message_id);
+      await this.applyDraftPhoto(chatId, fromId, threadId, wizard, photo.file_id);
+      return;
+    }
+
     // Phase 3 — the group watcher. This only ever writes an `IngestDraft`; the
     // catalog changes when an admin taps Create. It runs before the wizard and
     // the `!msg.text` return because ZIP posts carry no text.
     await this.observeGroupMessage(msg);
 
-    // If an interactive wizard is in progress, plain text feeds it — unless
-    // the user explicitly sends /cancel (handled below). Loaded from Postgres
-    // so a deploy mid-flow doesn't lose the wizard.
-    const wizard = await this.loadWizard(fromId);
     // A photo at the cover-image step sets the banner directly (no URL needed).
     // NOTE: this MUST run before the `if (!msg.text) return;` below — photos
     // carry no text, so the early return would silently drop them.
@@ -1002,6 +1022,38 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       } else if (action === 'no') {
         await this.discardDraft(chatId, draftId, undefined, msgId);
       }
+    } else if (data.startsWith('drx:')) {
+      const draftId = data.slice(4);
+      await this.clearWizard(uid);
+      const draft = await this.drafts.get(draftId);
+      const payload = draft.payload as unknown as DraftPayload;
+      await this.editRich(
+        chatId,
+        messageId ?? payload.cardMessageId ?? 0,
+        this.draftCard(draftId, payload),
+        this.draftKeyboard(draftId, draft.status),
+      );
+    } else if (data.startsWith('dre:')) {
+      const draftId = data.slice(4);
+      if (!(await this.isAdmin(uid))) await this.sendText(chatId, '⛔ Only admins can edit drafts.');
+      else await this.sendDraftFieldPicker(chatId, draftId, undefined, msgId);
+    } else if (data.startsWith('drf:')) {
+      const [, draftId, field] = data.split(':');
+      if (!(await this.isAdmin(uid))) await this.sendText(chatId, '⛔ Only admins can edit drafts.');
+      else await this.startDraftFieldEdit(chatId, uid, draftId, field, undefined, msgId);
+    } else if (data.startsWith('drb:')) {
+      const draftId = data.slice(4);
+      if (!(await this.isAdmin(uid))) await this.sendText(chatId, '⛔ Only admins can edit drafts.');
+      else {
+        const draft = await this.drafts.get(draftId);
+        const payload = draft.payload as unknown as DraftPayload;
+        await this.editRich(
+          chatId,
+          msgId ?? 0,
+          this.draftCard(draftId, payload),
+          this.draftKeyboard(draftId, draft.status),
+        );
+      }
     } else if (data.startsWith('wz:')) {
       await this.handleWizardCallback(chatId, cb.from.id, data, messageId);
     } else if (data.startsWith('link:')) {
@@ -1078,6 +1130,8 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
           `<b>One line:</b> <code>/edit &lt;title&gt; &lt;field&gt; &lt;value&gt;</code> — fields: title | instructor | category | level | type | price | image\n` +
           `<code>/newcourse</code> — create a course (guided wizard, 7 steps)\n` +
           `<b>One line:</b> <code>/newcourse Title | Instructor | Category | type | price | image-url</code>\n` +
+          `<b>No-typing ingestion:</b> post the course in the group, then its ZIPs. Photo captions work as roles — <code>cover</code>, <code>lecturer</code>, <code>org: Udemy</code> — and optional lines <code>category:</code>, <code>level:</code>, <code>price:</code>, <code>tags:</code> refine the draft. A complete post publishes itself; anything missing waits under <code>/drafts</code> with tap-to-fix fields.\n` +
+          `<b>Resources:</b> post <code>resource: Title</code>, then the body and files. Approved from <code>/drafts</code> → published under Resources.\n` +
           `<code>/link &lt;slug&gt;</code> — attach a file to a course (reply to the ZIP, or forward it first)\n` +
           `<code>/import &lt;channel&gt; &lt;from&gt;-&lt;to&gt; &lt;slug&gt;</code> — attach a whole course at once 📦\n` +
           `<i>e.g. <code>/import @machine_learning_courses 4-38 complete-machine-learning</code></i>\n` +
@@ -1489,6 +1543,10 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     if (Date.now() > wizard.expiresAt) {
       await this.clearWizard(userId);
       await this.sendText(chatId, '⏳ The wizard expired (30 min). Start over with /newcourse.', threadId);
+      return;
+    }
+    if (wizard.kind === 'draftfield' && wizard.step === 'value') {
+      await this.applyDraftField(chatId, userId, threadId ?? null, wizard, text);
       return;
     }
     if (wizard.kind === 'search' && wizard.step === 'keyword') {
@@ -2737,6 +2795,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
   private async observeGroupMessage(msg: NonNullable<TelegramUpdate['message']>) {
     if (msg.forum_topic_created) return;
     const doc = msg.document ?? msg.video ?? msg.audio;
+    const photo = msg.photo && msg.photo.length > 0 ? msg.photo[msg.photo.length - 1] : undefined;
     let result;
     try {
       result = await this.drafts.observe({
@@ -2762,10 +2821,36 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
               mimeType: (doc as { mime_type?: string }).mime_type ?? null,
             }
           : null,
+        image: photo
+          ? {
+              messageId: msg.message_id,
+              fileId: photo.file_id,
+              caption: msg.caption ?? null,
+            }
+          : null,
       });
     } catch (err) {
       // A watcher failure must never break the bot's normal commands.
       this.logger.warn(`draft watcher failed: ${(err as Error).message}`);
+      return;
+    }
+
+    if (result.action === 'published') {
+      // Files keep joining an auto-published draft; only announce the publish
+      // once, and keep it short — the course page is the real confirmation.
+      if (!result.payload.signals.includes('auto-published-notice')) {
+        result.payload.signals.push('auto-published-notice');
+        const html = this.publishedCard(result.payload, result.courseSlug);
+        if (result.payload.cardMessageId) {
+          // Turn the review card into the receipt, and drop its review buttons:
+          // there is nothing left to approve or discard.
+          await this.editRich(msg.chat.id, result.payload.cardMessageId, html, undefined, true);
+        } else {
+          const card = await this.sendRich(msg.chat.id, html, msg.message_thread_id ?? null);
+          if (card) result.payload.cardMessageId = card;
+        }
+        await this.drafts.rememberNotice(result.draftId, result.payload.cardMessageId ?? undefined);
+      }
       return;
     }
 
@@ -2777,34 +2862,92 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
         this.draftKeyboard(result.draftId, 'pending'),
       );
       if (card) await this.drafts.rememberCard(result.draftId, card);
+      return;
     }
+
+    // A photo or an extra ZIP changes the card's numbers; edit it in place
+    // rather than posting a new bubble for every part.
+    if ((result.action === 'file' || result.action === 'image') && result.payload.cardMessageId) {
+      await this.editRich(
+        msg.chat.id,
+        result.payload.cardMessageId,
+        this.draftCard(result.draftId, result.payload),
+        this.draftKeyboard(result.draftId, 'pending'),
+      );
+    }
+  }
+
+  /** What the review card becomes once the draft published itself. */
+  private publishedCard(payload: DraftPayload, slug: string | null): string {
+    const a = payload.announcement;
+    const f = payload.fields ?? {};
+    const files = payload.files ?? [];
+    const who = (f.lecturerNames ?? a.lecturerNames ?? []).join(', ');
+    const isResource = (payload.kind ?? 'course') === 'resource';
+    const totalMb = files.reduce((n, file) => n + (file.fileSizeMb ?? 0), 0);
+    return (
+      `${DIV}\n✅ <b>${isResource ? 'RESOURCE PUBLISHED' : 'COURSE PUBLISHED'}</b> <i>· automatically</i>\n${DIV}\n\n` +
+      `<b>${esc(f.title ?? a.title)}</b>\n` +
+      (who ? `👤 ${esc(who)}\n` : '') +
+      `📎 ${files.length} file${files.length === 1 ? '' : 's'}` +
+      (totalMb > 0
+        ? ` · ${totalMb >= 1024 ? `${(totalMb / 1024).toFixed(1)} GB` : `${Math.round(totalMb)} MB`}`
+        : '') +
+      `\n` +
+      (slug
+        ? `🔗 <a href="${APP_URL}/${isResource ? 'resources' : 'courses'}/${slug}">Open ${isResource ? 'the resource' : 'the course'} →</a>\n`
+        : '') +
+      `\n<i>Title, ${isResource ? 'body' : 'lecturer, description'} ${files.length ? 'and files were' : 'were'} all present, so it skipped the queue.</i>\n` +
+      (isResource
+        ? `Files posted in this topic keep joining it for 12 hours.`
+        : `ZIPs posted in this topic keep joining it for 12 hours.`) +
+      `\n<code>${payload.announcement.slug}</code>`
+    );
   }
 
   /** The review card — every number here comes from the parsed post. */
   private draftCard(draftId: string, payload: DraftPayload): string {
     const a = payload.announcement;
     const files = payload.files ?? [];
+    const images = payload.images ?? [];
+    const f = payload.fields ?? {};
     const totalMb = files.reduce((n, f) => n + (f.fileSizeMb ?? 0), 0);
     const hours = a.durationMin ? `⏱ ${Math.round(a.durationMin / 60)}h` : null;
     const lessons = a.lessonCount ? `📦 ${a.lessonCount}` : null;
-    const price = a.originalPrice !== null ? `💰 $${a.originalPrice}` : null;
+    const price = a.originalPrice !== null ? `💰 $${a.originalPrice}` : '💰 Free';
     const meta = [hours, lessons, price].filter(Boolean).join(' · ');
-    const tags = (a.hashtags ?? []).slice(0, 6).map((t) => `#${t}`).join(' ');
-    const who = (a.lecturerNames ?? []).join(', ');
+    const tags = (f.tags ?? a.hashtags ?? []).slice(0, 6).map((t) => `#${t}`).join(' ');
+    const who = (f.lecturerNames ?? a.lecturerNames ?? []).join(', ');
     const exists = payload.signals.includes('course-exists');
+    const isResource = (payload.kind ?? 'course') === 'resource';
+
+    const imageBadges = [
+      images.some((i) => i.role === 'cover') ? '🖼️ cover' : null,
+      images.some((i) => i.role === 'lecturer') ? '👤 lecturer photo' : null,
+      images.some((i) => i.role === 'organization') ? '🏛️ logo' : null,
+    ].filter(Boolean);
+
+    const missing = autoPublishBlockers(payload);
+    const blockReason =
+      missing.length > 0
+        ? `\n⏳ Waiting for: <b>${missing.map(missingLabel).join(', ')}</b> — tap a field below to fill it, or just keep posting.`
+        : `\n✅ Every required field is present — this will publish on its own unless auto-publish is off.`;
 
     return (
-      `${DIV}\n📥 <b>NEW COURSE DRAFT</b> <i>· review</i>\n${DIV}\n\n` +
-      `<b>${esc(a.title)}</b>\n` +
+      `${DIV}\n${isResource ? '📄 <b>NEW RESOURCE DRAFT</b>' : '📥 <b>NEW COURSE DRAFT</b>'} <i>· review</i>\n${DIV}\n\n` +
+      `<b>${esc(f.title ?? a.title)}</b>\n` +
+      (f.organizationName ? `🏛️ ${esc(f.organizationName)}\n` : '') +
       (who ? `👤 ${esc(who)}\n` : '') +
       (meta ? `${meta}\n` : '') +
       (tags ? `${esc(tags)}\n` : '') +
+      (imageBadges.length ? `${imageBadges.join(' · ')}\n` : '') +
       `\n📎 <b>${files.length}</b> file${files.length === 1 ? '' : 's'}` +
       (totalMb > 0 ? ` · ${totalMb >= 1024 ? `${(totalMb / 1024).toFixed(1)} GB` : `${Math.round(totalMb)} MB`}` : '') +
-      `\n🎯 confidence <b>${Math.round(payload.confidence * 100)}%</b> <i>(${esc(payload.signals.join(', ') || 'none')})</i>\n` +
-      (exists ? `\n⚠️ A course with this title already exists — approving adds the new files to it.\n` : '') +
-      `\n${DIV}\nZIPs posted in this topic are attached automatically.\n` +
-      `Nothing is published until you tap Create.\n` +
+      `\n🎯 confidence <b>${Math.round(payload.confidence * 100)}%</b> <i>(${esc(payload.signals.filter((s) => s !== 'auto-published-notice').join(', ') || 'none')})</i>\n` +
+      (exists ? `\n⚠️ A course with this title already exists — publishing adds the new files to it.\n` : '') +
+      blockReason +
+      `\n\n${DIV}\n${isResource ? 'Files posted here become its attachments.' : 'ZIPs posted in this topic are attached automatically.'}\n` +
+      `Nothing is published until the fields are complete.\n` +
       `<code>${draftId.slice(0, 8)}</code>`
     );
   }
@@ -2813,10 +2956,190 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     if (status !== 'pending') return undefined;
     return [
       [
-        { text: '✅ Create course', callback_data: `dr:ok:${draftId}` },
+        { text: '✅ Publish', callback_data: `dr:ok:${draftId}` },
         { text: '🗑 Discard', callback_data: `dr:no:${draftId}` },
       ],
+      [{ text: '✏️ Fix a field', callback_data: `dre:${draftId}` }],
     ];
+  }
+
+  /** The field picker behind "✏️ Fix a field". */
+  private draftFieldKeyboard(draftId: string): KbButton[][] {
+    return [
+      [
+        { text: '📝 Title', callback_data: `drf:${draftId}:title` },
+        { text: '👤 Lecturer', callback_data: `drf:${draftId}:lecturerNames` },
+      ],
+      [
+        { text: '📄 Description', callback_data: `drf:${draftId}:description` },
+        { text: '🏛️ Organisation', callback_data: `drf:${draftId}:organizationName` },
+      ],
+      [
+        { text: '🏷️ Category', callback_data: `drf:${draftId}:categorySlugs` },
+        { text: '🔰 Level', callback_data: `drf:${draftId}:levelName` },
+      ],
+      [
+        { text: '💵 Price', callback_data: `drf:${draftId}:price` },
+        { text: '📦 Type', callback_data: `drf:${draftId}:contentType` },
+      ],
+      [
+        { text: '🖼️ Cover photo', callback_data: `drf:${draftId}:coverImage` },
+        { text: '👤 Lecturer photo', callback_data: `drf:${draftId}:lecturerImage` },
+      ],
+      [
+        { text: '🏛️ Org logo', callback_data: `drf:${draftId}:organizationLogo` },
+        { text: '🔙 Back to draft', callback_data: `drb:${draftId}` },
+      ],
+    ];
+  }
+
+  private async sendDraftFieldPicker(
+    chatId: number,
+    draftId: string,
+    threadId?: number | null,
+    editMessageId?: number,
+  ) {
+    let payload: DraftPayload;
+    try {
+      const draft = await this.drafts.get(draftId);
+      payload = draft.payload as unknown as DraftPayload;
+    } catch (err) {
+      await this.sendText(chatId, `❌ ${(err as Error).message}`, threadId);
+      return;
+    }
+    const f = payload.fields ?? {};
+    const html =
+      `${DIV}\n✏️ <b>FIX A FIELD</b>\n${DIV}\n\n` +
+      `Tap what is wrong, then send the correct value.\n` +
+      `For a photo, tap <b>Cover photo</b> or <b>Lecturer photo</b> and send the image next.\n\n` +
+      `${DIV}\n` +
+      `📝 ${esc(f.title ?? payload.announcement.title)}\n` +
+      `👤 ${esc((f.lecturerNames ?? payload.announcement.lecturerNames ?? []).join(', ') || '—')}\n` +
+      `🏛️ ${esc(f.organizationName ?? '—')}\n` +
+      `🏷️ ${esc((f.categorySlugs ?? payload.categorySlugs ?? []).join(', ') || '—')}\n` +
+      `🔰 ${esc(f.levelName ?? '—')} · 💵 ${f.price === null ? 'Free' : f.price !== undefined ? `$${f.price}` : payload.announcement.originalPrice !== null ? `$${payload.announcement.originalPrice}` : 'Free'}\n` +
+      `📦 ${esc(f.contentType ?? 'course')}`;
+    if (editMessageId) await this.editRich(chatId, editMessageId, html, this.draftFieldKeyboard(draftId));
+    else await this.sendRich(chatId, html, threadId, this.draftFieldKeyboard(draftId));
+  }
+
+  /** Redraw the stored review card after a field edit. */
+  private async refreshDraftCard(chatId: number, draftId: string, threadId?: number | null) {
+    const draft = await this.drafts.get(draftId);
+    const payload = draft.payload as unknown as DraftPayload;
+    if (payload.cardMessageId) {
+      await this.editRich(
+        chatId,
+        payload.cardMessageId,
+        this.draftCard(draftId, payload),
+        this.draftKeyboard(draftId, draft.status),
+      );
+    } else {
+      const card = await this.sendRich(
+        chatId,
+        this.draftCard(draftId, payload),
+        threadId,
+        this.draftKeyboard(draftId, draft.status),
+      );
+      if (card) await this.drafts.rememberCard(draftId, card);
+    }
+  }
+
+  /** Fields the review card can correct. Image fields expect a photo next. */
+  private static readonly DRAFT_IMAGE_FIELDS = new Set(['coverImage', 'lecturerImage', 'organizationLogo']);
+
+  private static readonly DRAFT_FIELD_PROMPTS: Record<string, string> = {
+    title: 'Send the correct <b>title</b>.',
+    lecturerNames: 'Send the <b>lecturer</b> name(s), comma-separated for co-teachers.',
+    description: 'Send the <b>description</b> — a paragraph is fine.',
+    organizationName: 'Send the <b>organisation</b> name (publisher, university or company).',
+    categorySlugs: 'Send the <b>category</b> — a name or slug, e.g. <code>mobile-development</code>.',
+    levelName: 'Send the <b>level</b> — Beginner, Intermediate, Advanced or All Levels.',
+    contentType: 'Send the <b>type</b> — <code>course</code> or <code>mini-course</code>.',
+    price: 'Send the <b>price</b> in USD, or <code>free</code>.',
+    originalPrice: 'Send the <b>original price</b> in USD, or <code>free</code>.',
+    tags: 'Send the <b>tags</b>, comma-separated.',
+    language: 'Send the <b>language</b>, e.g. English.',
+    coverImage: 'Send the <b>cover photo</b> now.',
+    lecturerImage: "Send the <b>lecturer's photo</b> now.",
+    organizationLogo: 'Send the <b>organisation logo</b> now.',
+  };
+
+  private async startDraftFieldEdit(
+    chatId: number,
+    userId: number,
+    draftId: string,
+    field: string,
+    threadId?: number | null,
+    editMessageId?: number,
+  ) {
+    const prompt = TelegramService.DRAFT_FIELD_PROMPTS[field];
+    if (!prompt) {
+      await this.sendText(chatId, 'That field cannot be edited from here. Use /drafts to review the draft.');
+      return;
+    }
+    await this.clearWizard(userId);
+    const wizard: CourseWizard = {
+      kind: 'draftfield',
+      step: 'value',
+      data: { draftId, draftField: field },
+      expiresAt: Date.now() + WIZARD_TTL_MS,
+    };
+    await this.saveWizard(userId, wizard);
+    const html =
+      `${DIV}\n✏️ <b>EDIT DRAFT</b>\n${DIV}\n\n` +
+      `${prompt}\n\n` +
+      `${DIV}\nSend <code>/cancel</code> to stop.`;
+    const kb: KbButton[][] = [[{ text: '🔙 Back to draft', callback_data: `drx:${draftId}` }]];
+    if (editMessageId) await this.editRich(chatId, editMessageId, html, kb);
+    else await this.sendRich(chatId, html, threadId, kb);
+  }
+
+  private async applyDraftField(
+    chatId: number,
+    userId: number,
+    threadId: number | null,
+    wizard: CourseWizard,
+    value: string,
+  ) {
+    const draftId = wizard.data.draftId;
+    const field = wizard.data.draftField;
+    if (!draftId || !field) {
+      await this.clearWizard(userId);
+      await this.sendText(chatId, 'That edit expired — open /drafts and try again.');
+      return;
+    }
+    try {
+      await this.drafts.updateField(draftId, field as never, value);
+      await this.clearWizard(userId);
+      await this.refreshDraftCard(chatId, draftId, threadId);
+      await this.sendText(chatId, '✅ Updated. The card above now reflects the change.');
+    } catch (err) {
+      await this.sendText(chatId, `❌ ${(err as Error).message}`);
+    }
+  }
+
+  private async applyDraftPhoto(
+    chatId: number,
+    userId: number,
+    threadId: number | null,
+    wizard: CourseWizard,
+    fileId: string,
+  ) {
+    const draftId = wizard.data.draftId;
+    const field = wizard.data.draftField;
+    if (!draftId || !field) {
+      await this.clearWizard(userId);
+      return;
+    }
+    try {
+      await this.drafts.updateField(draftId, field as never, fileId);
+      await this.clearWizard(userId);
+      await this.refreshDraftCard(chatId, draftId, threadId);
+      await this.sendText(chatId, '✅ Photo updated. The card above now reflects the change.');
+    } catch (err) {
+      await this.sendText(chatId, `❌ ${(err as Error).message}`);
+    }
   }
 
   /** `/drafts` — the pending queue, with one approval row per draft. */
@@ -2882,17 +3205,26 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
   ) {
     try {
       const r = await this.drafts.approve(arg, { telegramId: actorId });
-      const slug = r.course?.slug ?? '';
+      const slug = r.course?.slug ?? r.resource?.slug ?? '';
+      const isResource = Boolean(r.resource);
+      const title = r.course?.title ?? r.resource?.title ?? 'Draft';
       const html =
-        `${DIV}\n✅ <b>COURSE LIVE</b>\n${DIV}\n\n` +
-        `<b>${esc(r.course?.title ?? 'Course')}</b>\n` +
+        `${DIV}\n✅ <b>${isResource ? 'RESOURCE LIVE' : 'COURSE LIVE'}</b>\n${DIV}\n\n` +
+        `<b>${esc(title)}</b>\n` +
         (r.alreadyApproved
-          ? `Already published — nothing was duplicated.`
-          : `${r.filesAdded} file${r.filesAdded === 1 ? '' : 's'} attached · ${r.modules} module${r.modules === 1 ? '' : 's'}`) +
-        `\n\n<b>/download ${esc(slug)}</b>\n` +
-        `<i>Tap below to open the published course.</i>`;
+          ? `Already published — ${isResource ? `${r.mediaAdded ?? 0} new attachment${r.mediaAdded === 1 ? '' : 's'}` : `${r.filesAdded} new file${r.filesAdded === 1 ? '' : 's'}`} added.`
+          : isResource
+            ? `${r.filesAdded} attachment${r.filesAdded === 1 ? '' : 's'} · published under Resources`
+            : `${r.filesAdded} file${r.filesAdded === 1 ? '' : 's'} attached · ${r.modules} module${r.modules === 1 ? '' : 's'}`) +
+        `\n\n${isResource ? '' : `<b>/download ${esc(slug)}</b>\n`}` +
+        `<i>Tap below to open the published ${isResource ? 'resource' : 'course'}.</i>`;
       const kb: KbButton[][] = slug
-        ? [[{ text: '📚 Open course', callback_data: `course:${slug}` }], [{ text: '📥 Drafts', callback_data: 'drafts' }]]
+        ? [
+            isResource
+              ? [{ text: '📄 Open resource', url: `${APP_URL}/resources/${slug}` }]
+              : [{ text: '📚 Open course', callback_data: `course:${slug}` }],
+            [{ text: '📥 Drafts', callback_data: 'drafts' }],
+          ]
         : [[{ text: '📥 Drafts', callback_data: 'drafts' }]];
       if (editMessageId) await this.editRich(chatId, editMessageId, html, kb);
       else await this.sendRich(chatId, html, threadId, kb);
@@ -4296,7 +4628,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
    * Edit an existing bot message in place (Argo-style pagination). Used for
    * navigation taps so the conversation doesn't fill up with new messages.
    */
-  private async editRich(chatId: number, messageId: number, html: string, keyboard?: KbButton[][]) {
+  private async editRich(chatId: number, messageId: number, html: string, keyboard?: KbButton[][], clearKeyboard = false) {
     if (!this.enabled) return;
     try {
       const body: Record<string, unknown> = {
@@ -4306,8 +4638,12 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
         parse_mode: 'HTML',
         disable_web_page_preview: true,
       };
-      const safeKb = this.safeKeyboard(keyboard);
-      if (safeKb) body.reply_markup = { inline_keyboard: safeKb };
+      if (clearKeyboard) {
+        body.reply_markup = { inline_keyboard: [] };
+      } else {
+        const safeKb = this.safeKeyboard(keyboard);
+        if (safeKb) body.reply_markup = { inline_keyboard: safeKb };
+      }
       const res = await this.api('editMessageText', body);
       const json = (await res.json()) as { ok: boolean; description?: string };
       if (!json.ok) {
@@ -4503,4 +4839,26 @@ function esc(s: string | null | undefined): string {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+/** Why a draft is still waiting, in words an operator can act on. */
+function missingLabel(key: string): string {
+  switch (key) {
+    case 'title':
+      return 'title';
+    case 'lecturer':
+      return 'lecturer';
+    case 'description':
+      return 'description';
+    case 'files':
+      return 'at least one file';
+    case 'body':
+      return 'a body or attachment';
+    case 'course-exists':
+      return 'your decision (course exists)';
+    case 'low-confidence':
+      return 'a clearer post';
+    default:
+      return key;
+  }
 }

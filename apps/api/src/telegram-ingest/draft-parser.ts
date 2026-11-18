@@ -44,13 +44,59 @@ export interface DraftAnnouncement {
   postedAt: string | null;
 }
 
+/** A photo posted with the course: cover, the lecturer's face, or a logo. */
+export type DraftImageRole = 'cover' | 'lecturer' | 'organization';
+
+export interface DraftImage {
+  role: DraftImageRole;
+  fileId: string;
+  messageId: number;
+  caption: string | null;
+  /** For `lecturer` / `organization` captions that named the person or org. */
+  name?: string | null;
+}
+
+/**
+ * Fields the operator wrote explicitly (`org: Udemy`, `level: Advanced`).
+ * Absent means "use what the announcement parser guessed".
+ */
+export interface DraftFields {
+  title?: string;
+  description?: string;
+  lecturerNames?: string[];
+  lecturerBio?: string;
+  organizationName?: string;
+  organizationType?: string;
+  organizationDescription?: string;
+  /** Slugs or human names; resolved (and created when new) at approval time. */
+  categorySlugs?: string[];
+  levelName?: string;
+  contentType?: string;
+  /** `null` means free; `undefined` means "not stated". */
+  price?: number | null;
+  originalPrice?: number | null;
+  tags?: string[];
+  language?: string;
+  isPremium?: boolean;
+  resourceType?: string;
+  resourceSummary?: string;
+  sourceUrl?: string;
+  coverUrl?: string;
+}
+
 export interface DraftPayload {
   version: 1;
+  /** A post is a course unless it says `resource:`. */
+  kind?: 'course' | 'resource';
   announcement: DraftAnnouncement;
   chat: { id: number; username: string | null; title: string | null };
   topic: { id: number | null; name: string | null };
   author: { id: number | null; username: string | null; firstName: string | null };
   files: DraftFile[];
+  /** Photos carried by the post, with the role their caption gave them. */
+  images?: DraftImage[];
+  /** Explicit overrides typed in the post. */
+  fields?: DraftFields;
   /** Existing `Category.slug` values, resolved again at approval time. */
   categorySlugs: string[];
   /** 0–1, from the signals below. Never presented as a guarantee. */
@@ -60,6 +106,8 @@ export interface DraftPayload {
   cardMessageId: number | null;
   /** Set on approval, so the console can link straight to the course. */
   approvedCourseSlug?: string;
+  /** Approved without a human tap because every required field was present. */
+  autoPublished?: boolean;
 }
 
 /** Who/what a draft is about, before any database work. */
