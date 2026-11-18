@@ -82,17 +82,16 @@
   --adm-blue: #6ea8fe;
   --adm-blue-soft: rgba(110, 168, 254, 0.14);
 
-  /* Chart ink: one series, de-emphasised, with the current period picked out in
-     the data hue. Cool blue rather than amber so a chart never reads as a row of
-     buttons — the mark is data, and data is not clickable. */
-  --adm-series: rgba(255, 255, 255, 0.24);
-  --adm-series-fill: rgba(255, 255, 255, 0.07);
-  /* Full-size charts get a stronger mark: at 0.24 a bar sits around 2.1:1 against
-     the card, under the 3:1 floor for non-text. That is survivable in a sparkline
-     where the value is printed right next to it, and not survivable when the mark
-     *is* the number. 0.38 measures 3.6:1. */
-  --adm-series-strong: rgba(255, 255, 255, 0.38);
-  --adm-data: #6ea8fe;
+  /* Chart ink: the same amber the rest of the site uses for data — profile
+     charts, rating bars, active filters. A chart is not a button, so it uses
+     the tinted series rather than the solid selection fill. */
+  --adm-series: rgba(232, 161, 58, 0.38);
+  --adm-series-fill: rgba(232, 161, 58, 0.1);
+  /* Full-size charts get a stronger mark: a 0.38 series sits near 3:1 against the
+     card, which is the floor for non-text. The sparkline can stay quieter because
+     its value is printed right next to it. */
+  --adm-series-strong: rgba(232, 161, 58, 0.55);
+  --adm-data: #e8a13a;
 
   /* Type scale. Four rungs, each a clear step from the next, so a page has an
      obvious reading order instead of one grey wall: hero numbers, page title,

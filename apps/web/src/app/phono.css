@@ -148,6 +148,7 @@ h3 { font-size: 16px; }
    the 46px field collapsed to 20px — text touching both borders. */
 .topbar-center > .top-search { flex: 0 0 46px; }
 .topbar-center > .nav-cats { flex: 0 0 auto; }
+
 .top-search svg { flex: none; color: #b8afa4; }
 .top-search input {
   width: 100%;
@@ -251,6 +252,14 @@ h3 { font-size: 16px; }
 .nav-cat:hover { border-color: rgba(245,242,234,.4); color: #f5f2ea; }
 .nav-cat.active { background: #e8a13a; border-color: #e8a13a; color: #0e0e0d; box-shadow: 0 1px 2px rgba(0,0,0,.4); }
 .nav-cat.active svg { color: #0e0e0d; }
+/* Between the phone breakpoint and a full desktop the five labelled chips need
+   504px and the centre column has ~380. Rather than clip "Roadmaps" off the
+   edge, keep every category reachable as an icon with the label as its title. */
+@media (min-width: 900px) and (max-width: 1049px) {
+  .nav-cat { padding: 7px 10px; gap: 0; }
+  .nav-cat span { display: none; }
+  .nav-cat svg { width: 18px; height: 18px; }
+}
 
 /* desktop-only / mobile-only helpers keep their meaning */
 @media (max-width: 899px) {
@@ -2118,6 +2127,18 @@ a.lesson:hover, button.lesson:hover { background: #1a1815; border-color: rgba(24
 .file-row__name { color: #ddd6c9; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .file-row__meta { color: #948b80; font-size: 10.5px; }
 .file-btn { min-height: 32px; padding: 0 12px; font-size: 12px; }
+/* "All parts" is a bulk download, not a passive label. Keep it quieter than the
+   cream per-file button but give it the download glyph and an amber edge so it
+   reads as an action at a glance. */
+.file-all-btn {
+  gap: 6px;
+  border: 1px solid rgba(232,161,58,.5);
+  background: rgba(232,161,58,.1);
+  color: #f0b055;
+  font-weight: 600;
+}
+.file-all-btn:hover { background: rgba(232,161,58,.18); border-color: #e8a13a; color: #f5f2ea; }
+.file-all-btn svg { color: #e8a13a; }
 .files-cta { min-height: 36px; padding: 0 16px; font-size: 13px; }
 
 /* rating block + reviews */
@@ -2163,7 +2184,9 @@ a.lesson:hover, button.lesson:hover { background: #1a1815; border-color: rgba(24
   .info-table { grid-template-columns: 104px minmax(0, 1fr); gap: 10px 14px; }
   .detail-columns .instructor-grid { grid-template-columns: repeat(3, 1fr); gap: 10px; }
   .file-module__head { flex-wrap: wrap; gap: 8px; }
-  .file-module__meta { margin-left: 0; }
+  /* Keep the part count and size beside the bulk-download button: it is the
+     context for that action, and there is room for it on the second line. */
+  .file-module__meta { display: inline-flex; margin-left: 0; }
   .review, .review-edit { padding: 13px; }
 }
 

@@ -45,7 +45,13 @@ function CatLinks({ pathname, type }: { pathname: string; type: string }) {
       {CATS.map((c) => {
         const on = catOn(c.key);
         return (
-          <Link key={c.key} href={c.href} className={`nav-cat ${on ? "active" : ""}`}>
+          <Link
+            key={c.key}
+            href={c.href}
+            className={`nav-cat ${on ? "active" : ""}`}
+            aria-label={c.label}
+            title={c.label}
+          >
             <c.icon size={17} strokeWidth={1.8} />
             <span>{c.label}</span>
           </Link>
@@ -119,13 +125,13 @@ export function TopNav() {
         </div>
 
         <nav className="nav-links" aria-label="Primary">
-          <Link href="/browse" className={`nav-pill ${active("/browse") ? "active" : ""}`}>
+          <Link href="/browse" aria-label="Browse" className={`nav-pill ${active("/browse") ? "active" : ""}`}>
             <LayoutGrid size={19} strokeWidth={1.8} /> <span className="nav-label">Browse</span>
           </Link>
-          <Link href="/circles" className={`nav-pill ${active("/circles") ? "active" : ""}`}>
+          <Link href="/circles" aria-label="Circles" className={`nav-pill ${active("/circles") ? "active" : ""}`}>
             <MessageCircle size={19} strokeWidth={1.8} /> <span className="nav-label">Circles</span>
           </Link>
-          <Link href="/lists" className={`nav-pill ${active("/lists") ? "active" : ""}`}>
+          <Link href="/lists" aria-label="Collections" className={`nav-pill ${active("/lists") ? "active" : ""}`}>
             <Bookmark size={19} strokeWidth={1.8} /> <span className="nav-label">Collections</span>
           </Link>
           {isPremium ? (
@@ -133,12 +139,12 @@ export function TopNav() {
               <Crown size={17} strokeWidth={1.8} /> <span className="nav-label">Premium</span>
             </span>
           ) : (
-            <Link href="/premium" className="nav-pill nav-pill--cta">
+            <Link href="/premium" aria-label="Go Premium" className="nav-pill nav-pill--cta">
               <Crown size={17} strokeWidth={1.8} /> <span className="nav-label">Go Premium</span>
             </Link>
           )}
           {user?.isStaff && (
-            <Link href="/admin" className={`nav-pill nav-pill--admin ${active("/admin") ? "active" : ""}`}>
+            <Link href="/admin" aria-label="Admin console" className={`nav-pill nav-pill--admin ${active("/admin") ? "active" : ""}`}>
               Admin
             </Link>
           )}

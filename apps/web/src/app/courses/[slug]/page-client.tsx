@@ -664,13 +664,13 @@ export function CourseDetailView({ slug }: { slug: string }) {
                       </span>
                       {m.files.length > 1 && (
                         <a
-                          className="btn ghost file-btn"
+                          className="btn file-btn file-all-btn"
                           href={botLink(`dlmod_${m.files[0].id}`)}
                           target="_blank"
                           rel="noreferrer"
                           onClick={() => setToast(`Opening Telegram — all ${m.files.length} parts`)}
                         >
-                          All parts
+                          <Download size={13} /> All parts
                         </a>
                       )}
                     </div>
