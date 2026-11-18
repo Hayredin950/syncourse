@@ -783,17 +783,35 @@ export class AdminService {
     return { deleted: true, id: reviewId };
   }
 
-  /** Payment queue: all subscriptions with their references. */
+  /** Payment queue: every pending subscription, then recent history. */
   async listPayments(userId: string) {
     await this.assertStaff(userId);
-    const subs = await this.prisma.subscription.findMany({
-      orderBy: { createdAt: 'desc' },
-      take: 100,
-      include: {
-        user: { select: { id: true, name: true, email: true, telegramUsername: true } },
-        paymentRefs: true,
-      },
-    });
+    // Newest-100 alone is not a queue: once a hundred newer subscriptions
+    // existed, an older pending payment vanished from the console and nobody
+    // was told. Pending rows are fetched in full (oldest first, so the longest
+    // wait sits at the top) and the recent history is appended for the other
+    // tabs.
+    const [pending, recent] = await Promise.all([
+      this.prisma.subscription.findMany({
+        where: { status: 'pending' },
+        orderBy: { createdAt: 'asc' },
+        take: 200,
+        include: {
+          user: { select: { id: true, name: true, email: true, telegramUsername: true } },
+          paymentRefs: true,
+        },
+      }),
+      this.prisma.subscription.findMany({
+        orderBy: { createdAt: 'desc' },
+        take: 100,
+        include: {
+          user: { select: { id: true, name: true, email: true, telegramUsername: true } },
+          paymentRefs: true,
+        },
+      }),
+    ]);
+    const seen = new Set(pending.map((s) => s.id));
+    const subs = [...pending, ...recent.filter((s) => !seen.has(s.id))];
     return subs.map((s) => ({
       id: s.id,
       planName: s.planName,

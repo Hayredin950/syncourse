@@ -28,7 +28,9 @@ services:
       - key: JWT_SECRET
         sync: false
       - key: JWT_EXPIRES_IN
-        value: 30d
+        # Matches the API default. A 30-day token outlived every revocation
+        # path this app has; sessions are also capped, so 7 days is the ceiling.
+        value: 7d
       - key: PUBLIC_APP_URL
         sync: false
       - key: GOOGLE_CLIENT_ID
