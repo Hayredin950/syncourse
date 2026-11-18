@@ -330,7 +330,10 @@ async function main() {
       const username = 'username' in me && me.username ? `@${me.username}` : `id ${me.id}`;
       console.log(`MTProto login works: ${username}`);
     } finally {
-      await client.disconnect().catch(() => undefined);
+      // `destroy` stops GramJS's keep-alive loop before closing the socket.
+      // `disconnect` alone leaves a pending ping that rejects with TIMEOUT and
+      // prints a stack trace after the work is already done.
+      await client.destroy().catch(() => undefined);
     }
     return;
   }
@@ -362,7 +365,8 @@ async function main() {
       tally[await processLink(client, link)]++;
     }
   } finally {
-    await client.disconnect().catch(() => undefined);
+    // Same reason as the probe: stop the keep-alive loop before disconnecting.
+    await client.destroy().catch(() => undefined);
   }
 
   console.log(
