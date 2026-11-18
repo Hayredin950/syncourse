@@ -4,6 +4,8 @@ import type { TelegramCourseLink } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { CloudinaryService } from '../cloudinary/cloudinary.service';
 import { partFromFile, organizeParts } from '../telegram-ingest/telegram-feed.parser';
+import { IngestDraftService } from '../telegram-ingest/draft.service';
+import type { DraftPayload } from '../telegram-ingest/draft-parser';
 import { withPartNumbers } from './part-numbering';
 
 /** One attached Telegram file row — a course has many (one per module part). */
@@ -42,10 +44,12 @@ export interface TelegramUpdate {
   update_id: number;
   message?: {
     message_id: number;
-    chat: { id: number; type: string; username?: string };
+    chat: { id: number; type: string; username?: string; title?: string };
     message_thread_id?: number;
-    from?: { id: number; username?: string; first_name?: string };
+    from?: { id: number; username?: string; first_name?: string; is_bot?: boolean };
     text?: string;
+    caption?: string;
+    forum_topic_created?: { name?: string };
     date: number;
     document?: { file_id: string; file_name?: string; file_size?: number; mime_type?: string };
     video?: { file_id: string; file_name?: string; file_size?: number };
@@ -398,6 +402,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
   constructor(
     private readonly prisma: PrismaService,
     private readonly cloudinary: CloudinaryService,
+    private readonly drafts: IngestDraftService,
   ) {}
 
   private get token(): string {
@@ -646,6 +651,11 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       await this.logActivity(fromId, chatId, 'file', `${msgDoc.file_name ?? 'file'} (${(msgDoc.file_size ?? 0) / 1024 / 1024} MB) cached`);
     }
 
+    // Phase 3 — the group watcher. This only ever writes an `IngestDraft`; the
+    // catalog changes when an admin taps Create. It runs before the wizard and
+    // the `!msg.text` return because ZIP posts carry no text.
+    await this.observeGroupMessage(msg);
+
     // If an interactive wizard is in progress, plain text feeds it — unless
     // the user explicitly sends /cancel (handled below). Loaded from Postgres
     // so a deploy mid-flow doesn't lose the wizard.
@@ -843,6 +853,37 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
           await this.sendText(chatId, '⛔ This command is for admins only.', threadId);
         }
         break;
+      case '/drafts':
+        if (await this.isAdmin(fromId)) {
+          await this.sendDraftList(chatId, threadId);
+        } else {
+          await this.sendText(chatId, '⛔ This command is for admins only.', threadId);
+        }
+        break;
+      case '/draft':
+        if (await this.isAdmin(fromId)) {
+          if (arg) await this.sendDraftDetail(chatId, arg, threadId);
+          else await this.sendDraftList(chatId, threadId);
+        } else {
+          await this.sendText(chatId, '⛔ This command is for admins only.', threadId);
+        }
+        break;
+      case '/approve':
+        if (await this.isAdmin(fromId)) {
+          if (arg) await this.approveDraft(chatId, fromId, arg, threadId);
+          else await this.sendText(chatId, 'Usage: /approve <draft id> — see /drafts', threadId);
+        } else {
+          await this.sendText(chatId, '⛔ This command is for admins only.', threadId);
+        }
+        break;
+      case '/discard':
+        if (await this.isAdmin(fromId)) {
+          if (arg) await this.discardDraft(chatId, arg, threadId);
+          else await this.sendText(chatId, 'Usage: /discard <draft id> — see /drafts', threadId);
+        } else {
+          await this.sendText(chatId, '⛔ This command is for admins only.', threadId);
+        }
+        break;
       default:
         if (text.startsWith('/')) {
           await this.sendText(chatId, `Unknown command. Send /help for the list of commands.`, threadId);
@@ -946,6 +987,21 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     } else if (data === 'stats') {
       await this.pushNav(uid, { key: 'stats' });
       await this.sendStats(chatId, undefined, msgId, uid);
+    } else if (data === 'drafts') {
+      if (await this.isAdmin(uid)) await this.sendDraftList(chatId, undefined, msgId);
+      else await this.sendText(chatId, '⛔ This action is for admins only.');
+    } else if (data.startsWith('dr:')) {
+      // Draft review buttons carry the full draft id: `dr:ok:<id>`.
+      const [, action, draftId] = data.split(':');
+      if (!(await this.isAdmin(uid))) {
+        await this.sendText(chatId, '⛔ Only admins can review drafts.');
+      } else if (!draftId) {
+        await this.sendText(chatId, '❌ That button is missing its draft id. Run /drafts.');
+      } else if (action === 'ok') {
+        await this.approveDraft(chatId, uid, draftId, undefined, msgId);
+      } else if (action === 'no') {
+        await this.discardDraft(chatId, draftId, undefined, msgId);
+      }
     } else if (data.startsWith('wz:')) {
       await this.handleWizardCallback(chatId, cb.from.id, data, messageId);
     } else if (data.startsWith('link:')) {
@@ -1026,6 +1082,8 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
           `<code>/import &lt;channel&gt; &lt;from&gt;-&lt;to&gt; &lt;slug&gt;</code> — attach a whole course at once 📦\n` +
           `<i>e.g. <code>/import @machine_learning_courses 4-38 complete-machine-learning</code></i>\n` +
           `<code>/unlink &lt;slug&gt;</code> — detach the file\n` +
+          `<code>/drafts</code> — review courses auto-drafted from the group 📥\n` +
+          `<code>/approve &lt;id&gt;</code> / <code>/discard &lt;id&gt;</code> — publish or drop a draft\n` +
           `<code>/broadcast &lt;text&gt;</code> — message all linked users 📢\n` +
           `<code>/stats</code> — platform dashboard 📊\n\n`
         : '') +
@@ -2665,6 +2723,197 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     }
     if (editMessageId) await this.editRich(chatId, editMessageId, html, kb);
     else await this.sendRich(chatId, html, threadId, kb);
+  }
+
+  // ---------------------------------------------------------------
+  // Drafts proposed from the group
+  // ---------------------------------------------------------------
+
+  /**
+   * Feed one group message to the watcher and, when it opens a draft, post the
+   * review card in that topic. The card is the only output of the watcher;
+   * files join the draft silently so a 20-part course does not fill the chat.
+   */
+  private async observeGroupMessage(msg: NonNullable<TelegramUpdate['message']>) {
+    if (msg.forum_topic_created) return;
+    const doc = msg.document ?? msg.video ?? msg.audio;
+    let result;
+    try {
+      result = await this.drafts.observe({
+        messageId: msg.message_id,
+        chat: msg.chat,
+        threadId: msg.message_thread_id ?? null,
+        from: msg.from
+          ? {
+              id: msg.from.id,
+              username: msg.from.username ?? null,
+              firstName: msg.from.first_name ?? null,
+              isBot: msg.from.is_bot ?? false,
+            }
+          : null,
+        text: msg.text ?? msg.caption ?? null,
+        date: new Date(msg.date * 1000),
+        file: doc
+          ? {
+              messageId: msg.message_id,
+              fileId: doc.file_id,
+              fileName: doc.file_name ?? `file-${msg.message_id}`,
+              fileSize: doc.file_size ?? null,
+              mimeType: (doc as { mime_type?: string }).mime_type ?? null,
+            }
+          : null,
+      });
+    } catch (err) {
+      // A watcher failure must never break the bot's normal commands.
+      this.logger.warn(`draft watcher failed: ${(err as Error).message}`);
+      return;
+    }
+
+    if (result.action === 'announcement' && result.created) {
+      const card = await this.sendRich(
+        msg.chat.id,
+        this.draftCard(result.draftId, result.payload),
+        msg.message_thread_id ?? null,
+        this.draftKeyboard(result.draftId, 'pending'),
+      );
+      if (card) await this.drafts.rememberCard(result.draftId, card);
+    }
+  }
+
+  /** The review card — every number here comes from the parsed post. */
+  private draftCard(draftId: string, payload: DraftPayload): string {
+    const a = payload.announcement;
+    const files = payload.files ?? [];
+    const totalMb = files.reduce((n, f) => n + (f.fileSizeMb ?? 0), 0);
+    const hours = a.durationMin ? `⏱ ${Math.round(a.durationMin / 60)}h` : null;
+    const lessons = a.lessonCount ? `📦 ${a.lessonCount}` : null;
+    const price = a.originalPrice !== null ? `💰 $${a.originalPrice}` : null;
+    const meta = [hours, lessons, price].filter(Boolean).join(' · ');
+    const tags = (a.hashtags ?? []).slice(0, 6).map((t) => `#${t}`).join(' ');
+    const who = (a.lecturerNames ?? []).join(', ');
+    const exists = payload.signals.includes('course-exists');
+
+    return (
+      `${DIV}\n📥 <b>NEW COURSE DRAFT</b> <i>· review</i>\n${DIV}\n\n` +
+      `<b>${esc(a.title)}</b>\n` +
+      (who ? `👤 ${esc(who)}\n` : '') +
+      (meta ? `${meta}\n` : '') +
+      (tags ? `${esc(tags)}\n` : '') +
+      `\n📎 <b>${files.length}</b> file${files.length === 1 ? '' : 's'}` +
+      (totalMb > 0 ? ` · ${totalMb >= 1024 ? `${(totalMb / 1024).toFixed(1)} GB` : `${Math.round(totalMb)} MB`}` : '') +
+      `\n🎯 confidence <b>${Math.round(payload.confidence * 100)}%</b> <i>(${esc(payload.signals.join(', ') || 'none')})</i>\n` +
+      (exists ? `\n⚠️ A course with this title already exists — approving adds the new files to it.\n` : '') +
+      `\n${DIV}\nZIPs posted in this topic are attached automatically.\n` +
+      `Nothing is published until you tap Create.\n` +
+      `<code>${draftId.slice(0, 8)}</code>`
+    );
+  }
+
+  private draftKeyboard(draftId: string, status: string): KbButton[][] | undefined {
+    if (status !== 'pending') return undefined;
+    return [
+      [
+        { text: '✅ Create course', callback_data: `dr:ok:${draftId}` },
+        { text: '🗑 Discard', callback_data: `dr:no:${draftId}` },
+      ],
+    ];
+  }
+
+  /** `/drafts` — the pending queue, with one approval row per draft. */
+  private async sendDraftList(chatId: number, threadId?: number | null, editMessageId?: number) {
+    const [stats, rows] = await Promise.all([this.drafts.stats(), this.drafts.list('pending', 8)]);
+    const header =
+      `${this.brandHeader('Drafts')}\n\n` +
+      `⏳ <b>${stats.pending}</b> pending · ✅ ${stats.approved} approved · 🗑 ${stats.discarded} discarded` +
+      (stats.failed ? ` · ⚠️ ${stats.failed} failed` : '');
+
+    if (rows.length === 0) {
+      const html = `${header}\n\nNothing to review. Post a course in the group and I will draft it here.`;
+      if (editMessageId) await this.editRich(chatId, editMessageId, html);
+      else await this.sendRich(chatId, html, threadId);
+      return;
+    }
+
+    const lines = rows.map((d, i) => {
+      const p = d.payload as unknown as DraftPayload;
+      const files = p?.files?.length ?? 0;
+      return (
+        `${i + 1}. <b>${esc(p?.announcement?.title ?? 'Untitled')}</b>\n` +
+        `   ${files} file${files === 1 ? '' : 's'} · ${Math.round((p?.confidence ?? 0) * 100)}% · <code>${d.shortId}</code>`
+      );
+    });
+
+    const keyboard: KbButton[][] = rows.map((d, i) => [
+      { text: `✅ ${i + 1}`, callback_data: `dr:ok:${d.id}` },
+      { text: `🗑 ${i + 1}`, callback_data: `dr:no:${d.id}` },
+    ]);
+    const html = `${header}\n\n${lines.join('\n\n')}\n\n${DIV}\nTap a number to approve or discard.`;
+    if (editMessageId) await this.editRich(chatId, editMessageId, html, keyboard);
+    else await this.sendRich(chatId, html, threadId, keyboard);
+  }
+
+  /** `/draft <id>` — the full card for one draft, including every file. */
+  private async sendDraftDetail(chatId: number, arg: string, threadId?: number | null) {
+    try {
+      const draft = await this.drafts.get(arg);
+      const payload = draft.payload as unknown as DraftPayload;
+      const files = (payload?.files ?? [])
+        .slice(0, 40)
+        .map((f) => `• ${esc(f.fileName)}${f.fileSizeMb !== null ? ` <i>(${f.fileSizeMb} MB)</i>` : ''}`)
+        .join('\n');
+      const more = (payload?.files?.length ?? 0) > 40 ? `\n<i>…and ${payload.files.length - 40} more</i>` : '';
+      const html =
+        `${this.draftCard(draft.id, payload)}\n` +
+        (files ? `\n<b>Files</b>\n${files}${more}\n` : '') +
+        `\n<b>Categories</b> ${esc((payload?.categorySlugs ?? []).join(', ') || 'none matched')}`;
+      await this.sendRich(chatId, html, threadId, this.draftKeyboard(draft.id, draft.status));
+    } catch (err) {
+      await this.sendText(chatId, `❌ ${(err as Error).message}`, threadId);
+    }
+  }
+
+  /** Shared by the buttons and `/approve`, so both paths behave identically. */
+  private async approveDraft(
+    chatId: number,
+    actorId: number,
+    arg: string,
+    threadId?: number | null,
+    editMessageId?: number,
+  ) {
+    try {
+      const r = await this.drafts.approve(arg, { telegramId: actorId });
+      const slug = r.course?.slug ?? '';
+      const html =
+        `${DIV}\n✅ <b>COURSE LIVE</b>\n${DIV}\n\n` +
+        `<b>${esc(r.course?.title ?? 'Course')}</b>\n` +
+        (r.alreadyApproved
+          ? `Already published — nothing was duplicated.`
+          : `${r.filesAdded} file${r.filesAdded === 1 ? '' : 's'} attached · ${r.modules} module${r.modules === 1 ? '' : 's'}`) +
+        `\n\n<b>/download ${esc(slug)}</b>\n` +
+        `<i>Tap below to open the published course.</i>`;
+      const kb: KbButton[][] = slug
+        ? [[{ text: '📚 Open course', callback_data: `course:${slug}` }], [{ text: '📥 Drafts', callback_data: 'drafts' }]]
+        : [[{ text: '📥 Drafts', callback_data: 'drafts' }]];
+      if (editMessageId) await this.editRich(chatId, editMessageId, html, kb);
+      else await this.sendRich(chatId, html, threadId, kb);
+    } catch (err) {
+      const message = `❌ Could not create the course: ${(err as Error).message}`;
+      if (editMessageId) await this.editRich(chatId, editMessageId, message);
+      else await this.sendText(chatId, message, threadId);
+    }
+  }
+
+  private async discardDraft(chatId: number, arg: string, threadId?: number | null, editMessageId?: number) {
+    try {
+      await this.drafts.discard(arg);
+      const html = `${DIV}\n🗑 <b>Draft discarded</b>\n${DIV}\n\nIt stays on record, so the same post will not be proposed again.`;
+      if (editMessageId) await this.editRich(chatId, editMessageId, html);
+      else await this.sendRich(chatId, html, threadId);
+    } catch (err) {
+      const message = `❌ ${(err as Error).message}`;
+      if (editMessageId) await this.editRich(chatId, editMessageId, message);
+      else await this.sendText(chatId, message, threadId);
+    }
   }
 
   // ---------------------------------------------------------------

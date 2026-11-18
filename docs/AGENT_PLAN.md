@@ -1,6 +1,6 @@
 # Syncourse — Agent & Search Integration Plan
 
-Status: **Phases 1–2 done** · Phase 3 next
+Status: **Phases 1–3 done** · Phase 4 next
 Owner: Hayredin
 Last audited: 2026-11-18
 
@@ -203,22 +203,45 @@ Notes:
 - Re-running `--download` only picks up `pending`/`failed` links, so it is safe
   to repeat.
 
-### Phase 3 — Auto-post from the group
+### Phase 3 — Auto-post from the group ✅
 
-- [ ] `TelegramWatcher` in the API: on group message, if a course announcement
-      template + attachments are present, create an `IngestDraft`.
-- [ ] Topic → category mapping (Machine Learning, mobile dev, Programming,
-      Python).
-- [ ] Dedupe: `chatId + messageId`, and `fileName + fileSizeMb`.
-- [ ] Approve / Edit / Discard via bot inline buttons and `/admin/drafts`.
-- [ ] On approve, reuse `FeedImporter` / admin create; on discard, keep an audit
-      row so it is never proposed twice.
-- [ ] Do not auto-publish. After 3–4 weeks of clean approvals, add an opt-in
-      auto-publish for high-confidence drafts.
+- [x] Watcher in the API (`draft.service.ts`): a course announcement in a group
+      topic creates an `IngestDraft`; ZIPs posted after it in that topic attach
+      to the same draft for 12 hours.
+- [x] Topic → category mapping: `TELEGRAM_TOPIC_CATEGORIES` override, then
+      hashtags, then keyword rules over title/description/filenames. Uses the
+      catalogue's real slugs (`ai-machine-learning`, not the importer's old
+      `ai-and-machine-learning` alias).
+- [x] Dedupe: `chatId + messageId` (Telegram redelivery), repeated
+      `fileName + fileSizeMb`, and approval is idempotent.
+- [x] Approve / Discard via bot inline buttons, `/drafts`, `/approve <id>`,
+      `/discard <id>`, and `/admin/drafts` in the web console.
+- [x] Approval writes Course + `TelegramCourseLink` rows, keeps `file_id` for
+      delivery, creates the lecturer, links categories and hashtags, and
+      preserves module order and part numbers. Fields can still be edited
+      afterwards in the normal course editor.
+- [x] Discarding keeps the row (`status = discarded`), so the same post is
+      never proposed twice.
+- [x] No auto-publish. `TELEGRAM_WATCHER_ENABLED=false` is the kill switch.
 
-**Acceptance:** posting a sample course in a test topic produces one draft with
-correct title, lecturer, price, category, modules and part counts; approving it
-creates a live course with the existing file links.
+**Acceptance met** by `npm run test:drafts -w apps/api` — 27 checks covering
+detection, redelivery, file attach, module/part numbering, duplicate files,
+approval, second approval, discard, and cleanup. `npm run test:draft-parser`
+adds 30 pure assertions.
+
+What the watcher is *not*: it does not read ZIP contents, cannot fix a title
+that the announcement template got wrong, and will not recognise a course
+posted as free-form prose. Those wait for approval, by design.
+
+Draft flow:
+
+```
+announcement post ──▶ IngestDraft(pending) ──▶ bot card + /admin/drafts
+ZIP posts        ──▶ payload.files[]      ──┐
+                                             ▼
+                          ✅ Approve ─▶ Course + TelegramCourseLink[]
+                          🗑 Discard ─▶ audit row, never proposed again
+```
 
 ### Phase 4 — Large-file worker
 
@@ -321,6 +344,9 @@ search results and lesson snippets. The product stays useful.
 | Free LLM quota | fallback mode; cache answers per chunk set |
 | Telegram rate limits | existing 900 ms pacing; batch jobs run off-peak |
 | Duplicate imports | dedupe by message id and filename+size; idempotent hashes |
+| Watcher mistakes chatter for a course | strict template rules, a confidence score with visible signals, and human approval before anything is written |
+| Files posted before the announcement | not collected (updates are not retained); use `/link`, or re-post the announcement and files |
+| A draft approved with the wrong metadata | fix it in the normal course editor afterwards; approval only creates the row, it does not freeze it |
 | Search regression | fallback path + golden-query test |
 
 ---
@@ -345,14 +371,26 @@ npm run index:download -w apps/api
 # 5. Status, and the golden-query check
 npm run index:stats -w apps/api
 npm run test:search -w apps/api
+
+# 6. Draft watcher — pure rules, then the full DB round-trip
+npm run test:draft-parser -w apps/api
+npm run test:drafts -w apps/api        # creates and removes its own course
+npm run test:drafts -w apps/api -- --cleanup   # remove leftovers from a crashed run
 ```
+
+Draft review in Telegram: `/drafts`, `/draft <id>`, `/approve <id>`,
+`/discard <id>`, or tap **Create course** on the card the watcher posts.
+The same actions live at **Admin → Course drafts** (`/admin/drafts`).
 
 Required env additions (never committed):
 
 ```
-TELEGRAM_BOT_TOKEN=...        # indexer only
-GEMINI_API_KEY=...            # Phase 5 only
-ASSISTANT_ENABLED=false       # kill switch
+TELEGRAM_BOT_TOKEN=...          # indexer + delivery
+TELEGRAM_WATCHER_ENABLED=true   # Phase 3 kill switch
+TELEGRAM_SOURCE_CHATS=syncourse # allowlist: usernames or ids, comma separated
+TELEGRAM_TOPIC_CATEGORIES=12:ai-machine-learning,34:programming
+GEMINI_API_KEY=...              # Phase 5 only
+ASSISTANT_ENABLED=false         # kill switch
 ASSISTANT_MODEL=gemini-2.0-flash
 ```
 

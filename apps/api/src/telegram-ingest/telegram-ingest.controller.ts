@@ -9,6 +9,7 @@ import {
   Controller,
   ForbiddenException,
   Get,
+  Param,
   Post,
   Query,
 } from '@nestjs/common';
@@ -17,6 +18,7 @@ import { CurrentUser } from '../common/current-user.decorator';
 import { AuthUser } from '../common/jwt-auth.guard';
 import { PrismaService } from '../prisma/prisma.service';
 import { TelegramIngestService } from './telegram-ingest.service';
+import { IngestDraftService } from './draft.service';
 
 class PreviewChannelDto {
   @IsString()
@@ -79,8 +81,49 @@ class ImportPasteDto {
 export class TelegramIngestController {
   constructor(
     private readonly ingest: TelegramIngestService,
+    private readonly drafts: IngestDraftService,
     private readonly prisma: PrismaService,
   ) {}
+
+  // ---------------------------------------------------------------
+  // Drafts proposed by the group watcher
+  // ---------------------------------------------------------------
+
+  /** Everything the watcher thinks it saw, newest first. */
+  @Get('drafts')
+  async listDrafts(
+    @CurrentUser() user: AuthUser,
+    @Query('status') status?: string,
+    @Query('limit') limit?: string,
+  ) {
+    await this.assertStaff(user);
+    return {
+      counts: await this.drafts.stats(),
+      drafts: await this.drafts.list(status || 'pending', limit ? Number(limit) : 20),
+    };
+  }
+
+  @Get('drafts/:id')
+  async getDraft(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    await this.assertStaff(user);
+    return this.drafts.get(id);
+  }
+
+  /**
+   * Publish a draft. The same endpoint the bot's "Create course" button calls,
+   * so approving from the browser and from Telegram cannot drift apart.
+   */
+  @Post('drafts/:id/approve')
+  async approveDraft(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    await this.assertStaff(user);
+    return this.drafts.approve(id, { userId: user.id });
+  }
+
+  @Post('drafts/:id/discard')
+  async discardDraft(@Param('id') id: string, @CurrentUser() user: AuthUser) {
+    await this.assertStaff(user);
+    return this.drafts.discard(id);
+  }
 
   /** Parse a public channel feed without writing anything. */
   @Get('preview')

@@ -5,6 +5,7 @@ import {
   CreditCard,
   FileText,
   GraduationCap,
+  Inbox,
   LayoutDashboard,
   Scale,
   ScrollText,
@@ -51,6 +52,12 @@ export const ADMIN_NAV: AdminNavGroup[] = [
     label: "Catalogue",
     items: [
       { href: "/admin/courses", label: "Courses", icon: BookOpen, keywords: "catalog lessons sections content" },
+      {
+        href: "/admin/drafts",
+        label: "Course drafts",
+        icon: Inbox,
+        keywords: "telegram watch queue approve discard pending ingest auto",
+      },
       {
         href: "/admin/resources",
         label: "Resources",
