@@ -25,6 +25,7 @@
     "test:search": "tsx --env-file=.env prisma/search-check.ts",
     "test:plans": "tsx --test src/payments/plans.test.ts",
     "test:auth": "tsx --test src/auth/auth.service.test.ts",
+    "test:guard": "tsx --test src/common/jwt-auth.guard.test.ts",
     "test:payments": "tsx --test src/payments/payments.service.test.ts",
     "test:draft-parser": "tsx src/telegram-ingest/draft-parser.test.ts",
     "test:drafts": "tsx --env-file=.env prisma/draft-check.ts",
