@@ -194,13 +194,19 @@ export class RetrievalService {
 
     const sources: RetrievedSource[] = [];
     const perCourse = new Map<string, number>();
+    // One citation per file: three chunks of the same PDF are three quotes and
+    // one source, and repeating it pushes the other courses out of the answer.
+    const seenFile = new Set<string>();
     for (const row of chunkRows) {
       if (lockedIds.has(row.courseId)) continue;
       const course = byId.get(row.courseId);
       if (!course) continue;
+      const key = `${row.courseId}\u0000${row.sourceName}`;
+      if (seenFile.has(key)) continue;
       const used = perCourse.get(row.courseId) ?? 0;
       if (used >= MAX_PER_COURSE) continue;
       if (sources.length >= limit) break;
+      seenFile.add(key);
       perCourse.set(row.courseId, used + 1);
       sources.push({
         courseId: row.courseId,
@@ -307,7 +313,9 @@ export class RetrievalService {
             to_tsvector('simple', ch.text) @@ websearch_to_tsquery('simple', ${tsQuery})
             OR ch.text ILIKE ANY(${patterns}::text[])
           )
-        ORDER BY "rank" DESC, length(ch.text) ASC
+        ORDER BY CASE WHEN ch."sourceKind" IN ('entry-name', 'archive-name') THEN 1 ELSE 0 END,
+                 "rank" DESC,
+                 length(ch.text) ASC
         LIMIT ${take}::int
       `;
     } catch (err) {

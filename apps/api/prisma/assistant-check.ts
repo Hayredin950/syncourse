@@ -116,6 +116,16 @@ async function main() {
       res.citations.map((c) => c.courseTitle),
     );
     check('answer is not raw chunk dumping', res.answer.length < 4000, res.answer.length);
+    check(
+      'one citation per file',
+      new Set(res.citations.map((c) => `${c.courseId}\u0000${c.name}`)).size === res.citations.length,
+      res.citations.map((c) => `${c.courseTitle} :: ${c.name}`),
+    );
+    check(
+      'real text outranks bare filenames',
+      res.citations.some((c) => c.kind !== 'entry-name' && c.kind !== 'archive-name'),
+      res.citations.map((c) => c.kind),
+    );
   }
 
   console.log('assistant: honest empty answer');
