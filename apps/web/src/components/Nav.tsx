@@ -278,6 +278,7 @@ export function BottomNav() {
       icon: LayoutGrid,
       on: pathname.startsWith("/browse") || pathname.startsWith("/resources") || pathname.startsWith("/courses"),
     },
+    { href: "/assistant", label: "Ask", icon: Sparkles, on: pathname.startsWith("/assistant") },
     { href: "/search", label: "Search", icon: Search, on: pathname.startsWith("/search") },
     { href: "/lists", label: "Collections", icon: Bookmark, on: pathname.startsWith("/lists") },
     { href: "/me", label: "Me", icon: CircleUserRound, on: pathname.startsWith("/me") || pathname.startsWith("/my-learning") },

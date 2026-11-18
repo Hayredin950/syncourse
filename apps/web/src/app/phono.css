@@ -1449,7 +1449,7 @@ a.lesson:hover, button.lesson:hover { background: #1a1815; border-color: rgba(24
   backdrop-filter: blur(14px);
   padding-bottom: env(safe-area-inset-bottom);
 }
-.mobile-nav .mnav-grid { display: grid; grid-template-columns: repeat(5, 1fr); }
+.mobile-nav .mnav-grid { display: grid; grid-template-columns: repeat(6, 1fr); }
 .mobile-nav a, .mobile-nav button {
   position: relative;
   display: flex;
