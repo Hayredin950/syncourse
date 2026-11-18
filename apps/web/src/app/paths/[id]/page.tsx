@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import PathDetailPage from "./page-client";
 import { pathIds } from "@/lib/static-params";
-import { canonicalUrl, fetchMeta, summarise } from "@/lib/page-meta";
+import { canonicalUrl, fetchMeta, shareMetadata, summarise } from "@/lib/page-meta";
 
 // Every real path id is exported so deep links and client navigation resolve.
 export async function generateStaticParams() {
@@ -31,7 +31,7 @@ export async function generateMetadata({
     title: `${title} — Syncourse`,
     description,
     alternates: { canonical: url },
-    openGraph: { title, description, url },
+    ...shareMetadata({ title, description, url, type: "website" }),
   };
 }
 

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import ListDetailPageClient from "./page-client";
 import { listIds } from "@/lib/static-params";
-import { canonicalUrl, fetchMeta, summarise } from "@/lib/page-meta";
+import { canonicalUrl, fetchMeta, shareMetadata, summarise } from "@/lib/page-meta";
 
 // Every real list id is exported so deep links and client navigation resolve.
 export async function generateStaticParams() {
@@ -31,7 +31,7 @@ export async function generateMetadata({
     title: `${list.name} — Syncourse`,
     description,
     alternates: { canonical: url },
-    openGraph: { title: list.name, description, url },
+    ...shareMetadata({ title: list.name, description, url, type: "website" }),
   };
 }
 

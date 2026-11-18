@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import ResourcePageClient from "./page-client";
 import { resourceSlugs } from "@/lib/static-params";
-import { canonicalUrl, fetchMeta, summarise } from "@/lib/page-meta";
+import { canonicalUrl, fetchMeta, shareMetadata, summarise } from "@/lib/page-meta";
 
 // One exported file per real slug, so a shared link resolves without the SPA
 // fallback. Anything published after the build is caught by not-found.tsx.
@@ -32,13 +32,14 @@ export async function generateMetadata({
     title: `${resource.title} — Syncourse`,
     description,
     alternates: { canonical: url },
-    openGraph: {
+    ...shareMetadata({
       title: resource.title,
       description,
       url,
+      image: resource.coverUrl,
+      imageAlt: `${resource.title} — resource on Syncourse`,
       type: "article",
-      images: resource.coverUrl ? [{ url: resource.coverUrl }] : undefined,
-    },
+    }),
   };
 }
 

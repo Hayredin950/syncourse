@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import LessonPageClient from "./page-client";
 import { lessonParams } from "@/lib/static-params";
-import { canonicalUrl, fetchMeta, summarise } from "@/lib/page-meta";
+import { canonicalUrl, fetchMeta, shareMetadata, summarise } from "@/lib/page-meta";
 
 // Every real lesson is exported so deep links and client navigation resolve.
 export async function generateStaticParams() {
@@ -10,6 +10,8 @@ export async function generateStaticParams() {
 
 interface CourseWithLessons {
   title?: string;
+  thumbnailUrl?: string | null;
+  bannerUrl?: string | null;
   sections?: { lessons?: { id: string; title?: string; summary?: string | null }[] }[];
 }
 
@@ -29,7 +31,15 @@ export async function generateMetadata({
     title: `${title} — Syncourse`,
     description,
     alternates: { canonical: url },
-    openGraph: { title, description, url },
+    ...shareMetadata({
+      title,
+      description,
+      url,
+      // A lesson has no picture of its own; the course it belongs to does.
+      image: course.bannerUrl ?? course.thumbnailUrl,
+      imageAlt: `${course.title} — course on Syncourse`,
+      type: "article",
+    }),
   };
 }
 

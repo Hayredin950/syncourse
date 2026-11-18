@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import CoursePageClient from "./page-client";
 import { courseSlugs } from "@/lib/static-params";
-import { canonicalUrl, fetchMeta, summarise } from "@/lib/page-meta";
+import { canonicalUrl, fetchMeta, shareMetadata, summarise } from "@/lib/page-meta";
 
 // Every real course slug is exported so deep links and client navigation resolve.
 export async function generateStaticParams() {
@@ -29,18 +29,18 @@ export async function generateMetadata({
   if (!course?.title) return {};
   const description = summarise(course.description);
   const url = canonicalUrl(`/courses/${slug}`);
-  const image = course.bannerUrl ?? course.thumbnailUrl ?? undefined;
   return {
     title: `${course.title} — Syncourse`,
     description,
     alternates: { canonical: url },
-    openGraph: {
+    ...shareMetadata({
       title: course.title,
       description,
       url,
+      image: course.bannerUrl ?? course.thumbnailUrl,
+      imageAlt: `${course.title} — course on Syncourse`,
       type: "article",
-      images: image ? [{ url: image }] : undefined,
-    },
+    }),
   };
 }
 

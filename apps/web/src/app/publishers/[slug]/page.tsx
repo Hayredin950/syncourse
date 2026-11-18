@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import PublisherSlugPage from "./page-client";
 import { organizationSlugs } from "@/lib/static-params";
-import { canonicalUrl, fetchMeta, summarise } from "@/lib/page-meta";
+import { canonicalUrl, fetchMeta, shareMetadata, summarise } from "@/lib/page-meta";
 
 // Publisher pages resolve to the same organizations catalog — every real
 // slug is exported so deep links and client navigation work.
@@ -25,16 +25,19 @@ export async function generateMetadata({
   if (!publisher?.name) return {};
   const description = summarise(publisher.description) ?? `Courses from ${publisher.name} on Syncourse.`;
   const url = canonicalUrl(`/publishers/${slug}`);
+  const title = `${publisher.name} — Syncourse`;
   return {
-    title: `${publisher.name} — Syncourse`,
+    title,
     description,
     alternates: { canonical: url },
-    openGraph: {
-      title: `${publisher.name} — Syncourse`,
+    ...shareMetadata({
+      title,
       description,
       url,
-      images: publisher.logoUrl ? [{ url: publisher.logoUrl }] : undefined,
-    },
+      image: publisher.logoUrl,
+      imageAlt: `${publisher.name} on Syncourse`,
+      type: "profile",
+    }),
   };
 }
 

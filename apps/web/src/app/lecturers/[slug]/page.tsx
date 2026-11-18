@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import LecturerPage from "./page-client";
 import { lecturerSlugs } from "@/lib/static-params";
-import { canonicalUrl, fetchMeta, summarise } from "@/lib/page-meta";
+import { canonicalUrl, fetchMeta, shareMetadata, summarise } from "@/lib/page-meta";
 
 // Every real lecturer slug is exported so deep links and client navigation resolve.
 export async function generateStaticParams() {
@@ -24,16 +24,19 @@ export async function generateMetadata({
   if (!lecturer?.name) return {};
   const description = summarise(lecturer.bio) ?? `Courses by ${lecturer.name} on Syncourse.`;
   const url = canonicalUrl(`/lecturers/${slug}`);
+  const title = `${lecturer.name} — Syncourse`;
   return {
-    title: `${lecturer.name} — Syncourse`,
+    title,
     description,
     alternates: { canonical: url },
-    openGraph: {
-      title: `${lecturer.name} — Syncourse`,
+    ...shareMetadata({
+      title,
       description,
       url,
-      images: lecturer.photoUrl ? [{ url: lecturer.photoUrl }] : undefined,
-    },
+      image: lecturer.photoUrl,
+      imageAlt: `${lecturer.name} on Syncourse`,
+      type: "profile",
+    }),
   };
 }
 

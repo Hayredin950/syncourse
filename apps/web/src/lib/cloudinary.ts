@@ -26,7 +26,18 @@ const UPLOAD = /^(https:\/\/res\.cloudinary\.com\/[^/]+\/image\/upload\/)(.*)$/;
  * centre crop takes a 16:10 slice out of its middle, which is a band of text cut
  * off mid-sentence at both ends. `north` keeps the top, where the heading is.
  */
-export type CloudinaryOpts = { width?: number; height?: number; gravity?: "north" | "auto" | "face" };
+export type CloudinaryOpts = {
+  width?: number;
+  height?: number;
+  gravity?: "north" | "auto" | "face";
+  /**
+   * `f_auto` picks the smallest format the *browser* accepts, which is right
+   * for the page. A share scraper is not a browser: some unfurlers reject the
+   * AVIF/WebP they are handed, so the social preview asks for the original
+   * format instead (`format: false`).
+   */
+  format?: boolean;
+};
 
 export function cloudinaryUrl(
   url: string | null | undefined,
@@ -34,7 +45,9 @@ export function cloudinaryUrl(
 ): string | null {
   if (!url) return null;
 
-  const parts: string[] = ["f_auto", "q_auto"];
+  const parts: string[] = [];
+  if (opts.format !== false) parts.push("f_auto");
+  parts.push("q_auto");
   if (opts.width) parts.push(`w_${opts.width}`);
   if (opts.height) parts.push(`h_${opts.height}`);
   if (opts.width && opts.height) parts.push("c_fill");
