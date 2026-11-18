@@ -265,9 +265,11 @@ and the readme, indexes a 2 MB video by name only, leaks not one video byte,
 and stops at the text budget — 18 checks, no Telegram, no network. The real
 download half is implemented but cannot be proven until the API id/hash exist.
 
-**Measured backlog:** 303 files in the 19–1900 MB band, 2 files above it that
-are skipped, 294 small files still pending (audio/video with text-bearing
-siblings), 34 already indexed.
+**Measured backlog:** 303 files in the 19–1900 MB band; 2 above it are
+skipped by design (one is 2.6 GB); 34 are already indexed (3,498 chunks,
+2.05 M characters); 5 small files have no recognisable extension and are left
+pending; 289 small audio files are marked `skipped` once their names are
+indexed, so "pending" means "has text we have not read yet".
 
 ### Phase 5 — Agent (grounded assistant done ✅ with a no-AI floor)
 

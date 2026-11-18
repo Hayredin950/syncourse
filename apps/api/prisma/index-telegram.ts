@@ -42,6 +42,7 @@ import {
   ARCHIVE_EXTS,
   ChunkRow,
   DOCX_EXTS,
+  MEDIA_EXTS,
   PDF_EXTS,
   TEXT_EXTS,
   chunkText,
@@ -222,14 +223,32 @@ async function indexDownloads(args: Args) {
     return ARCHIVE_EXTS.has(ext) || PDF_EXTS.has(ext) || DOCX_EXTS.has(ext) || TEXT_EXTS.has(ext);
   });
   const eligible = args.limit ? eligibleAll.slice(0, args.limit) : eligibleAll;
-  const media = candidates.length - eligibleAll.length;
+  const media = candidates.filter((l) => MEDIA_EXTS.has(extOf(l.fileName ?? '')));
+  const unknown = candidates.length - eligibleAll.length - media.length;
 
   console.log(
     `download: ${candidates.length} candidates under ${args.maxMb} MB, ` +
       `${eligibleAll.length} contain text` +
       (args.limit && eligible.length < eligibleAll.length ? ` (processing ${eligible.length})` : '') +
-      `, ${media} are media and keep name-only indexing`,
+      `, ${media.length} are audio/video` +
+      (unknown ? `, ${unknown} have no recognisable extension` : ''),
   );
+
+  // Audio and video can only ever contribute their name, and the names wave has
+  // already indexed that. Marking them once keeps the backlog honest: "pending"
+  // then means "has text we have not read", not "the same 289 MP3s, forever".
+  const toSkip = media.filter((l) => l.indexStatus !== 'skipped');
+  if (toSkip.length > 0) {
+    if (args.dryRun) {
+      console.log(`would mark ${toSkip.length} media attachment(s) as skipped`);
+    } else {
+      await prisma.telegramCourseLink.updateMany({
+        where: { id: { in: toSkip.map((l) => l.id) } },
+        data: { indexStatus: 'skipped', indexedAt: new Date(), indexError: 'media only — name indexed' },
+      });
+      console.log(`marked ${toSkip.length} media attachment(s) as skipped`);
+    }
+  }
 
   if (!token && !args.dryRun) {
     console.error('TELEGRAM_BOT_TOKEN is not set. Add it to apps/api/.env, or use --dry-run.');
