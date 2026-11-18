@@ -189,8 +189,9 @@ Migration note: applied with `apps/api/prisma/sql/2026-11-agent-index.sql`, not
 |---|---|
 | Attachments | 634 |
 | Indexed | 34 |
-| Skipped (no extractable text) | 1 |
-| Pending (large files → Phase 4) | 599 |
+| Skipped (name indexed, no text to read) | 290 |
+| Pending (305 large / 5 unknown extension) | 310 |
+| Too big for a bot download (2.6 GB, 1.9 GB) | 2 |
 | Chunks | **3,498** |
 | Characters | **2,046,924** |
 
@@ -431,6 +432,14 @@ npm run index:download -w apps/api
 # 5. Status, and the golden-query check
 npm run index:stats -w apps/api
 npm run test:search -w apps/api
+
+# 5b. Large files (needs TELEGRAM_API_ID + TELEGRAM_API_HASH)
+# Prove the logins first — this touches no file and no course.
+npx tsx --env-file=apps/api/.env apps/api/prisma/large-file-worker.ts --probe
+npx tsx --env-file=apps/api/.env apps/api/prisma/large-file-worker.ts --dry-run --limit 3
+npx tsx --env-file=apps/api/.env apps/api/prisma/large-file-worker.ts --limit 3
+# Or run `.github/workflows/index-large.yml` with probe=true, then dry_run=true,
+# then limit=3. Every finished file is marked indexed, so the next run continues.
 
 # 6. Draft watcher — pure rules, then the full DB round-trip
 npm run test:draft-parser -w apps/api

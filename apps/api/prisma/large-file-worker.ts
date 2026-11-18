@@ -23,6 +23,7 @@
  *
  * Flags:
  *   --dry-run        list what would be processed; no network, no writes
+ *   --probe          log in and print the bot identity; proves the two keys
  *   --limit <n>      files this run (default 5; keep the job under 6 h)
  *   --course <slug>  restrict to one course
  *   --min-mb <n>     lower size bound (default 19 — the Bot API ceiling)
@@ -60,6 +61,7 @@ const DEFAULT_MAX_MB = 1900;
 interface Args {
   dryRun: boolean;
   stats: boolean;
+  probe: boolean;
   force: boolean;
   limit: number;
   minMb: number;
@@ -71,6 +73,7 @@ function parseArgs(argv: string[]): Args {
   const args: Args = {
     dryRun: false,
     stats: false,
+    probe: false,
     force: false,
     limit: DEFAULT_LIMIT,
     minMb: DEFAULT_MIN_MB,
@@ -80,6 +83,7 @@ function parseArgs(argv: string[]): Args {
     switch (argv[i]) {
       case '--dry-run': args.dryRun = true; break;
       case '--stats': args.stats = true; break;
+      case '--probe': args.probe = true; break;
       case '--force': args.force = true; break;
       case '--limit': args.limit = Number(argv[++i]); break;
       case '--min-mb': args.minMb = Number(argv[++i]); break;
@@ -314,6 +318,20 @@ async function main() {
 
   if (args.stats) {
     await printStats(args);
+    return;
+  }
+
+  // Prove the two credentials before a long job: a wrong api id or hash would
+  // otherwise only surface after the runner has installed everything.
+  if (args.probe) {
+    const client = await connect();
+    try {
+      const me = await client.getMe();
+      const username = 'username' in me && me.username ? `@${me.username}` : `id ${me.id}`;
+      console.log(`MTProto login works: ${username}`);
+    } finally {
+      await client.disconnect().catch(() => undefined);
+    }
     return;
   }
 

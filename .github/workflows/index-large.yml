@@ -33,6 +33,10 @@ on:
         description: 'List what would be processed; download nothing'
         type: boolean
         default: false
+      probe:
+        description: 'Only log in and print the bot identity; proves the keys'
+        type: boolean
+        default: false
       force:
         description: 'Re-process files already marked indexed'
         type: boolean
@@ -90,11 +94,17 @@ jobs:
           LIMIT: ${{ inputs.limit }}
           COURSE: ${{ inputs.course }}
           DRY_RUN: ${{ inputs.dry_run }}
+          PROBE: ${{ inputs.probe }}
           FORCE: ${{ inputs.force }}
         run: |
-          args=(--limit "$LIMIT")
-          if [ -n "$COURSE" ]; then args+=(--course "$COURSE"); fi
-          if [ "$DRY_RUN" = "true" ]; then args+=(--dry-run); fi
+          args=()
+          if [ "$PROBE" = "true" ]; then
+            args+=(--probe)
+          else
+            args+=(--limit "$LIMIT")
+            if [ -n "$COURSE" ]; then args+=(--course "$COURSE"); fi
+            if [ "$DRY_RUN" = "true" ]; then args+=(--dry-run); fi
+          fi
           if [ "$FORCE" = "true" ]; then args+=(--force); fi
           npx tsx apps/api/prisma/large-file-worker.ts "${args[@]}"
 
