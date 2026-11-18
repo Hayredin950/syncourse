@@ -35,7 +35,7 @@ type MethodValue = (typeof METHODS)[number]["value"];
 
 export default function PremiumPage() {
   const router = useRouter();
-  const { token } = useAuth();
+  const { token, loading } = useAuth();
   const [plans, setPlans] = useState<Plan[]>([]);
   /* `plans.length === 0` is the skeleton branch below, so a failed request left
      the purchase page shimmering with no prices and no way to retry. */
@@ -56,10 +56,18 @@ export default function PremiumPage() {
   }, []);
 
   useEffect(() => {
+    // Buying a plan is an account action, so the whole page is gated, not just
+    // the checkout button. A deep link from a chat lands here logged out;
+    // send it to sign-in and come straight back.
+    if (!loading && !token) router.replace("/auth?next=/premium");
+  }, [loading, token, router]);
+
+  useEffect(() => {
+    if (!token) return;
     loadPlans();
     // The catalogue strip further down is decoration; its absence costs nothing.
     get<HomeData>("/home").then(setHome).catch(() => undefined);
-  }, [loadPlans]);
+  }, [loadPlans, token]);
 
   const current = plans.find((p) => p.id === selected) ?? plans[0];
 
@@ -101,6 +109,22 @@ export default function PremiumPage() {
   const price = (p: Plan) => (method === "telebirr" ? `${p.priceEtb} ETB` : `$${p.priceUsd}`);
   const methodLabel = METHODS.find((m) => m.value === method)!.label;
   const heroImages = (home?.trending ?? []).slice(0, 6).map((c) => c.thumbnailUrl).filter(Boolean) as string[];
+
+  // Also covers the prerendered HTML: at build time there is no session, so the
+  // page ships as a placeholder rather than a readable price list.
+  if (loading || !token) {
+    return (
+      <main className="page">
+        <MobileHeader title="Premium" />
+        <div className="sk-stack" role="status" aria-busy="true" style={{ marginTop: 24 }}>
+          <span className="sk-label">Checking your session…</span>
+          {[0, 1, 2].map((i) => (
+            <Sk key={i} className="sk-plan" />
+          ))}
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="page">
