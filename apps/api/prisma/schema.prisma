@@ -119,6 +119,8 @@ model Course {
   downloadEvents  DownloadEvent[]
   telegramFiles   TelegramCourseLink[]
   circlePosts     CirclePost[]
+  contentChunks   ContentChunk[]
+  searchClicks    SearchClick[]
 
   @@index([publishedAt])
 }
@@ -659,11 +661,18 @@ model TelegramCourseLink {
   caption         String?
   createdById     String?
   createdAt       DateTime @default(now())
+  /// Indexer state, so a long backfill is resumable and observable:
+  /// pending (default) → indexed | skipped (too large / no text) | failed.
+  indexStatus     String   @default("pending")
+  indexedAt       DateTime?
+  indexError      String?
   course          Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
   section         Section? @relation(fields: [sectionId], references: [id], onDelete: SetNull)
+  contentChunks   ContentChunk[]
 
   @@index([courseId, moduleOrder, partIndex])
   @@index([sectionId])
+  @@index([indexStatus])
 }
 
 // Persisted "last file this Telegram user sent/forwarded to the bot" so
@@ -748,4 +757,84 @@ model LegalAcceptance {
 
   @@unique([userId, documentId, version])
   @@index([documentId, version])
+}
+
+// ---------------------------------------------------------------
+// Agent & search index
+// ---------------------------------------------------------------
+
+/// Searchable text extracted from a course's Telegram attachments.
+///
+/// Courses are delivered as ZIPs, so nothing inside them is visible to the
+/// catalog. This table holds only the useful text — subtitle dialogue, PDF
+/// notes, JSON/templates, readmes — never video bytes. Search ranks courses
+/// through their chunks, and the agent cites `sourceName` when it answers.
+model ContentChunk {
+  id          String   @id @default(cuid())
+  courseId    String
+  linkId      String? // the Telegram attachment this text came from
+  sourceKind  String // subtitle | pdf | text | json | html | readme | archive-name | announcement
+  sourceName  String   @default("") // ZIP entry or attachment filename
+  moduleTitle String?
+  partIndex   Int?
+  ordinal     Int      @default(0) // chunk position inside the source
+  text        String
+  charCount   Int      @default(0)
+  /// Hash of (sourceName + ordinal + text). Re-indexing an unchanged file is a
+  /// no-op instead of a duplicate row.
+  contentHash String
+  createdAt   DateTime @default(now())
+
+  course Course             @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  link   TelegramCourseLink? @relation(fields: [linkId], references: [id], onDelete: Cascade)
+
+  @@unique([linkId, sourceName, ordinal])
+  @@index([courseId])
+  @@index([sourceKind])
+}
+
+/// Query-time phrase expansion, editable without a deploy.
+/// `ml` → ["machine learning"], `js` → ["javascript"], `ai` → ["artificial intelligence"].
+model SearchSynonym {
+  id        String   @id @default(cuid())
+  term      String   @unique // stored lowercased
+  expandsTo String[]
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+/// What people clicked after a search. Ranking feedback today, recommendation
+/// signal later. No new personal data — just the existing user id.
+model SearchClick {
+  id        String   @id @default(cuid())
+  query     String
+  courseId  String
+  userId    String?
+  createdAt DateTime @default(now())
+
+  course Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@index([query])
+  @@index([courseId])
+}
+
+/// A course the Telegram watcher believes it found, before it touches the
+/// catalog. Approving one runs the existing importer; discarding one leaves an
+/// audit row so the same post is never proposed twice.
+model IngestDraft {
+  id               String   @id @default(cuid())
+  chatId           BigInt
+  chatUsername     String?
+  topicId          BigInt?
+  topicName        String?
+  messageIds       BigInt[]
+  payload          Json // parsed course: title, description, lecturer, price, files…
+  status           String   @default("pending") // pending | approved | discarded | failed
+  error            String?
+  approvedCourseId String?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([status, createdAt])
+  @@index([chatId, topicId])
 }

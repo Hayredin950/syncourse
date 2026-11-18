@@ -18,7 +18,11 @@
     "test:parser": "ts-node src/telegram-ingest/parser.test.ts",
     "test:import": "tsx --env-file=.env prisma/import-check.ts",
     "test:verify": "tsx --env-file=.env prisma/verify-check.ts",
-    "test:reset": "tsx --env-file=.env prisma/reset-check.ts"
+    "test:reset": "tsx --env-file=.env prisma/reset-check.ts",
+    "index:names": "tsx --env-file=.env prisma/index-telegram.ts --names",
+    "index:download": "tsx --env-file=.env prisma/index-telegram.ts --download",
+    "index:stats": "tsx --env-file=.env prisma/index-telegram.ts --stats",
+    "test:search": "tsx --env-file=.env prisma/search-check.ts"
   },
   "prisma": {
     "seed": "ts-node prisma/seed.ts"
@@ -32,17 +36,20 @@
     "@nestjs/platform-express": "^10.4.15",
     "@nestjs/throttler": "^6.2.1",
     "@prisma/client": "^5.22.0",
+    "adm-zip": "^0.6.1",
     "bcryptjs": "^2.4.3",
     "class-transformer": "^0.5.1",
     "class-validator": "^0.14.1",
     "nodemailer": "^6.10.1",
     "passport": "^0.7.0",
     "passport-jwt": "^4.0.1",
+    "pdf-parse": "^2.4.5",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1"
   },
   "devDependencies": {
     "@nestjs/cli": "^10.4.9",
+    "@types/adm-zip": "^0.5.8",
     "@types/bcryptjs": "^2.4.6",
     "@types/express": "^4.17.21",
     "@types/node": "^20.14.0",
