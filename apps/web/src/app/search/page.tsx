@@ -236,6 +236,17 @@ function SearchInner() {
         {listening ? "Listening — speak now" : ""}
         {voiceUnsupported ? "Voice search needs Chrome or Edge." : ""}
       </div>
+      {q.trim().length >= 3 && (
+        <p style={{ margin: "2px 0 0", fontSize: 13, opacity: 0.8 }}>
+          Want an answer rather than a list?{" "}
+          <Link
+            href={`/assistant?q=${encodeURIComponent(q.trim())}`}
+            style={{ textDecoration: "underline", textUnderlineOffset: 2 }}
+          >
+            Ask the assistant
+          </Link>
+        </p>
+      )}
       {!q.trim() ? (
         <section className="s-idle">
           {trending.length > 0 && (

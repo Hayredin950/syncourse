@@ -1,6 +1,6 @@
 # Syncourse — Agent & Search Integration Plan
 
-Status: **Phases 1–3 and the content-based half of 6 done** · Phase 4 next
+Status: **Phases 1–3, 5 and the content-based half of 6 done** · Phase 4 next
 Owner: Hayredin
 Last audited: 2026-11-18
 
@@ -255,55 +255,65 @@ ZIP posts        ──▶ payload.files[]      ──┐
 **Acceptance:** one 1.4 GB video ZIP yields its `.srt` transcripts and notes,
 no video bytes are stored, and the job can resume after failure.
 
-### Phase 5 — Agent
+### Phase 5 — Agent (grounded assistant done ✅ with a no-AI floor)
 
 **Goal:** a grounded learning copilot, not a generic chatbot.
 
-Backend (`apps/api/src/assistant/`):
+Built in `apps/api/src/assistant/`:
 
 - `assistant.module.ts`, `assistant.controller.ts`, `assistant.service.ts`
 - `llm/llm.provider.ts` — one adapter, env-switched (Gemini free tier default;
-  Groq/OpenRouter compatible). No SDK lock-in.
-- `retrieval/retrieval.service.ts` — hybrid: Postgres FTS + trigram now;
-  `pgvector` later.
-- `tools/catalog.tools.ts` — narrow, typed tools over existing services:
-  `searchCourses`, `getCourse`, `getLesson`, `getLessonText`, `listCategories`.
-- `tools/library.tools.ts` — `saveCourse`, `likeCourse` (confirmation-gated).
+  Groq/OpenRouter use the OpenAI-compatible shape). No SDK, no vendor lock-in.
+- `retrieval/retrieval.service.ts` — Postgres FTS + trigram over
+  `ContentChunk`, plus lesson titles when a course has no indexed text. It asks
+  `SearchService` for ranked **ids only**, so a question does not load every
+  section and lesson the way a search-page card would.
+- The no-AI path is not an error handler: the same sources are quoted directly,
+  so the product keeps working with no key and when a quota runs out.
 
 Endpoints:
 
 ```
-POST /api/assistant/chat        { threadId?, message, context?: { courseId?, lessonId? } }
-GET  /api/assistant/threads/:id
-POST /api/assistant/recommend   { goal, level?, minutesPerWeek? } -> course ids + reasons
+GET  /api/assistant/status      { enabled, mode, provider, model, dailyCap }
+POST /api/assistant/ask         { question, courseSlug? }
+     -> { answer, mode: llm | extractive, provider, notice,
+          citations[], courses[], premiumActive }
 ```
 
-Rules:
+Rules, all enforced in code:
 
-- Every recommendation must resolve to a real `Course.id`; the model cannot
-  invent one.
-- Every claim about a lesson must carry a citation (`courseSlug`, `lessonLinkId`,
-  `sourceName`).
-- Premium gating is enforced **at retrieval**, not in the prompt.
-- Telegram/PDF text is untrusted input: wrapped as data, never as instructions.
-- Hard limits: 20 messages/min/user, daily cap, capped context, per-message
-  token/cost logging.
-- No write actions from retrieved text. Writes require explicit user intent and
-  a confirmation round-trip.
+- Every answer is built from retrieved rows; citations carry `courseSlug`,
+  source name and a real snippet, and the UI links each one to its file.
+- The model is told never to invent a lesson, instructor or URL, and citations
+  it makes up (`[9]` when only 3 sources exist) are stripped before returning.
+- Premium gating happens **at retrieval**: the text of a locked course is
+  dropped before the prompt is built, so a free-tier provider never receives
+  paid content. The course is still shown, marked `locked`.
+- Telegram/PDF text is wrapped as quoted data and the system prompt says to
+  ignore instructions inside it.
+- Budget: 8 questions/minute per IP (in-process), plus a durable per-day cap of
+  25 anonymous / 150 signed-in, stored in `AssistantUsage`. The in-memory burst
+  guard alone would reset on every serverless instance.
+- No write actions: the assistant can only read and suggest.
 
-Frontend:
+Frontend: `/assistant` — asks a question, renders the answer, the numbered
+sources and the courses to open. The search page hands its query over with
+`?q=`. Search itself stays the default path; this is for "explain / which one"
+questions.
 
-- Web: floating "Ask Syncourse" in `Shell.tsx`; lesson-page buttons
-  *Explain*, *Quiz me*, *Translate*.
-- Mobile (Expo): same endpoint, same SSE parser.
-- Telegram: free-text intent router in front of the existing wizard — never
-  replaces the state machine.
-- Admin: "Draft with AI" in the course form (fills, never saves).
+**Acceptance met** by `npm run test:assistant -w apps/api` — 38 checks against
+the real catalogue and a temporary premium course + member, both deleted in
+`finally`: a real question returns grounded citations and links; a nonsense
+question returns no citations and says so; the premium course is listed but its
+unique token never appears in the free reader's answer or snippets; the same
+member can read it; the daily cap returns 429 on the second question at a cap of
+1; the kill switch returns 503; and an anchored question never pulls sources
+from another course.
 
-**Acceptance:** on a lesson with subtitles, "explain this simply" cites that
-lesson; "quiz me" produces questions answerable from the text; a premium lesson
-is refused for a free user; quota exhaustion returns search results instead of
-an error.
+Deferred on purpose (needs volume or a different product decision):
+`threads`/multi-turn memory, `POST /assistant/recommend`, lesson-page
+*Explain/Quiz* buttons, and Telegram free-text routing into the assistant. Each
+is additive on the same service.
 
 ### Phase 6 — Recommendations & semantic search (content-based part done ✅)
 
@@ -349,10 +359,11 @@ rank 4 → 2 for "ai") without moving a course past a genuinely better result.
 | Small-file indexing | Telegram Bot API | $0 |
 | Large-file indexing | GitHub Actions (public repo) | $0 |
 | LLM | Gemini free tier / Groq / OpenRouter | $0 within quota |
-| Embeddings | Precomputed in Actions, stored in Neon | $0 |
+| Embeddings (later) | Precomputed in Actions, stored in Neon | $0 |
 
-Failure mode: when the LLM quota is exhausted, the assistant returns ranked
-search results and lesson snippets. The product stays useful.
+Failure mode: when the LLM quota is exhausted, the assistant quotes the same
+retrieved sources in plain text and says the AI writer is at its limit. The
+product stays useful, and a question never turns into a 500.
 
 ---
 
@@ -376,6 +387,11 @@ search results and lesson snippets. The product stays useful.
 | Recommendations turn into a popularity contest | subject overlap (category/tag/lecturer/level) outweighs the rating/download priors; "More like this" is never padded with unrelated bestsellers |
 | Clicks bury the exact match | clicks add 0.08 only, count for 90 days, and one reader+query+course can vote once per 10 minutes |
 | `SearchClick` grows without bound | low write volume; if it ever matters, keep 180 days and aggregate the rest into `TrendingQuery` |
+| Assistant quotes paid content | the text is dropped at retrieval, before the prompt exists; proved with a unique token in `test:assistant` |
+| Assistant invents lessons or links | sources are rows with a slug and file name; invented citation numbers are stripped |
+| One reader drains the free LLM quota | 8/min burst per IP + durable 25/day anonymous, 150/day signed-in |
+| Cold Neon makes the assistant slow | retrieval asks for ranked ids only, then one light projection; no sections/lessons loaded |
+| No LLM key or an exhausted quota | the extractive answer is the floor, not an error; `mode` and `notice` say which path was used |
 
 ---
 
@@ -409,6 +425,10 @@ npm run test:drafts -w apps/api -- --cleanup   # remove leftovers from a crashed
 psql "$DATABASE_URL" -f apps/api/prisma/sql/2026-11-recommendations.sql
 npm run test:recommend -w apps/api     # creates and removes its own reader
 npm run test:search -w apps/api        # ranking must still pass 14/14
+
+# 8. Assistant
+psql "$DATABASE_URL" -f apps/api/prisma/sql/2026-11-assistant.sql
+npm run test:assistant -w apps/api     # no LLM key needed; creates + removes its own rows
 ```
 
 Draft review in Telegram: `/drafts`, `/draft <id>`, `/approve <id>`,
@@ -422,10 +442,23 @@ TELEGRAM_BOT_TOKEN=...          # indexer + delivery
 TELEGRAM_WATCHER_ENABLED=true   # Phase 3 kill switch
 TELEGRAM_SOURCE_CHATS=syncourse # allowlist: usernames or ids, comma separated
 TELEGRAM_TOPIC_CATEGORIES=12:ai-machine-learning,34:programming
-GEMINI_API_KEY=...              # Phase 5 only
-ASSISTANT_ENABLED=false         # kill switch
-ASSISTANT_MODEL=gemini-2.0-flash
+
+# Phase 5. Any one key is enough; omit all of them and the assistant answers
+# from quoted text. ASSISTANT_LLM=none forces that path even with a key.
+ASSISTANT_ENABLED=true
+ASSISTANT_LLM=gemini            # gemini | groq | openrouter | none | unset=auto
+GEMINI_API_KEY=...
+# GEMINI_MODEL=gemini-flash-latest
+# GROQ_API_KEY=...
+# OPENROUTER_API_KEY=...
+# ASSISTANT_DAILY_ANON=25
+# ASSISTANT_DAILY_USER=150
 ```
+
+The assistant needs no key to be correct, only to be fluent. Add the key to
+`apps/api/.env` **and** to Vercel (`vercel env add GEMINI_API_KEY production`
+inside `apps/api`), then redeploy. `GET /api/assistant/status` reports
+`mode: "llm"` when a provider is live and `mode: "extractive"` when not.
 
 ---
 

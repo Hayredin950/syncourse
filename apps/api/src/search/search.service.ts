@@ -33,7 +33,7 @@ export class SearchService {
 
   constructor(private readonly prisma: PrismaService) {}
 
-  async search(q: string, opts: { limit?: number; offset?: number } = {}) {
+  async search(q: string, opts: { limit?: number; offset?: number; recordTrending?: boolean } = {}) {
     const query = (q || '').trim();
     // Never let a query string turn into NaN/negative paging values: Prisma
     // throws on `take: NaN`, which surfaced as a 500 from /search?limit=abc.
@@ -45,7 +45,9 @@ export class SearchService {
       : 0;
 
     // Record only a real search, not every prefix the debounced input sent.
-    if (query.length >= 3) {
+    // The assistant reuses this ranking but its full questions must not show up
+    // in "trending searches" — they are sentences, not catalog queries.
+    if (query.length >= 3 && opts.recordTrending !== false) {
       await this.upsertTrending(query);
     }
 
@@ -104,6 +106,28 @@ export class SearchService {
   async trending() {
     const rows = await this.prisma.trendingQuery.findMany({ orderBy: { count: 'desc' }, take: 12 });
     return { trending: rows.map((r) => r.query) };
+  }
+
+  /**
+   * Ranked course ids only.
+   *
+   * The search page needs full cards, so `search()` loads sections and lessons
+   * to compute durations and counts. The assistant only needs the ranking, and
+   * loading every section for eight courses is a lot of work to throw away —
+   * especially on a free database tier. Same ranking, minimal payload.
+   */
+  async rankedCourseIds(q: string, limit = 8) {
+    const query = (q || '').trim();
+    if (!query) return [];
+    const take = Math.min(Math.max(Math.trunc(limit) || 8, 1), 20);
+
+    const ranked = await this.rankedIds(query, take, 0);
+    if (ranked) return ranked.ids;
+
+    // No pg_trgm (or the raw query failed): the plain path still orders by
+    // relevance-ish quality, so the assistant is never worse than "nothing".
+    const fallback = await this.legacySearch(query, take, 0, []);
+    return fallback.courses.map((c) => c.id);
   }
 
   /**

@@ -820,6 +820,20 @@ model SearchClick {
   @@index([query, courseId])
 }
 
+/// Per-day question budget for the assistant. The free LLM tiers are the only
+/// metered dependency in the product, so the cap has to survive a serverless
+/// cold start: an in-memory counter would reset on every deploy and every
+/// parallel instance. One row per UTC day + subject (signed-in user, or a
+/// salted hash of the caller's IP).
+model AssistantUsage {
+  day       String // YYYY-MM-DD, UTC
+  subject   String // u:<userId> | ip:<hash>
+  count     Int      @default(0)
+  updatedAt DateTime @updatedAt
+
+  @@id([day, subject])
+}
+
 /// A course the Telegram watcher believes it found, before it touches the
 /// catalog. Approving one runs the existing importer; discarding one leaves an
 /// audit row so the same post is never proposed twice.
