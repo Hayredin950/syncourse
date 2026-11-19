@@ -16,6 +16,7 @@ import {
   courseKindFrom,
   describeAnnouncement,
   extractFields,
+  hasMeaningfulProse,
   mediaName,
   mediaRole,
   parseResourcePost,
@@ -463,6 +464,15 @@ ok(
     'title',
   ),
   'a course with no title waits',
+);
+
+console.log('\nresource vs course');
+
+ok(!hasMeaningfulProse('#claude_code_devs'), 'a hashtag-only caption is not prose');
+ok(!hasMeaningfulProse('🔥👇🏼 https://t.me/example'), 'emoji and links are not prose');
+ok(
+  hasMeaningfulProse('This byte-sized course teaches you how to build LLM applications with LangChain and Python.'),
+  'a real description is prose',
 );
 
 console.log(`\n${passed} checks passed\n`);

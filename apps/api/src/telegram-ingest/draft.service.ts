@@ -45,6 +45,7 @@ import {
   describeAnnouncement,
   externalLink,
   extractFields,
+  hasMeaningfulProse,
   mediaName,
   mediaRole,
   parseResourcePost,
@@ -71,6 +72,19 @@ export interface DraftIncomingImage {
   messageId: number;
   fileId: string;
   caption: string | null;
+}
+
+const WATCHER_CARD =
+  /\b(?:course|resource)\s+published\b|\bnew\s+(?:course|resource)\s+draft\b|approve[\s\S]{0,120}discard/i;
+
+/**
+ * True for the bot's own review and receipt cards. Those cards repeat a course
+ * title and metadata, so handing them back to the parser would create a draft
+ * of the draft. Ordinary bot posts (a channel or scheduler publishing a real
+ * course) are allowed through.
+ */
+function isWatcherCard(text: string | null): boolean {
+  return WATCHER_CARD.test(text ?? '');
 }
 
 export interface DraftIncoming {
@@ -133,7 +147,12 @@ export class IngestDraftService {
   async observe(input: DraftIncoming): Promise<ObserveResult> {
     if (!this.watcherEnabled()) return { action: 'ignored', reason: 'watcher disabled' };
     if (!this.isGroup(input.chat.type)) return { action: 'ignored', reason: 'not a group' };
-    if (input.from?.isBot) return { action: 'ignored', reason: 'bot message' };
+    // A bot normally echoes commands and review cards; those must not become
+    // drafts. A real course can also be posted by a bot or an anonymous admin,
+    // so only the watcher's own cards are rejected, not every bot message.
+    if (input.from?.isBot && isWatcherCard(input.text)) {
+      return { action: 'ignored', reason: 'watcher card' };
+    }
     if (!this.chatAllowed(input.chat)) return { action: 'ignored', reason: 'chat not in allowlist' };
 
     const text = (input.text ?? '').trim();
@@ -592,8 +611,12 @@ export class IngestDraftService {
     if (!isArchiveFile(file)) return false;
     if (payload.signals.includes('explicit-resource')) return false;
     // Prose means a real resource with an archive attachment (a ZIP of
-    // examples); an empty body plus module ZIPs means a course.
-    if ((payload.fields?.description ?? payload.announcement.description ?? '').trim()) return false;
+    // examples); an empty body plus module ZIPs means a course. Hashtags,
+    // links and emoji are not prose — "Claude Code for Professional
+    // Developers 🔥👇🏼 #claude_code_devs" is a course title, not a body.
+    if (hasMeaningfulProse(payload.fields?.description ?? payload.announcement.description)) {
+      return false;
+    }
     // An already-approved resource can still be converted while it is fresh
     // and auto-published, but never after an operator approved it.
     if (row.status === 'approved' && !payload.autoPublished) return false;

@@ -469,6 +469,21 @@ function resourceTypeFrom(text: string, complete: boolean, hasImage: boolean): '
 }
 
 /**
+ * Real prose, ignoring hashtags, links and emoji. A social caption that is
+ * only a title, a link and a hashtag is not a resource body; when module ZIPs
+ * follow such a post, it is a course.
+ */
+export function hasMeaningfulProse(text: string | null | undefined): boolean {
+  const cleaned = (text ?? '')
+    .replace(/https?:\/\/\S+/g, ' ')
+    .replace(/#[\p{L}\p{N}_-]+/gu, ' ')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  return cleaned.length >= 40;
+}
+
+/**
  * A short course that carries a duration but no lesson count is a mini-course
  * by the catalogue's own definition. The explicit `type:` line always wins.
  */
