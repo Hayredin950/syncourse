@@ -201,6 +201,20 @@ async function main() {
       /dart|flutter/i.test(dart.courses[0]?.title ?? ''),
       dart.courses.map((c) => c.title),
     );
+
+    const graphic = await assistant.ask('graphic design', { ip: `${IP}-graphic` });
+    check(
+      'words found separately in a large course do not summon that course',
+      graphic.citations.length === 0 && graphic.courses.length === 0,
+      graphic.courses.map((c) => c.title),
+    );
+
+    const rag = await assistant.ask('what is RAG', { ip: `${IP}-rag` });
+    check(
+      'a single distinctive subject still finds its course',
+      rag.courses.some((c) => /rag|retrieval augmented/i.test(c.title)),
+      rag.courses.map((c) => c.title),
+    );
   }
 
   console.log('assistant: product questions');

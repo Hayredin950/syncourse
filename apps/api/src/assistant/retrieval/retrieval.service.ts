@@ -430,7 +430,7 @@ export class RetrievalService {
    */
   private async rankedCandidates(question: string, keywords: string[]): Promise<string[]> {
     const searchIds = await this.rankedIdsFor(question);
-    if (keywords.length === 0) return searchIds;
+    if (keywords.length === 0) return [];
 
     const primary = new Set(keywordsOf(question));
 
@@ -506,9 +506,12 @@ export class RetrievalService {
     const ranked = scored.filter((row) => row.lexical >= cutoff).map((row) => row.id);
     if (ranked.length > 0) return ranked.slice(0, 8);
 
-    // No content match at all: fall back to the search page's typo/synonym
-    // path, but only when nothing else matched.
-    return searchIds.slice(0, 8);
+    // No course metadata mentions the subject. Do not hand the search engine's
+    // chunk hits back as candidates: a large course can contain each word
+    // separately ("graphic" here, "design" there) and would answer every
+    // unrelated question. The strict phrase search in retrieve() still gets a
+    // chance to find material that genuinely discusses the subject.
+    return [];
   }
 
   /** The course row, described in the same words the course page uses. */
@@ -621,8 +624,13 @@ export class RetrievalService {
    */
   private async searchChunksStrict(keywords: string[], take: number): Promise<ChunkRow[]> {
     const terms = keywords.filter(Boolean);
-    if (terms.length < 2) return [];
-    const tsQuery = `"${terms.join(' ').replace(/"/g, '')}"`;
+    // Two or more words must appear as a phrase. A single distinctive word is
+    // allowed ("RAG", "Flutter"), but not a short or generic one, which would
+    // drag the largest course into every question.
+    if (terms.length === 0) return [];
+    if (terms.length === 1 && terms[0].length < 4) return [];
+    const tsQuery =
+      terms.length === 1 ? terms[0] : `"${terms.join(' ').replace(/"/g, '')}"`;
 
     try {
       return await this.prisma.$queryRaw<ChunkRow[]>`
