@@ -188,19 +188,6 @@ export function ResourceDetailView({ slug }: { slug: string }) {
     flash("Link copied");
   };
 
-  // Arrow keys and Escape in the lightbox — a gallery you can only click is a
-  // gallery nobody looks past the second image of.
-  useEffect(() => {
-    if (shot === null) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setShot(null);
-      if (e.key === "ArrowRight") setShot((i) => (i === null ? i : (i + 1) % images.length));
-      if (e.key === "ArrowLeft") setShot((i) => (i === null ? i : (i - 1 + images.length) % images.length));
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [shot, images.length]);
-
   if (error || !r) {
     return (
       <main className="page">
