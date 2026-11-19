@@ -32,6 +32,7 @@
     "test:drafts": "tsx --env-file=.env prisma/draft-check.ts",
     "test:recommend": "tsx --env-file=.env prisma/recommend-check.ts",
     "test:assistant": "tsx --env-file=.env prisma/assistant-check.ts",
+    "test:assistant-unit": "tsx --test src/assistant/assistant.test.ts",
     "test:extract": "tsx prisma/extract-check.ts",
     "test:draft-fields": "tsx src/telegram-ingest/draft-fields.test.ts",
     "test:actions": "tsx src/assistant/action-parser.test.ts"

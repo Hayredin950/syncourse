@@ -171,6 +171,61 @@ async function main() {
     );
   }
 
+  console.log('assistant: subject ranking');
+  {
+    const mobile = await assistant.ask('which course should i take to master mobile app development', {
+      ip: `${IP}-mobile`,
+    });
+    const top = mobile.courses[0];
+    check(
+      'mobile development recommends the Flutter/Dart course',
+      !!top && /dart|flutter/i.test(top.title),
+      mobile.courses.map((c) => c.title),
+    );
+    check(
+      'the recommendation is grounded in a course overview',
+      mobile.citations.some((c) => c.kind === 'course' && c.courseId === top?.id),
+      mobile.citations.map((c) => `${c.courseTitle} :: ${c.kind}`),
+    );
+    check(
+      'the extractive answer names that course',
+      !!top && mobile.answer.includes(top.title),
+      mobile.answer.slice(0, 160),
+    );
+
+    const dart = await assistant.ask('how can i master dart and were can you seggest me acourse', {
+      ip: `${IP}-dart`,
+    });
+    check(
+      'a Dart question also finds the Dart course',
+      /dart|flutter/i.test(dart.courses[0]?.title ?? ''),
+      dart.courses.map((c) => c.title),
+    );
+  }
+
+  console.log('assistant: product questions');
+  {
+    const about = await assistant.ask('can you tell me about this web app what it does', {
+      ip: `${IP}-product`,
+    });
+    check(
+      'a product question is answered from product facts',
+      /syncourse/i.test(about.answer) && /catalogue/i.test(about.answer),
+      about.answer.slice(0, 160),
+    );
+    check('a product answer cites no course file', about.citations.length === 0, about.citations.length);
+    check('a product answer is deterministic', about.mode === 'extractive' && about.provider === null, about.mode);
+
+    const domain = await assistant.ask('im asking about this website https://syncourse.pages.dev/', {
+      ip: `${IP}-domain`,
+    });
+    check(
+      'the site domain is recognised as the product',
+      /syncourse/i.test(domain.answer) && domain.citations.length === 0,
+      domain.answer.slice(0, 160),
+    );
+  }
+
   console.log('assistant: honest empty answer');
   {
     const res = await assistant.ask('quantum chromodynamics for basket weavers', { ip: IP });
