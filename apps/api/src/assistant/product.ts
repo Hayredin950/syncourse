@@ -23,18 +23,26 @@ const SELF_REFERENCE = /\bsyncourse\b/i;
 const DOMAIN = /\bsyncourse\.(?:pages\.dev|vercel\.app|com)\b/i;
 const DEIXIS = /\b(?:this|your|the)\s+(?:web\s*app|website|site|platform|app|catalogue|catalog|service|product|page)\b/i;
 const INTENT = /\b(?:what\s+(?:is|does|do)|tell\s+me\s+about|explain|about|purpose|how\s+does|how\s+do\s+i\s+use|who\s+(?:made|built|runs)|is\s+this|can\s+i)\b/i;
+/** "Does Syncourse have a Dart course?" is a catalogue question, not a product one. */
+const CATALOGUE_SUBJECT = /\b(?:courses?|lessons?|learn|teach|study|curriculum|syllabus|tutorial)\b/i;
+const PRODUCT_DEFINITION = /\b(?:what\s+is\s+syncourse|how\s+does\s+syncourse\s+work|tell\s+me\s+about\s+syncourse|who\s+(?:made|built|runs)\s+syncourse)\b/i;
 
 /**
  * True only for questions about Syncourse itself.
  *
  * "How do I build a web app" is a course question: it has intent but no
  * self-reference. "Tell me about this web app" is about the page the reader is
- * on, even without the product name.
+ * on, even without the product name. A named product plus a course subject
+ * ("does Syncourse have a Dart course") stays a catalogue question.
  */
 export function isProductQuestion(question: string): boolean {
   const text = (question ?? '').trim();
   if (!text) return false;
-  if (SELF_REFERENCE.test(text) || DOMAIN.test(text)) return true;
+
+  const namesProduct = SELF_REFERENCE.test(text) || DOMAIN.test(text);
+  if (namesProduct) {
+    return !(CATALOGUE_SUBJECT.test(text) && !PRODUCT_DEFINITION.test(text));
+  }
   return DEIXIS.test(text) && INTENT.test(text);
 }
 

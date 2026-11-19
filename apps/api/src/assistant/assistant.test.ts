@@ -47,6 +47,8 @@ test('product questions are told apart from course questions', () => {
   assert.equal(isProductQuestion('can you tell me about this web app what it does'), true);
   assert.equal(isProductQuestion('im asking about this website https://syncourse.pages.dev/'), true);
   assert.equal(isProductQuestion('what does Syncourse do?'), true);
+  assert.equal(isProductQuestion('does Syncourse have a Dart course?'), false);
+  assert.equal(isProductQuestion('what courses are in the Syncourse catalogue?'), false);
   assert.equal(isProductQuestion('how do I build a web app with React'), false);
   assert.equal(isProductQuestion('which course should i take to master mobile app development'), false);
 });
