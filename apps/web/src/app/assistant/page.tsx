@@ -29,6 +29,8 @@ interface Citation {
 
 interface Answer {
   answer: string;
+  /** Product answers describe Syncourse itself; catalogue answers cite files. */
+  scope?: "catalogue" | "product";
   mode: "llm" | "extractive";
   provider: string | null;
   notice: string | null;
@@ -382,8 +384,10 @@ export default function AssistantPage() {
             )}
           </div>
           <p className={styles.lede}>
-            Answers are built from the lesson transcripts, PDFs and notes inside the courses — and every
-            claim links back to the file it came from. When nothing matches, it says so instead of guessing.
+            Ask about a subject and the answer is built from the lesson transcripts, PDFs and notes inside
+            the courses, with every claim linked to its file. Ask about Syncourse itself — content types,
+            access, downloads, accounts or navigation — and it answers from the site&rsquo;s own guide.
+            When nothing matches, it says so instead of guessing.
           </p>
           {status && (
             <p className={styles.provenance}>
@@ -661,9 +665,13 @@ function AnswerCard({ answer, turnIndex }: { answer: Answer; turnIndex: number }
       <div className={styles.result}>
         <div className={styles.answerHead}>
           <span className={styles.badge}>
-            {answer.mode === "llm"
-              ? `Written by ${answer.provider ?? "an AI model"}`
-              : "Quoted from the catalogue"}
+            {answer.scope === "product"
+              ? answer.mode === "llm"
+                ? `Answered by ${answer.provider ?? "an AI model"}`
+                : "From the Syncourse guide"
+              : answer.mode === "llm"
+                ? `Written by ${answer.provider ?? "an AI model"}`
+                : "Quoted from the catalogue"}
           </span>
           {answer.notice && <span className={styles.noticeInline}>{answer.notice}</span>}
         </div>

@@ -2,7 +2,13 @@ import { HttpException, HttpStatus, Injectable, Logger } from '@nestjs/common';
 import { createHash } from 'node:crypto';
 import { PrismaService } from '../prisma/prisma.service';
 import { completeWithFallback, resolveLlm } from './llm/llm.provider';
-import { PRODUCT_FACTS, isProductQuestion, productAnswer } from './product';
+import {
+  PRODUCT_FACTS,
+  productAnswer,
+  systemPrompt,
+  systemQuestionStrength,
+  type SystemStats,
+} from './product';
 import { RetrievalService, keywordsOf, snippetOf, type Retrieval, type RetrievedCourse } from './retrieval/retrieval.service';
 
 export interface AssistantCitation {
@@ -21,6 +27,12 @@ export interface AssistantCitation {
 
 export interface AssistantAnswer {
   answer: string;
+  /**
+   * `catalogue` answers cite course files; `product` answers describe
+   * Syncourse itself and cite nothing. The UI labels them differently so a
+   * product answer is never presented as a quote from a course.
+   */
+  scope: 'catalogue' | 'product';
   /** `llm` when a provider wrote it; `extractive` when it was assembled from sources. */
   mode: 'llm' | 'extractive';
   provider: string | null;
@@ -102,6 +114,8 @@ export function cleanHistory(history?: ChatTurn[]): ChatTurn[] {
 @Injectable()
 export class AssistantService {
   private readonly logger = new Logger('Assistant');
+  /** Live catalogue counts for product answers; refreshed once a minute. */
+  private statsCache: { at: number; data: SystemStats } | null = null;
 
   constructor(
     private readonly prisma: PrismaService,
@@ -159,20 +173,18 @@ export class AssistantService {
       );
     }
 
-    // "What is this website?" is answered from the product's own facts. The
-    // catalogue files describe other courses, so retrieval would either miss
-    // or quote an unrelated PDF; this path costs no model tokens and no quota.
-    if (!opts.courseSlug && isProductQuestion(clean)) {
-      return {
-        answer: productAnswer(),
-        mode: 'extractive',
-        provider: null,
-        model: null,
-        notice: null,
-        citations: [],
-        courses: [],
-        premiumActive: await this.retrieval.premiumActive(opts.userId),
-      };
+    // Questions about Syncourse itself — its content types, access rules,
+    // downloads, accounts or navigation — are answered from the product's own
+    // knowledge plus live catalogue figures. Retrieval cannot answer them: the
+    // course files describe other people's subjects, so a search either misses
+    // or quotes an unrelated PDF.
+    //
+    // Ambiguous matches ("how do collections work in Java") go through the
+    // catalogue first, because the same words describe course subjects. They
+    // only fall back to product knowledge when retrieval truly finds nothing.
+    const systemStrength = opts.courseSlug ? null : systemQuestionStrength(clean);
+    if (systemStrength === 'strong') {
+      return this.answerSystemQuestion(clean, opts);
     }
 
     await this.spendBudget(this.subjectFor(opts.userId, opts.ip));
@@ -187,10 +199,13 @@ export class AssistantService {
     // no indexed text still get a named recommendation, not a false "nothing".
     if (retrieval.sources.length === 0) {
       if (retrieval.courses.length === 0 && retrieval.locked.length === 0) {
+        if (systemStrength === 'weak') {
+          return this.answerSystemQuestion(clean, opts, false);
+        }
         return this.respond(retrieval, {
           answer:
-            "I couldn't find a course, transcript or lesson in the catalogue that covers that yet. " +
-            'Try a tool name ("n8n", "Flutter"), a subject ("RAG", "CCNA") or the lecturer you are following.',
+            "Nothing in the catalogue matches that yet — this is not a question limit, the library simply has no material on it. " +
+            'Try a tool name ("n8n", "Flutter"), a subject ("RAG", "CCNA"), a lecturer, or ask about Syncourse itself (courses, mini-courses, Premium, downloads, accounts).',
           mode: 'extractive',
           provider: null,
           model: null,
@@ -243,6 +258,119 @@ export class AssistantService {
   // Answering
   // ---------------------------------------------------------------
 
+  /**
+   * Counts that make a product answer current instead of permanent. Cached for
+   * a minute: the numbers change only when an admin publishes.
+   */
+  private async systemStats(): Promise<SystemStats | null> {
+    const now = Date.now();
+    if (this.statsCache && now - this.statsCache.at < 60_000) return this.statsCache.data;
+    try {
+      const [byType, premiumCourses, freeCourses, resources, categories, lecturers, files] = await Promise.all([
+        this.prisma.course.groupBy({
+          by: ['contentType'],
+          where: { deletedAt: null },
+          _count: { _all: true },
+        }),
+        this.prisma.course.count({ where: { deletedAt: null, isPremium: true } }),
+        this.prisma.course.count({ where: { deletedAt: null, isPremium: false } }),
+        this.prisma.resource.count({ where: { deletedAt: null } }),
+        this.prisma.category.count(),
+        this.prisma.lecturer.count(),
+        this.prisma.telegramCourseLink.count(),
+      ]);
+      const countFor = (type: string) =>
+        byType.find((row) => row.contentType === type)?._count._all ?? 0;
+      const fullCourses = countFor('course');
+      const miniCourses = countFor('mini-course');
+      const data: SystemStats = {
+        courses: fullCourses + miniCourses,
+        fullCourses,
+        miniCourses,
+        premiumCourses,
+        freeCourses,
+        resources,
+        categories,
+        lecturers,
+        files,
+      };
+      this.statsCache = { at: now, data };
+      return data;
+    } catch (err) {
+      // A product answer must survive a cold database; omit the live figure.
+      this.logger.warn(`system stats unavailable: ${(err as Error).message}`);
+      return null;
+    }
+  }
+
+  /**
+   * A product/system question. A configured model writes a specific answer
+   * from the product facts and live figures; without one, the same knowledge is
+   * formatted around the topic the reader asked about. Neither path returns the
+   * generic introduction when the question was more specific than that.
+   */
+  private async answerSystemQuestion(
+    question: string,
+    opts: { userId?: string; ip?: string; history?: ChatTurn[] },
+    chargeBudget = true,
+  ): Promise<AssistantAnswer> {
+    const stats = await this.systemStats();
+    const history = cleanHistory(opts.history);
+    const premiumActive = await this.retrieval.premiumActive(opts.userId).catch(() => false);
+
+    const selection = resolveLlm();
+    if (selection.provider) {
+      // A weak system question has already paid for its retrieval attempt.
+      if (chargeBudget) await this.spendBudget(this.subjectFor(opts.userId, opts.ip));
+      const result = await completeWithFallback(
+        selection,
+        [
+          { role: 'system' as const, content: systemPrompt(question, stats) },
+          ...history.map((t) => ({ role: t.role, content: t.content })),
+          { role: 'user' as const, content: question },
+        ],
+        { maxTokens: 600 },
+      );
+      if (result) {
+        return {
+          answer: this.clamp(result.text),
+          scope: 'product',
+          mode: 'llm',
+          provider: result.provider,
+          model: result.model,
+          notice: null,
+          citations: [],
+          courses: [],
+          premiumActive,
+        };
+      }
+      // The model is configured but unavailable: answer from the same facts.
+      return {
+        answer: this.clamp(productAnswer(question, stats)),
+        scope: 'product',
+        mode: 'extractive',
+        provider: selection.provider.name,
+        model: selection.provider.model,
+        notice: 'The AI writer is at its limit right now, so this answer comes from the product guide.',
+        citations: [],
+        courses: [],
+        premiumActive,
+      };
+    }
+
+    return {
+      answer: this.clamp(productAnswer(question, stats)),
+      scope: 'product',
+      mode: 'extractive',
+      provider: null,
+      model: null,
+      notice: null,
+      citations: [],
+      courses: [],
+      premiumActive,
+    };
+  }
+
   private respond(
     retrieval: Retrieval,
     body: Pick<AssistantAnswer, 'answer' | 'mode' | 'provider' | 'model' | 'notice'>,
@@ -261,6 +389,7 @@ export class AssistantService {
 
     return {
       ...body,
+      scope: 'catalogue',
       // Drop references the model invented: only sources 1..N exist here.
       answer: this.stripDanglingCitations(body.answer, citations.length),
       citations,

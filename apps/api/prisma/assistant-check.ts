@@ -224,13 +224,56 @@ async function main() {
       /syncourse/i.test(domain.answer) && domain.citations.length === 0,
       domain.answer.slice(0, 160),
     );
+
+    const difference = await assistant.ask(
+      'what is the differnce between full corse and minicouse in syncourse',
+      { ip: `${IP}-types` },
+    );
+    check(
+      'a typo’d content-type question gets the specific difference',
+      difference.scope === 'product' &&
+        /mini-course/i.test(difference.answer) &&
+        /full course/i.test(difference.answer) &&
+        /90 minutes/i.test(difference.answer),
+      difference.answer.slice(0, 220),
+    );
+
+    const alternatives = await assistant.ask(
+      'Are there any free alternatives to premium courses on the same topic?',
+      { ip: `${IP}-premium` },
+    );
+    check(
+      'free alternatives get the premium answer, not the overview',
+      /premium/i.test(alternatives.answer) && /free alternative/i.test(alternatives.answer),
+      alternatives.answer.slice(0, 220),
+    );
+
+    const limit = await assistant.ask('any question i ask shows this message is it request limit or what', {
+      ip: `${IP}-limit`,
+    });
+    check(
+      'the empty-answer message is distinguished from the question limit',
+      /not a quota message|not a question limit/i.test(limit.answer),
+      limit.answer.slice(0, 220),
+    );
+
+    const java = await assistant.ask('how do collections work in Java', { ip: `${IP}-java` });
+    check(
+      'a technical question with a platform word stays in the catalogue',
+      java.scope === 'catalogue' && !/collections group saved courses/i.test(java.answer),
+      `${java.scope}: ${java.answer.slice(0, 140)}`,
+    );
   }
 
   console.log('assistant: honest empty answer');
   {
     const res = await assistant.ask('quantum chromodynamics for basket weavers', { ip: IP });
     check('does not invent sources', res.citations.length === 0, res.citations.length);
-    check('says it could not find it', /couldn't find|no course/i.test(res.answer), res.answer.slice(0, 120));
+    check(
+      'says it could not find it',
+      /couldn't find|nothing in the catalogue matches|no course/i.test(res.answer),
+      res.answer.slice(0, 120),
+    );
     check('still returns 200-shaped payload', res.mode === 'extractive' && Array.isArray(res.courses));
   }
 

@@ -6,7 +6,13 @@ import {
   isRecommendationQuestion,
   retrievalQuery,
 } from './assistant.service';
-import { isProductQuestion, productAnswer } from './product';
+import {
+  canonicalQuestion,
+  isProductQuestion,
+  isSystemQuestion,
+  productAnswer,
+  systemQuestionStrength,
+} from './product';
 
 /**
  * Pure checks for the retrieval helpers. They run without a database or an LLM
@@ -53,11 +59,69 @@ test('product questions are told apart from course questions', () => {
   assert.equal(isProductQuestion('which course should i take to master mobile app development'), false);
 });
 
+test('system questions survive the spellings readers type', () => {
+  assert.equal(
+    isSystemQuestion('what is the differnce between full corse and minicouse in syncourse'),
+    true,
+  );
+  assert.equal(isSystemQuestion('What is the difference between a full course and a mini-course?'), true);
+  assert.equal(isSystemQuestion('Are there any free alternatives to premium courses on the same topic?'), true);
+  assert.equal(isSystemQuestion('any question i ask shows this message is it request limit or what'), true);
+  assert.equal(isSystemQuestion('how do i download a course'), true);
+  assert.equal(isSystemQuestion('do i need an account to save a course'), true);
+  assert.equal(isSystemQuestion('how do circles work'), true);
+  assert.equal(systemQuestionStrength('how do i download a course'), 'strong');
+  assert.equal(systemQuestionStrength('what is the difference between a full course and a mini-course?'), 'strong');
+});
+
+test('ambiguous platform words let the catalogue answer first', () => {
+  // These words are ordinary course subjects too. Retrieval gets the first
+  // attempt; product knowledge is only the fallback.
+  assert.equal(systemQuestionStrength('how do circles work'), 'weak');
+  assert.equal(systemQuestionStrength('how do ratings work'), 'weak');
+  assert.equal(systemQuestionStrength('what is premium'), 'strong');
+});
+
+test('a technical subject keeps even a weak platform word in the catalogue', () => {
+  assert.equal(systemQuestionStrength('how do collections work in Java'), null);
+  assert.equal(systemQuestionStrength('how do ratings work in recommender systems'), null);
+  assert.equal(systemQuestionStrength('what is premium pricing in economics'), null);
+  assert.equal(systemQuestionStrength('how do I build an android app'), null);
+});
+
+test('system detection does not steal course-subject questions', () => {
+  assert.equal(isSystemQuestion('does Syncourse have a Dart course?'), false);
+  assert.equal(isSystemQuestion('how do I build a web app with React'), false);
+  assert.equal(isSystemQuestion('how do I download a file in Python'), false);
+  assert.equal(isSystemQuestion('what is quantum chromodynamics for basket weavers'), false);
+});
+
+test('canonicalQuestion maps common misspellings without rewriting other words', () => {
+  assert.match(canonicalQuestion('full corse and minicouse'), /full course and mini course/);
+  assert.match(canonicalQuestion('cource'), /course/);
+  assert.doesNotMatch(canonicalQuestion('curse'), /course/);
+});
+
 test('the product answer talks about the catalogue, not about courses', () => {
   const answer = productAnswer();
   assert.match(answer, /Syncourse/i);
   assert.match(answer, /catalogue/i);
   assert.doesNotMatch(answer, /\[1\]/, 'product facts are not cited course files');
+});
+
+test('a specific product question gets a specific answer', () => {
+  const answer = productAnswer('what is the difference between full course and mini-course in syncourse');
+  assert.match(answer, /Full course/i);
+  assert.match(answer, /mini-course/i);
+  assert.match(answer, /90 minutes/i);
+  assert.doesNotMatch(answer, /Apps for Android/i, 'not the same overview paragraph every time');
+});
+
+test('free alternatives get the premium answer, not the overview', () => {
+  const answer = productAnswer('Are there any free alternatives to premium courses on the same topic?');
+  assert.match(answer, /Premium/i);
+  assert.match(answer, /free alternative/i);
+  assert.doesNotMatch(answer, /roadmaps that put them in order/i);
 });
 
 test('follow-ups inherit the previous subject', () => {
