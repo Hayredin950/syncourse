@@ -38,6 +38,7 @@ export default function AdminTelegramPage() {
   const [error, setError] = useState("");
   const [text, setText] = useState("");
   const [busy, setBusy] = useState("");
+  const [scanResult, setScanResult] = useState("");
 
   const load = useCallback(() => {
     // Clearing first matters for the retry button: the error branch renders on a
@@ -166,6 +167,52 @@ export default function AdminTelegramPage() {
                 </p>
               </>
             )}
+          </div>
+
+          <div className="admin-card">
+            <h3>Group ingestion</h3>
+            <p className="page-desc" style={{ marginTop: -4 }}>
+              A bot is never sent the messages it posts itself, so a course published as the bot would otherwise be
+              invisible to the watcher. Syncourse reads those posts back on a schedule — nothing has to be forwarded by
+              hand. Run it now if you just published something.
+            </p>
+            <div className="admin-inline">
+              <button
+                type="button"
+                className="admin-btn admin-btn--primary admin-btn--sm"
+                disabled={busy === "scan"}
+                onClick={async () => {
+                  setBusy("scan");
+                  setScanResult("");
+                  try {
+                    const r = await post<{
+                      ok: boolean;
+                      status: string;
+                      ingested?: number;
+                      cursor?: number;
+                      detail?: string;
+                    }>("/telegram/scan", { max: 40 });
+                    const n = r.ingested ?? 0;
+                    const message =
+                      r.status === "busy"
+                        ? "A scan is already running."
+                        : n
+                          ? `${n} post${n === 1 ? "" : "s"} imported.`
+                          : "No new posts to import.";
+                    setScanResult(message);
+                    toast.success(message);
+                    if (n) load();
+                  } catch (e) {
+                    toast.error(e instanceof Error ? e.message : "Could not scan the group");
+                  } finally {
+                    setBusy("");
+                  }
+                }}
+              >
+                <RefreshCw size={12} /> {busy === "scan" ? "Scanning…" : "Scan the group now"}
+              </button>
+              {scanResult && <span className="admin-field__hint">{scanResult}</span>}
+            </div>
           </div>
 
           <div className="admin-card">

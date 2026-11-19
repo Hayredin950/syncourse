@@ -1,0 +1,44 @@
+name: telegram-scan
+
+# Telegram never delivers a bot the messages that bot posts. A course posted as
+# @syncourse_bot is therefore invisible to the webhook, which is why content
+# used to have to be forwarded to the bot by hand before it appeared.
+#
+# The API now walks the group's message ids and imports the bot's own posts
+# itself. This workflow wakes it every five minutes — the shortest interval
+# GitHub allows — with one HTTP call. No files move through Actions.
+#
+# Required repository secret: TELEGRAM_SCAN_SECRET (same value as the Vercel
+# environment variable of that name).
+
+on:
+  schedule:
+    - cron: '*/5 * * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: telegram-scan
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Import the bot's own group posts
+        env:
+          API_URL: https://syncourse-api.vercel.app
+          SCAN_SECRET: ${{ secrets.TELEGRAM_SCAN_SECRET }}
+        run: |
+          set -euo pipefail
+          body=$(curl -sS --max-time 90 -X POST "$API_URL/api/telegram/scan/cron" \
+            -H 'content-type: application/json' \
+            -H "x-scan-secret: $SCAN_SECRET" \
+            -d '{"max":40}')
+          echo "$body"
+          # The endpoint answers 200 with {"ok":true,...} for "ok", "busy" and
+          # "disabled"; anything else should make the run red.
+          echo "$body" | grep -q '"ok":true'

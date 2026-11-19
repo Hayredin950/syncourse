@@ -643,6 +643,10 @@ export class IngestDraftService {
     payload.kind = 'course';
     payload.approvedCourseSlug = undefined;
     payload.autoPublished = false;
+    // A picture post can publish itself as a resource seconds before its module
+    // ZIPs land. Clearing the notice lets the same receipt be redrawn as
+    // "COURSE PUBLISHED" instead of leaving a stale resource card in the chat.
+    payload.signals = payload.signals.filter((s) => s !== 'auto-published-notice');
     payload.signals = payload.signals.filter((s) => s !== 'resource' && !s.startsWith('resource:'));
     if (!payload.signals.includes('simple-course')) payload.signals.push('simple-course');
     payload.confidence = Math.max(payload.confidence, 0.8);

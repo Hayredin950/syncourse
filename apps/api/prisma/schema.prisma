@@ -693,6 +693,24 @@ model TelegramUserFile {
 
 // Ring-buffer-ish log of the last bot events — surfaced via /telegram/status
 // so link failures are diagnosable without Render log access.
+/// Where the self-post scanner stopped.
+///
+/// Telegram never echoes a bot's own outgoing group message back through the
+/// webhook, so a course posted as @syncourse_bot is invisible to the watcher.
+/// The scanner walks message ids forward, borrowing each one through
+/// `forwardMessage` to a scratch chat, and remembers the last id it reached.
+/// `scanUntil` also mutes the scratch chat while a scan is in flight, so the
+/// borrowed copy is not mistaken for a user upload.
+model TelegramScanState {
+  chatId        BigInt    @id
+  lastMessageId BigInt    @default(0)
+  /// Forum topic the bot posts in, learned from real webhook traffic.
+  topicId       BigInt?
+  scratchChatId BigInt?
+  scanUntil     DateTime?
+  updatedAt     DateTime  @updatedAt
+}
+
 model TelegramActivity {
   id     String   @id @default(cuid())
   at     DateTime @default(now())

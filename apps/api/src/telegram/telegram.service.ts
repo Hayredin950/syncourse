@@ -89,6 +89,30 @@ interface TelegramMessage {
   description?: string;
 }
 
+/** The fields a `forwardMessage` copy carries back about its original. */
+interface TelegramForwardFields {
+  message_id: number;
+  date: number;
+  text?: string;
+  caption?: string;
+  media_group_id?: string;
+  document?: { file_id: string; file_name?: string; file_size?: number; mime_type?: string };
+  video?: { file_id: string; file_name?: string; file_size?: number };
+  audio?: { file_id: string; file_name?: string; file_size?: number };
+  photo?: { file_id: string }[];
+  forward_origin?: {
+    type: 'user' | 'chat' | 'channel' | 'hidden_user';
+    /** Unix seconds of the original post. */
+    date?: number;
+    sender_user?: { id: number; is_bot?: boolean; username?: string };
+    sender_chat?: { id: number };
+    chat?: { id: number };
+  };
+  forward_from?: { id: number; is_bot?: boolean; username?: string };
+  /** Unix seconds, older Bot API shape. */
+  forward_date?: number;
+}
+
 /** Inline keyboard button — either a callback button or a URL button. */
 interface KbButton {
   text: string;
@@ -225,6 +249,8 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
   private lastUpdateAt: Date | null = null;
   private pollErrors = 0;
   private lastError: { at: string; message: string; stack?: string } | null = null;
+  /** `getMe` is stable for the life of a deploy; cache it for the scanner. */
+  private cachedBotId: number | null = null;
   /** Per-user cache of the most recent file the user forwarded/sent to the bot —
    *  keyed by Telegram user id so `/link` works from any chat (DM, group, topic). */
   private lastFileByUser = new Map<
@@ -612,6 +638,11 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     if (!msg) return;
     const chatId = msg.chat.id;
     const threadId = msg.message_thread_id ?? null;
+    // Remember which forum topic content actually lands in, so a recovered bot
+    // post is filed beside its neighbours instead of the General topic.
+    if ((msg.chat.type === 'group' || msg.chat.type === 'supergroup') && threadId) {
+      void this.rememberScanTopic(chatId, threadId);
+    }
 
     // Cache the most recent file per USER so `/link <slug>` works as a plain
     // message right after forwarding a ZIP anywhere (no reply gesture needed).
@@ -2881,6 +2912,344 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
         this.draftKeyboard(result.draftId, 'pending'),
       );
     }
+  }
+
+  // ---------------------------------------------------------------
+  // Self-post scanner
+  // ---------------------------------------------------------------
+
+  /**
+   * Read the group's own bot posts and feed them to the watcher.
+   *
+   * Telegram does not deliver a bot the messages that bot posts. A course
+   * published as @syncourse_bot therefore never reaches the webhook, and the
+   * only Bot API way to read such a message afterwards is `forwardMessage`:
+   * borrow it into a scratch chat, read the copy, delete it. That is what this
+   * does, so the operator can post straight into the group instead of
+   * forwarding everything to the bot by hand.
+   *
+   * The cursor advances only over messages that actually exist. A run stops
+   * after a few consecutive "not found" answers and leaves the cursor at the
+   * last real message, so a run never skips past a post that has not been
+   * written yet. Messages from humans are left alone — the webhook already
+   * saw them; only the bot's own copies are ingested here.
+   */
+  async scanOwnPosts(opts?: {
+    from?: number;
+    max?: number;
+    topicId?: number | null;
+    force?: boolean;
+  }): Promise<{
+    ok: boolean;
+    status: string;
+    chatId?: string;
+    from?: number;
+    cursor?: number;
+    scanned?: number;
+    ingested?: number;
+    published?: number;
+    skipped?: number;
+    detail?: string;
+    messages?: { id: number; action: string; title?: string }[];
+  }> {
+    if (!this.enabled) return { ok: false, status: 'disabled' };
+    const chat = await this.scanChat();
+    if (!chat) return { ok: false, status: 'no-chat', detail: 'no group known yet — post once or set TELEGRAM_SCAN_CHAT' };
+    const scratch = await this.scanScratchChat();
+    if (!scratch) return { ok: false, status: 'no-scratch', detail: 'no admin DM to borrow messages through' };
+    if (scratch === chat.id) return { ok: false, status: 'bad-scratch', detail: 'scratch chat cannot be the group itself' };
+    const botId = await this.botId();
+    if (!botId) return { ok: false, status: 'no-bot', detail: 'getMe failed' };
+
+    const now = new Date();
+    const state = await this.prisma.telegramScanState.upsert({
+      where: { chatId: BigInt(chat.id) },
+      create: {
+        chatId: BigInt(chat.id),
+        lastMessageId: BigInt(Math.max(0, Math.floor(opts?.from ?? 0))),
+        scratchChatId: BigInt(scratch),
+      },
+      update: { scratchChatId: BigInt(scratch) },
+    });
+    if (!opts?.force && state.scanUntil && state.scanUntil > now) {
+      return { ok: true, status: 'busy', chatId: String(chat.id) };
+    }
+
+    const base = opts?.from ?? Number(state.lastMessageId);
+    const limit = Math.min(Math.max(opts?.max ?? 25, 1), 100);
+    const topicId =
+      opts?.topicId ??
+      (state.topicId === null ? null : Number(state.topicId)) ??
+      (process.env.TELEGRAM_SCAN_TOPIC ? Number(process.env.TELEGRAM_SCAN_TOPIC) : null);
+
+    // Mute the scratch DM while the borrowed copies exist. The webhook sees
+    // them as ordinary forwarded files and would otherwise cache them as if a
+    // human had sent them.
+    await this.prisma.telegramScanState
+      .update({
+        where: { chatId: BigInt(chat.id) },
+        data: { scanUntil: new Date(Date.now() + 3 * 60 * 1000) },
+      })
+      .catch(() => undefined);
+
+    let cursor = base;
+    let misses = 0;
+    let scanned = 0;
+    let ingested = 0;
+    let published = 0;
+    const messages: { id: number; action: string; title?: string }[] = [];
+    let detail: string | undefined;
+
+    try {
+      for (let step = 0; step < limit; step++) {
+        const id = base + step + 1;
+        const copy = await this.borrowMessage(scratch, chat.id, id);
+        scanned++;
+        if (!copy.ok) {
+          const near = /not found|MESSAGE_ID_INVALID|can't be forwarded|cannot be forwarded|could not/i.test(
+            copy.description ?? '',
+          );
+          if (near) {
+            misses++;
+            // Deleted posts leave gaps in the id sequence, so a miss is not the
+            // end of the group. Keep walking; only a long empty stretch means
+            // we have caught up with the newest message.
+            if (misses >= 20) break;
+            continue;
+          }
+          detail = copy.description;
+          break;
+        }
+
+        misses = 0;
+        const m = copy.message;
+        // Always clean up before doing any work, so a slow draft cannot leave
+        // the borrowed copy visible in the operator's DM.
+        await this.deleteMessage(scratch, m.message_id);
+
+        const origin = this.forwardOrigin(m);
+        const mine = Boolean(origin && origin.userId === botId);
+        const media = Boolean(m.document ?? m.video ?? m.audio ?? (m.photo && m.photo.length > 0));
+        // Only the bot's own messages need this path, and only media posts are
+        // content. Bot chatter (replies, receipts, stats) is not a course.
+        if (!mine || !media) {
+          cursor = id;
+          const card = this.isWatcherText(m.caption ?? m.text ?? null);
+          messages.push({ id, action: mine ? (card ? 'card' : 'no-media') : 'not-mine' });
+          continue;
+        }
+
+        await this.observeGroupMessage({
+          message_id: id,
+          chat: {
+            id: chat.id,
+            type: 'supergroup',
+            username: chat.username ?? undefined,
+            title: chat.title ?? undefined,
+          },
+          message_thread_id: topicId ?? undefined,
+          from: {
+            id: botId,
+            is_bot: true,
+            username: BOT_USERNAME,
+            first_name: 'Syncourse',
+          },
+          text: m.text,
+          caption: m.caption,
+          date: origin?.date ?? m.date,
+          document: m.document,
+          video: m.video,
+          audio: m.audio,
+          photo: m.photo,
+          media_group_id: m.media_group_id,
+        });
+
+        const title = (m.caption ?? m.text ?? '').replace(/\s+/g, ' ').trim().slice(0, 80);
+        messages.push({ id, action: 'ingested', title });
+        ingested++;
+        cursor = id;
+      }
+    } finally {
+      await this.prisma.telegramScanState
+        .update({
+          where: { chatId: BigInt(chat.id) },
+          data: {
+            lastMessageId: BigInt(Math.max(base, cursor)),
+            scanUntil: null,
+            ...(topicId ? { topicId: BigInt(topicId) } : {}),
+          },
+        })
+        .catch(() => undefined);
+    }
+
+    return {
+      ok: true,
+      status: detail ? 'stopped' : 'ok',
+      chatId: String(chat.id),
+      from: base,
+      cursor: Math.max(base, cursor),
+      scanned,
+      ingested,
+      published,
+      skipped: scanned - ingested,
+      detail,
+      messages,
+    };
+  }
+
+  /** Borrow one group message into the scratch chat, or report why not. */
+  private async borrowMessage(
+    scratch: number,
+    chatId: number,
+    messageId: number,
+  ): Promise<
+    | { ok: true; message: NonNullable<TelegramMessage['result']> & TelegramForwardFields }
+    | { ok: false; description: string }
+  > {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        const res = await this.api('forwardMessage', {
+          chat_id: scratch,
+          from_chat_id: chatId,
+          message_id: messageId,
+          disable_notification: true,
+        });
+        const json = (await res.json()) as TelegramMessage & { result?: TelegramForwardFields };
+        if (json.ok && json.result) return { ok: true, message: json.result };
+        const description = json.description ?? 'forward failed';
+        const wait = /retry after (\d+)/i.exec(description);
+        if (wait && attempt === 0) {
+          await sleep(Math.min(Number(wait[1]) || 1, 5) * 1000);
+          continue;
+        }
+        return { ok: false, description };
+      } catch (err) {
+        if (attempt === 0) {
+          await sleep(1000);
+          continue;
+        }
+        return { ok: false, description: (err as Error).message };
+      }
+    }
+    return { ok: false, description: 'retry exhausted' };
+  }
+
+  /** Who wrote the original message a forward points back to. */
+  private forwardOrigin(m: TelegramForwardFields): { userId: number | null; date: number | null } | null {
+    const origin = m.forward_origin;
+    if (origin) {
+      const date = typeof origin.date === 'number' ? origin.date : null;
+      if (origin.type === 'user') return { userId: origin.sender_user?.id ?? null, date };
+      if (origin.type === 'chat') return { userId: origin.sender_chat?.id ?? null, date };
+      if (origin.type === 'channel') return { userId: origin.chat?.id ?? null, date };
+      return { userId: null, date };
+    }
+    if (m.forward_from) {
+      return {
+        userId: m.forward_from.id,
+        date: typeof m.forward_date === 'number' ? m.forward_date : null,
+      };
+    }
+    return null;
+  }
+
+  private isWatcherText(text: string | null): boolean {
+    return /\b(?:course|resource)\s+published\b|\bnew\s+(?:course|resource)\s+draft\b|approve[\s\S]{0,120}discard/i.test(
+      text ?? '',
+    );
+  }
+
+  private async botId(): Promise<number | null> {
+    if (this.cachedBotId) return this.cachedBotId;
+    try {
+      const res = await this.api('getMe');
+      const json = (await res.json()) as { ok: boolean; result?: { id: number } };
+      if (json.ok && json.result) this.cachedBotId = json.result.id;
+    } catch {
+      /* no network */
+    }
+    return this.cachedBotId;
+  }
+
+  /** The group the watcher watches: an explicit setting, else the newest draft. */
+  private async scanChat(): Promise<{ id: number; username: string | null; title: string | null } | null> {
+    const configured = (process.env.TELEGRAM_SCAN_CHAT ?? '').trim();
+    if (configured) {
+      const ref = /^-?\d+$/.test(configured) ? Number(configured) : configured;
+      const chat = await this.getChatRef(ref);
+      if (chat) return chat;
+    }
+    const row = await this.prisma.ingestDraft
+      .findFirst({
+        where: { chatId: { lt: 0 } },
+        orderBy: { createdAt: 'desc' },
+        select: { chatId: true, chatUsername: true },
+      })
+      .catch(() => null);
+    if (row) {
+      const chat = await this.getChatRef(Number(row.chatId));
+      if (chat) return chat;
+      return { id: Number(row.chatId), username: row.chatUsername ?? null, title: null };
+    }
+    return null;
+  }
+
+  private async getChatRef(ref: number | string) {
+    try {
+      const res = await this.api('getChat', { chat_id: ref });
+      const json = (await res.json()) as {
+        ok: boolean;
+        result?: { id: number; username?: string; title?: string; type?: string };
+      };
+      if (!json.ok || !json.result) return null;
+      return {
+        id: json.result.id,
+        username: json.result.username ?? null,
+        title: json.result.title ?? null,
+        type: json.result.type ?? null,
+      };
+    } catch {
+      return null;
+    }
+  }
+
+  /** A DM the bot can post to: an explicit setting, else a staff account the bot
+   *  can actually reach. `User.telegramId` alone is not enough — a staff row may
+   *  hold an id from a different bot, and forwarding to it silently fails. */
+  private async scanScratchChat(): Promise<number | null> {
+    const configured = (process.env.TELEGRAM_SCAN_SCRATCH_CHAT ?? '').trim();
+    if (/^-?\d+$/.test(configured)) return Number(configured);
+
+    const admins = (process.env.TELEGRAM_ADMIN_IDS ?? '')
+      .split(',')
+      .map((s) => s.trim())
+      .filter((s) => /^\d+$/.test(s))
+      .map(Number);
+    const staff = await this.prisma.user
+      .findMany({
+        where: { isStaff: true, telegramId: { not: null } },
+        orderBy: { createdAt: 'desc' },
+        take: 8,
+        select: { telegramId: true },
+      })
+      .catch(() => []);
+    const candidates = [
+      ...admins,
+      ...staff.map((u) => (u.telegramId ? Number(u.telegramId) : 0)).filter(Boolean),
+    ];
+    for (const id of [...new Set(candidates)]) {
+      const chat = await this.getChatRef(id);
+      if (chat && (chat as { type?: string }).type === 'private') return id;
+    }
+    return candidates[0] ?? null;
+  }
+
+  /** Keep the scanner's topic in step with real traffic. Never creates a row:
+   *  a row with no cursor would make the first scan walk from message 1. */
+  private async rememberScanTopic(chatId: number, threadId: number): Promise<void> {
+    await this.prisma.telegramScanState
+      .updateMany({ where: { chatId: BigInt(chatId) }, data: { topicId: BigInt(threadId) } })
+      .catch(() => undefined);
   }
 
   /** What the review card becomes once the draft published itself. */
