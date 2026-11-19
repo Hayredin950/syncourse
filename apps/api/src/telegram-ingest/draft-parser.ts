@@ -27,6 +27,8 @@ export interface DraftFile {
   moduleTitle: string | null;
   partIndex: number;
   addedAt: string;
+  /** Telegram's album id, so an out-of-order album can still form one post. */
+  mediaGroupId?: string | null;
 }
 
 export interface DraftAnnouncement {
@@ -44,8 +46,12 @@ export interface DraftAnnouncement {
   postedAt: string | null;
 }
 
-/** A photo posted with the course: cover, the lecturer's face, or a logo. */
-export type DraftImageRole = 'cover' | 'lecturer' | 'organization';
+/**
+ * A photo posted with the course: the cover, the lecturer's face, a logo, or
+ * one frame of a gallery (albums and image-only resource posts). Galleries are
+ * kept whole so a photo post does not lose every picture after the first.
+ */
+export type DraftImageRole = 'cover' | 'lecturer' | 'organization' | 'gallery';
 
 export interface DraftImage {
   role: DraftImageRole;
@@ -54,6 +60,8 @@ export interface DraftImage {
   caption: string | null;
   /** For `lecturer` / `organization` captions that named the person or org. */
   name?: string | null;
+  /** Telegram's album id; lets an out-of-order album rebuild one post. */
+  mediaGroupId?: string | null;
 }
 
 /**
@@ -147,6 +155,11 @@ export function announcementSignals(text: string, parsed: ParsedCourse): string[
   if (/download (full |the )?courses?/i.test(text)) signals.push('download-line');
   if (parsed.sourceUrl) signals.push('source-link');
   if (parsed.description.length >= 60) signals.push('description');
+  // The `🔅` template writes a level and a topic list instead of a price and
+  // lesson count. They are just as strong a sign that this is a real course.
+  if (/(?:🔰\s*)?Level\s*:/i.test(text)) signals.push('level');
+  if (/📋\s*Topics?\s*:/i.test(text)) signals.push('topics');
+  if (/🔗\s*Join\b.*\bfor more courses\b/i.test(text)) signals.push('join-line');
   return signals;
 }
 
@@ -159,13 +172,16 @@ export function confidenceFrom(signals: string[], parsed: ParsedCourse): number 
   const weights: Record<string, number> = {
     'taught-by': 0.2,
     price: 0.15,
-    hours: 0.1,
+    hours: 0.15,
     'lesson-count': 0.1,
     rating: 0.05,
     hashtags: 0.1,
     'download-line': 0.2,
     'source-link': 0.05,
-    description: 0.05,
+    description: 0.1,
+    level: 0.1,
+    topics: 0.1,
+    'join-line': 0.05,
   };
   let score = 0.2;
   for (const s of signals) score += weights[s] ?? 0;

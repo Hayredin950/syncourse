@@ -50,6 +50,8 @@ export interface TelegramUpdate {
     from?: { id: number; username?: string; first_name?: string; is_bot?: boolean };
     text?: string;
     caption?: string;
+    /** Telegram album id; every frame of one album carries the same value. */
+    media_group_id?: string;
     forum_topic_created?: { name?: string };
     date: number;
     document?: { file_id: string; file_name?: string; file_size?: number; mime_type?: string };
@@ -2828,6 +2830,8 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
               caption: msg.caption ?? null,
             }
           : null,
+        // An album is several messages; the id is what lets them become one post.
+        mediaGroupId: msg.media_group_id ?? null,
       });
     } catch (err) {
       // A watcher failure must never break the bot's normal commands.
@@ -2882,16 +2886,24 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     const a = payload.announcement;
     const f = payload.fields ?? {};
     const files = payload.files ?? [];
+    const images = payload.images ?? [];
     const who = (f.lecturerNames ?? a.lecturerNames ?? []).join(', ');
     const isResource = (payload.kind ?? 'course') === 'resource';
     const totalMb = files.reduce((n, file) => n + (file.fileSizeMb ?? 0), 0);
+    const photoPart =
+      isResource && images.length > 0
+        ? `🖼️ ${images.length} photo${images.length === 1 ? '' : 's'}${files.length ? ' · ' : ''}`
+        : '';
     return (
       `${DIV}\n✅ <b>${isResource ? 'RESOURCE PUBLISHED' : 'COURSE PUBLISHED'}</b> <i>· automatically</i>\n${DIV}\n\n` +
       `<b>${esc(f.title ?? a.title)}</b>\n` +
       (who ? `👤 ${esc(who)}\n` : '') +
-      `📎 ${files.length} file${files.length === 1 ? '' : 's'}` +
-      (totalMb > 0
-        ? ` · ${totalMb >= 1024 ? `${(totalMb / 1024).toFixed(1)} GB` : `${Math.round(totalMb)} MB`}`
+      photoPart +
+      (files.length > 0
+        ? `📎 ${files.length} file${files.length === 1 ? '' : 's'}` +
+          (totalMb > 0
+            ? ` · ${totalMb >= 1024 ? `${(totalMb / 1024).toFixed(1)} GB` : `${Math.round(totalMb)} MB`}`
+            : '')
         : '') +
       `\n` +
       (slug
@@ -2899,7 +2911,7 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
         : '') +
       `\n<i>Title, ${isResource ? 'body' : 'lecturer, description'} ${files.length ? 'and files were' : 'were'} all present, so it skipped the queue.</i>\n` +
       (isResource
-        ? `Files posted in this topic keep joining it for 12 hours.`
+        ? `Files and photos posted in this topic keep joining it for 12 hours.`
         : `ZIPs posted in this topic keep joining it for 12 hours.`) +
       `\n<code>${payload.announcement.slug}</code>`
     );
@@ -2911,18 +2923,25 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     const files = payload.files ?? [];
     const images = payload.images ?? [];
     const f = payload.fields ?? {};
+    const isResource = (payload.kind ?? 'course') === 'resource';
     const totalMb = files.reduce((n, f) => n + (f.fileSizeMb ?? 0), 0);
-    const hours = a.durationMin ? `⏱ ${Math.round(a.durationMin / 60)}h` : null;
+    const hours = a.durationMin
+      ? a.durationMin >= 60
+        ? `⏱ ${Math.floor(a.durationMin / 60)}h${a.durationMin % 60 ? ` ${a.durationMin % 60}m` : ''}`
+        : `⏱ ${a.durationMin}m`
+      : null;
     const lessons = a.lessonCount ? `📦 ${a.lessonCount}` : null;
-    const price = a.originalPrice !== null ? `💰 $${a.originalPrice}` : '💰 Free';
-    const meta = [hours, lessons, price].filter(Boolean).join(' · ');
+    const price = a.originalPrice !== null ? `💰 $${a.originalPrice}` : null;
+    const kind = isResource ? `📄 ${f.resourceType ?? 'note'}` : null;
+    const meta = [kind, hours, lessons, price].filter(Boolean).join(' · ');
     const tags = (f.tags ?? a.hashtags ?? []).slice(0, 6).map((t) => `#${t}`).join(' ');
     const who = (f.lecturerNames ?? a.lecturerNames ?? []).join(', ');
     const exists = payload.signals.includes('course-exists');
-    const isResource = (payload.kind ?? 'course') === 'resource';
+    const galleryCount = images.filter((i) => i.role === 'gallery').length;
 
     const imageBadges = [
       images.some((i) => i.role === 'cover') ? '🖼️ cover' : null,
+      galleryCount > 0 ? `🖼️ ${galleryCount} photo${galleryCount === 1 ? '' : 's'}` : null,
       images.some((i) => i.role === 'lecturer') ? '👤 lecturer photo' : null,
       images.some((i) => i.role === 'organization') ? '🏛️ logo' : null,
     ].filter(Boolean);
@@ -2941,12 +2960,15 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
       (meta ? `${meta}\n` : '') +
       (tags ? `${esc(tags)}\n` : '') +
       (imageBadges.length ? `${imageBadges.join(' · ')}\n` : '') +
-      `\n📎 <b>${files.length}</b> file${files.length === 1 ? '' : 's'}` +
-      (totalMb > 0 ? ` · ${totalMb >= 1024 ? `${(totalMb / 1024).toFixed(1)} GB` : `${Math.round(totalMb)} MB`}` : '') +
+      (isResource
+        ? `\n🖼️ <b>${images.length}</b> photo${images.length === 1 ? '' : 's'} · 📎 <b>${files.length}</b> file${files.length === 1 ? '' : 's'}` +
+          (totalMb > 0 ? ` · ${totalMb >= 1024 ? `${(totalMb / 1024).toFixed(1)} GB` : `${Math.round(totalMb)} MB`}` : '')
+        : `\n📎 <b>${files.length}</b> file${files.length === 1 ? '' : 's'}` +
+          (totalMb > 0 ? ` · ${totalMb >= 1024 ? `${(totalMb / 1024).toFixed(1)} GB` : `${Math.round(totalMb)} MB`}` : '')) +
       `\n🎯 confidence <b>${Math.round(payload.confidence * 100)}%</b> <i>(${esc(payload.signals.filter((s) => s !== 'auto-published-notice').join(', ') || 'none')})</i>\n` +
       (exists ? `\n⚠️ A course with this title already exists — publishing adds the new files to it.\n` : '') +
       blockReason +
-      `\n\n${DIV}\n${isResource ? 'Files posted here become its attachments.' : 'ZIPs posted in this topic are attached automatically.'}\n` +
+      `\n\n${DIV}\n${isResource ? 'Files and photos posted here become its attachments.' : 'ZIPs posted in this topic are attached automatically.'}\n` +
       `Nothing is published until the fields are complete.\n` +
       `<code>${draftId.slice(0, 8)}</code>`
     );

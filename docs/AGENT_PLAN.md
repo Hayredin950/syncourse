@@ -114,12 +114,13 @@ A course the watcher believes it found, before it touches the catalog.
 failed`. Approval calls the existing importer/admin service.
 
 The payload is versioned by convention (`payload.version = 1`) and gained
-`kind` (`course | resource`), `images[]` (`cover | lecturer | organization`,
-with Telegram `file_id`s), `fields` (explicit operator overrides such as
-`org`, `level`, `price`), and `autoPublished`. An auto-published draft stays
-`approved` and keeps accepting files for 12 hours; `approvedCourseId` holds the
-course id, while a resource stores its slug in `payload.approvedCourseSlug`
-only. This needed **no schema change** — additive JSON, no `prisma db push`.
+`kind` (`course | resource`), `images[]` (`cover | lecturer | organization |
+gallery`, with Telegram `file_id`s and the album's `mediaGroupId`), `files[]`,
+`fields` (explicit operator overrides such as `org`, `level`, `price`), and
+`autoPublished`. An auto-published draft stays `approved` and keeps accepting
+files for 12 hours; `approvedCourseId` holds the course id, while a resource
+stores its slug in `payload.approvedCourseSlug` only. This needed **no schema
+change** — additive JSON, no `prisma db push`.
 
 ### `SearchClick`
 
@@ -218,6 +219,33 @@ Notes:
 - [x] Watcher in the API (`draft.service.ts`): a course announcement in a group
       topic creates an `IngestDraft`; ZIPs posted after it in that topic attach
       to the same draft for 12 hours.
+- [x] Every real post type opens its own draft, so later files can never be
+      stolen by a newer pending post:
+      - `🔰` / `🔅` templates → a course or mini-course;
+      - a long text post → a `note` resource;
+      - a post saying roadmap / learning path → a `roadmap`;
+      - a titled picture, album, video or audio → a resource with its media;
+      - a captioned book/PDF/epub → a resource, even with no body;
+      - an uncaptioned picture → a placeholder draft flagged `needs-title`,
+        completed later by the album's captioned frame.
+      Albums are joined by Telegram's `media_group_id`, including frames that
+      arrive out of order, and mixed photo + video/audio albums stay one post.
+      A title + picture post that later receives module ZIPs is upgraded from a
+      resource to a course (`simple-course`).
+- [x] Promo removal: `📤 Download Full Course`, `📤 Download All Courses`,
+      `🔗 Join … for more courses`, `📱Category` headers and divider rules are
+      stripped before the description is read. Both templates keep their real
+      body: `📖` on the `🔰` template, `📝` on the `🔅` template.
+- [x] Metadata: `⭐`/`🌟` rating, votes, `💰`/`💳` price, `📖`/`📝`
+      description, `🔊 Taught By` / `🌐 Author`, `🔰 Level`, `⏰ Duration`
+      (`1h 14m` and `41m`), `📋 Topics`, hashtags, and an external source link
+      (O'Reilly, GitHub, a paper) instead of a Telegram invite.
+- [x] Mini-course rules: an explicit `type:` wins; a duration ≤ 90 minutes or
+      ≤ 12 lessons is a mini-course; a title carrying *mini-course / crash
+      course / quick course* is one; 1–3 module ZIPs are one. A title that
+      calls itself a course / bootcamp / masterclass and durations over 90
+      minutes stay a full course. A row that published on its first ZIP is
+      re-typed to `course` when a fourth part arrives.
 - [x] Topic → category mapping: `TELEGRAM_TOPIC_CATEGORIES` override, then
       hashtags, then keyword rules over title/description/filenames. Uses the
       catalogue's real slugs (`ai-machine-learning`, not the importer's old
@@ -235,16 +263,23 @@ Notes:
       photo and bio, organisation (+ logo), level, price, type and tags come
       from the post when present. Fields can still be edited afterwards in the
       normal course editor.
-- [x] Resources: a post starting with `resource: Title`, or carrying
-      `resource: roadmap`, becomes a `Resource` + `ResourceMedia` instead of a
-      course. Approval reuses the same card and the same tap-to-fix fields.
+- [x] Resources: anything that is not a course template becomes a
+      `Resource` + `ResourceMedia`. That covers text-only, image-only,
+      text + image, many images, many images + text, photo + video + text,
+      video + text, audio, audio + image/text, book files, and arbitrary
+      mixes. Every photo becomes a media row in album order, the first picture
+      is the cover, and video/audio/epub rows keep their Telegram `file_id`.
+      An explicit `resource: Title` / `resource: roadmap` marker is still
+      honoured. Approval reuses the same card and tap-to-fix fields.
 - [x] Auto-publish when the post is complete: title, lecturer, description of
       at least 80 characters, at least one file, confidence ≥ 0.7, and no
-      existing course with the same slug. A resource needs a body of 60
-      characters or an attachment. The draft row is kept for audit; the review
-      card turns into the receipt. `TELEGRAM_AUTOPUBLISH=false` is the kill
-      switch. Files keep joining an auto-published course for 12 hours, and a
-      later approval appends only the new parts.
+      existing course with the same slug. A simple course (titled picture +
+      ZIPs) only needs its title and files, and a resource needs a body of 60
+      characters **or** at least one picture/file. The draft row is kept for
+      audit; the review card turns into the receipt.
+      `TELEGRAM_AUTOPUBLISH=false` is the kill switch. Files and photos keep
+      joining an auto-published draft for 12 hours, and a later approval
+      appends only what is new.
 - [x] Discarding keeps the row (`status = discarded`), so the same post is
       never proposed twice.
 
@@ -261,21 +296,27 @@ Notes:
 | a photo captioned `lecturer` / `lecturer: Name` | lecturer photo (+ name if new) |
 | a photo captioned `org: Udemy` | organisation logo |
 | `resource: Figma shortcuts` + body/files | a Resource, not a Course |
+| a long text post | a note resource with its whole body |
+| a titled photo / album / video / audio | a resource with its media |
+| a book caption + epub/PDF | a resource with cover and file |
 | the ZIPs | course parts, grouped into modules by filename |
 
 Every `field: value` line is removed from the prose before the announcement
 parser runs, so it never leaks into the description. `#description` on its own
 line takes the following paragraph; a known key on any line ends it.
 
-**Acceptance met** by `npm run test:drafts -w apps/api` — 54 checks covering
+**Acceptance met** by `npm run test:drafts -w apps/api` — 125 checks covering
 detection, redelivery, file attach, module/part numbering, duplicate files,
 approval, second approval, discard, explicit field overrides, auto-publish,
-late-file append, resource creation and resource media. The pure suites add
-`test:draft-fields` (32) and `test:draft-parser` (30 assertions).
+late-file append, promo cleaning, both real templates, price/rating/duration,
+mini-course rules, 20-part courses, picture → course upgrades, books, notes,
+four-photo albums, mixed photo/video albums, cover + audiobook + epub, and
+placeholder photo posts. The pure suites add `test:draft-fields` (79) and
+`test:draft-parser` (30 assertions).
 
-What the watcher is *not*: it does not read inside ZIPs, cannot tell a course
-from a podcast by itself (use `resource:`), and will not repair a post whose
-template is unrecognisable — that is what the tap-to-fix card is for.
+What the watcher is *not*: it does not read inside ZIPs and cannot read text
+burned into a picture. An unreadable template becomes a draft; the tap-to-fix
+card is there for the rest.
 
 Draft flow:
 

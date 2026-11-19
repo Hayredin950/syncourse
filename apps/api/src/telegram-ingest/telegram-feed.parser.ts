@@ -233,13 +233,18 @@ export function parsePastedText(text: string): FeedMessage[] {
 // 3) course-announcement detection
 // ----------------------------------------------------------------
 
-const TITLE_EMOJI_RE = /^(?:🔰|🔅|📕|⭐️|🌟|🧿|🔆|💡|🌐|📚|💎)/;
-const HOURS_RE = /(?:⏱️?|⏱|⏲|⏰|⏳)\s*(\d+(?:\.\d+)?)\s*(?:hrs?|hours?|h)\b/i;
+const TITLE_EMOJI_RE = /^(?:🔰|🔅|📕|⭐️|🌟|🧿|🔆|💡|🌐|📚|💎|🤝|🔥|📢)/;
+const HOURS_RE =
+  /(?:⏱️?|⏱|⏲|⏰|⏳|Duration\s*:)\s*(\d+(?:\.\d+)?)\s*(?:hrs?|hours?|h)\b(?:\s*(\d+)\s*m(?:in(?:ute)?s?)?\b)?/i;
+const MINUTES_RE = /(?:⏱️?|⏱|⏲|⏰|⏳|Duration\s*:)\s*(\d+)\s*m(?:in(?:ute)?s?)?\b/i;
 const HOURS_PLAIN_RE = /\b(\d+(?:\.\d+)?)\s*(?:Hours|hrs)\b/i;
 const LESSONS_RE = /📦\s*(\d[\d,]*)/i;
 const LESSONS_PLAIN_RE = /\b(\d[\d,]*)\s*(?:Lessons|lessons)\b/i;
-const TAUGHT_BY_RE = /(?:Taught By|Taught by|Author|Instructor)\s*:?\s*([^\n]+)/i;
-const RATING_RE = /🌟\s*([\d.]+)\s*-\s*([\d,]+)\s*votes/i;
+// Anchored at a line start: prose often says "by the author", and a course
+// post puts the credit on its own line (`🔊 Taught By: …`, `🌐 Author: …`).
+const TAUGHT_BY_RE =
+  /^\s*(?:(?:🎙|🔊|🌐|👨‍🏫)\s*)?(?:Taught By|Author|Instructor)\s*:?\s*([^\n]+)/im;
+const RATING_RE = /(?:🌟|⭐)️?\s*([\d.]+)\s*-\s*([\d,]+)\s*votes/i;
 const PRICE_RE = /(?:Original Price|Price)\s*:?\s*\$?\s*([\d.]+)/i;
 
 export function looksLikeCoursePost(msg: FeedMessage): ParsedCourse | null {
@@ -248,7 +253,7 @@ export function looksLikeCoursePost(msg: FeedMessage): ParsedCourse | null {
 
   const hasDownload = /\bDownload (Full |The )?Courses?/i.test(text);
   const hasTaught = TAUGHT_BY_RE.test(text);
-  const hasHours = HOURS_RE.test(text) || HOURS_PLAIN_RE.test(text);
+  const hasHours = HOURS_RE.test(text) || MINUTES_RE.test(text) || HOURS_PLAIN_RE.test(text);
   const hasLessons = LESSONS_RE.test(text) || LESSONS_PLAIN_RE.test(text);
   const hasPrice = PRICE_RE.test(text) || /\$\s?\d/.test(text);
 
@@ -257,7 +262,7 @@ export function looksLikeCoursePost(msg: FeedMessage): ParsedCourse | null {
 
   const lines = text.split('\n');
   let titleLine = lines.find((l) => l.length > 4 && TITLE_EMOJI_RE.test(l));
-  if (!titleLine) titleLine = lines.find((l) => l.length > 6 && !/^(Download|Taught|🌟|💰|⏱|⏲|⏰|📦|#)/.test(l));
+  if (!titleLine) titleLine = lines.find((l) => l.length > 6 && !/^(Download|Taught|🌟|💰|⏱|⏲|⏰|📦|📖|📝|🔊|🔗|📋|#)/.test(l));
   let title = (titleLine ?? lines[0] ?? 'Untitled course')
     .replace(TITLE_EMOJI_RE, '')
     .replace(/^[^A-Za-z0-9]+/, '')
@@ -268,14 +273,20 @@ export function looksLikeCoursePost(msg: FeedMessage): ParsedCourse | null {
 
   const taughtBy = (text.match(TAUGHT_BY_RE)?.[1] ?? '')
     .split(/&|,|\//)
-    .map((n) => n.replace(/[🎙👩‍🚀👨‍🚀]+/g, '').trim())
+    .map((n) => n.replace(/(?:🎙|👩‍🚀|👨‍🚀)+/g, '').trim())
     .filter(Boolean)
     .slice(0, 4);
 
   const hoursM = text.match(HOURS_RE) ?? text.match(HOURS_PLAIN_RE);
+  const minutesM = text.match(MINUTES_RE);
   const lessonsM = text.match(LESSONS_RE) ?? text.match(LESSONS_PLAIN_RE);
   const ratingM = text.match(RATING_RE);
   const priceM = text.match(PRICE_RE);
+  const durationMin = hoursM
+    ? Math.round(Number(hoursM[1]) * 60 + (hoursM[2] ? Number(hoursM[2]) : 0))
+    : minutesM
+      ? Number(minutesM[1])
+      : null;
 
 
 
@@ -300,7 +311,7 @@ export function looksLikeCoursePost(msg: FeedMessage): ParsedCourse | null {
     title,
     slug: slugify(title),
     description,
-    durationMin: hoursM ? Math.round(Number(hoursM[1]) * 60) : null,
+    durationMin,
     lessonCount: lessonsM ? Number(lessonsM[1].replace(/,/g, '')) : null,
     taughtBy,
     ratingAvg: ratingM ? Number(ratingM[1]) : null,

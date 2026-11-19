@@ -199,22 +199,32 @@ function appendValue(previous: string | undefined, next: string): string {
 }
 
 /**
- * Which photo is this? Caption wins; the first uncaptioned photo becomes the
- * cover because that is where people naturally put it.
+ * Which photo is this? An explicit caption wins. A photo whose caption is a
+ * whole announcement is the cover of that announcement — checking for role
+ * words first would tag it `lecturer` just because the body says "Taught By".
+ * After the cover, uncaptioned photos are gallery frames rather than noise.
  */
-export function mediaRole(caption: string | null, existing: DraftImage[]): DraftImageRole | null {
+export function mediaRole(
+  caption: string | null,
+  existing: DraftImage[],
+  opts: { announcement?: boolean } = {},
+): DraftImageRole | null {
   const text = (caption ?? '').trim().toLowerCase();
   const has = (role: DraftImageRole) => existing.some((i) => i.role === role);
 
-  if (/\b(cover|thumbnail|poster|banner)\b/.test(text)) return 'cover';
-  if (/\b(lecturer|instructor|teacher|author)\b/.test(text)) return 'lecturer';
-  if (/\b(org|organisation|organization|publisher|university|company|logo)\b/.test(text)) return 'organization';
+  if (opts.announcement) return has('cover') ? 'gallery' : 'cover';
+
+  if (/^\s*(cover|thumbnail|poster|banner)\s*$/i.test(text)) return 'cover';
+  if (/^\s*(lecturer|instructor|teacher)\s*(?:photo|image)?\s*$/i.test(text)) return 'lecturer';
+  if (/^\s*(org|organisation|organization|publisher|university|company|logo)\s*(?:logo|photo|image)?\s*$/i.test(text)) {
+    return 'organization';
+  }
 
   // `org: Udemy` and `lecturer: Stephen Grider` are both a role and a name.
   if (/^\s*(org|organisation|organization|publisher)\s*[:=]/.test(text)) return 'organization';
   if (/^\s*(lecturer|instructor|teacher)\s*[:=]/.test(text)) return 'lecturer';
 
-  if (!text && !has('cover')) return 'cover';
+  if (!text) return has('cover') ? 'gallery' : 'cover';
   return null;
 }
 
@@ -224,6 +234,277 @@ export function mediaName(caption: string | null): string | null {
   if (m) return m[1].trim().slice(0, 120) || null;
   const org = (caption ?? '').match(/\b(?:org|organisation|organization|publisher)\s*[:=]\s*(.+)$/i);
   return org ? org[1].trim().slice(0, 120) || null : null;
+}
+
+// ---------------------------------------------------------------------------
+// Reading a normal post
+// ---------------------------------------------------------------------------
+
+/**
+ * Lines that are distribution boilerplate, not the post. In this group every
+ * course ends with `📤 Download Full Course  📤 Download All Courses` and every
+ * syndicated post ends with `🔗 Join … for more courses`; both used to end up in
+ * the description and one even became the course title.
+ */
+function isNoiseLine(line: string): boolean {
+  const s = line.trim();
+  if (!s) return false;
+  if (/^\s*[📤📥]\s*.*\b(?:Download (?:Full|All|The)?\s*Courses?|Full Course|All Courses|for more courses)\b/i.test(s)) {
+    return true;
+  }
+  if (/\bDownload (?:Full|All|The)\s*Courses?\b/i.test(s)) return true;
+  if (/^\s*[📤📥]\s*Download\s*$/i.test(s)) return true;
+  if (/^\s*(?:(?:🔗|🌐|📤|📥)\s*)?(?:Join|Follow)\b.*\bfor more (?:courses|content|updates)\b/i.test(s)) {
+    return true;
+  }
+  // Forward headers such as `📱Artificial intelligence` above a ZIP name.
+  if (/^\s*📱\s*\S/.test(s)) return true;
+  // Divider rules (`━━━━━━━━`), not meaningful prose.
+  if (/^[━─—=_*~·•]{4,}$/u.test(s)) return true;
+  // A line of hashtags only is metadata, not the body.
+  if (/^(?:#[\w-]+\s*)+$/.test(s)) return true;
+  return false;
+}
+
+/** The post with distribution boilerplate removed; everything else untouched. */
+export function stripPromo(text: string): string {
+  return text
+    .split(/\r?\n/)
+    .filter((line) => !isNoiseLine(line))
+    .join('\n')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+/** `🔰 Title` / `📕 Book` / `**Title**` → `Title`, safe to store as a title. */
+export function cleanPostTitle(raw: string): string {
+  return raw
+    .replace(/^[\s>*_#•\-–—]+/u, '')
+    .replace(/^[^\p{L}\p{N}]+/u, '')
+    .replace(/[*_`]/g, '')
+    .replace(/\s+/g, ' ')
+    // A decorative emoji at the end (`… SHOULD KNOW 🧠`) is not the title.
+    .replace(/[\p{Extended_Pictographic}\uFE0F\u200D]+$/gu, '')
+    .replace(/[\s:;,–—-]+$/u, '')
+    .trim()
+    .slice(0, 200);
+}
+
+const DESCRIPTION_PREFIX = /^(?:📖|📝|📔|📄)\s*/;
+const META_LINE =
+  /^(?:🌟|⭐️?|💰|💳|⏱️?|⏱|⏲|⏰|⏳|📦|🎙|🔊|🔰|🔅|🌐\s*(?:Author|Website|Level|Duration)|📋\s*Topics?|#|Download\b|Taught By\b|Author\s*:|Instructor\s*:|Level\s*:|Duration\s*:)/i;
+
+/**
+ * The body a course should show. The new `🔅` template puts it on a `📝` line
+ * and the `🔰` template on a `📖` line; older posts just write a paragraph.
+ * The shared feed parser drops every `📖` line as metadata, so the watcher
+ * reads the description itself instead of publishing an empty page.
+ */
+export function describeAnnouncement(text: string, title?: string): string {
+  const lines = stripPromo(text)
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean);
+  const explicit = lines
+    .map((l) => (DESCRIPTION_PREFIX.test(l) ? l.replace(DESCRIPTION_PREFIX, '').trim() : null))
+    .filter((v): v is string => Boolean(v));
+  if (explicit.length > 0) return explicit.join('\n').slice(0, 1_200).trim();
+
+  const cleanTitle = title ? cleanPostTitle(title).toLowerCase() : '';
+  const prose = lines.filter((line) => {
+    if (META_LINE.test(line)) return false;
+    const bare = cleanPostTitle(line).toLowerCase();
+    if (!bare) return false;
+    if (cleanTitle && bare === cleanTitle) return false;
+    return true;
+  });
+  return prose.join('\n').slice(0, 1_200).trim();
+}
+
+/** First meaningful line of a normal post, minus its emoji. */
+export function titleFromPost(text: string): string {
+  const line = stripPromo(text)
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .find((l) => cleanPostTitle(l).length > 0);
+  return line ? cleanPostTitle(line) : '';
+}
+
+/** Everything after the title line, with boilerplate already removed. */
+export function bodyFromPost(text: string, title = titleFromPost(text)): string {
+  const lines = stripPromo(text)
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean);
+  const first = lines[0];
+  if (!first) return '';
+  const cleanFirst = cleanPostTitle(first);
+  const startsWithTitle =
+    cleanFirst === title || cleanFirst.startsWith(title) || title.startsWith(cleanFirst);
+  return (startsWithTitle ? lines.slice(1) : lines).join('\n').trim().slice(0, 12_000);
+}
+
+export interface StandaloneResource {
+  title: string;
+  body: string;
+  resourceType: 'roadmap' | 'note' | 'cheat-sheet';
+  confidence: number;
+  signals: string[];
+  /** No caption: a placeholder title was used and must be corrected. */
+  needsTitle: boolean;
+}
+
+const CHATTER =
+  /^(?:hi|hello|hey|yo|thanks|thank you|ok|okay|sure|test|testing|resources?|nice|cool|good|great|lol|wow|yes|no)\b/i;
+
+/**
+ * A post that is not a course template — a photo, album, video, book, note or
+ * roadmap — becomes a Resource. Rules, not a model: a picture with a title is
+ * enough, a text-only post needs real body, and obvious chatter is ignored.
+ */
+export function classifyStandalone(input: {
+  text: string | null;
+  hasImage: boolean;
+  /** Video, audio, PDF, epub and similar (never an archive). */
+  hasMediaFile: boolean;
+  hasArchive: boolean;
+  fileName?: string | null;
+  date?: Date;
+}): StandaloneResource | null {
+  const raw = stripPromo((input.text ?? '').replace(/\r/g, ''));
+  if (raw.startsWith('/')) return null;
+
+  const title = titleFromPost(raw);
+  const body = bodyFromPost(raw, title);
+  const alnum = title.replace(/[^a-z0-9]/gi, '').length;
+
+  // A file with no caption can still be a book or a video post. Its filename
+  // is the only title we have, and it is better than losing the upload.
+  if (!raw && input.fileName && input.hasMediaFile) {
+    const fromFile = cleanPostTitle(input.fileName.replace(/\.[a-z0-9]{2,5}$/i, ''));
+    if (fromFile.replace(/[^a-z0-9]/gi, '').length >= 3) {
+      return {
+        title: fromFile,
+        body: '',
+        resourceType: 'note',
+        confidence: 0.8,
+        signals: ['standalone', 'media', 'title-from-filename'],
+        needsTitle: false,
+      };
+    }
+  }
+
+  // A photo/album can have no caption at all; keep it with a placeholder and
+  // let the operator name it, rather than dropping the picture on the floor.
+  if (!raw) {
+    if (!input.hasImage) return null;
+    const day = (input.date ?? new Date()).toISOString().slice(0, 10);
+    return {
+      title: `Photo post · ${day}`,
+      body: '',
+      resourceType: 'cheat-sheet',
+      confidence: 0.4,
+      signals: ['photo-only', 'needs-title'],
+      needsTitle: true,
+    };
+  }
+
+  if (title.length === 0 || alnum < 3) {
+    // A lone emoji or one-word greeting is not a post.
+    if (!input.hasImage && !input.hasMediaFile) return null;
+    if (CHATTER.test(raw) && raw.length < 40) return null;
+  }
+
+  // Text-only posts need substance: a hello or "resources" is not a note.
+  if (!input.hasImage && !input.hasMediaFile) {
+    if (input.hasArchive) return null;
+    if (raw.length < 120 && body.length < 40) return null;
+    if (CHATTER.test(raw) && raw.length < 200) return null;
+  }
+
+  // A ZIP with no post around it is an orphan part, not a resource.
+  if (input.hasArchive && !input.hasImage && !input.hasMediaFile) return null;
+
+  if (CHATTER.test(raw) && raw.length < 60 && !input.hasImage) return null;
+
+  let finalTitle = title;
+  let needsTitle = false;
+  if (!finalTitle || alnum < 3) {
+    const fromFile = input.fileName ? cleanPostTitle(input.fileName.replace(/\.[a-z0-9]{2,5}$/i, '')) : '';
+    if (fromFile && fromFile.replace(/[^a-z0-9]/gi, '').length >= 3) {
+      finalTitle = fromFile;
+    } else if (input.hasImage) {
+      const day = (input.date ?? new Date()).toISOString().slice(0, 10);
+      finalTitle = `Photo post · ${day}`;
+      needsTitle = true;
+    } else {
+      return null;
+    }
+  }
+
+  const complete = raw.length >= 120 || body.length >= 40 || input.hasMediaFile;
+  const resourceType = resourceTypeFrom(raw, complete, input.hasImage);
+  const signals = ['standalone', `resource:${resourceType}`];
+  if (input.hasImage) signals.push('image');
+  if (input.hasMediaFile) signals.push('media');
+  if (needsTitle) signals.push('needs-title');
+  if (body.length >= 40) signals.push('body');
+
+  // A generic long paragraph can be a note or a chat message. A post with a
+  // clear format word, or with a picture/video behind it, is trusted.
+  const explicit = /(?:roadmap|cheat[- ]?sheet|notes?|guide|terms|glossary|summary|reference|handbook|books?)\b/i.test(raw);
+  const confidence = explicit || input.hasImage || input.hasMediaFile ? 0.85 : 0.55;
+
+  return { title: finalTitle, body, resourceType, confidence, signals, needsTitle };
+}
+
+function resourceTypeFrom(text: string, complete: boolean, hasImage: boolean): 'roadmap' | 'note' | 'cheat-sheet' {
+  if (/\b(roadmap|learning path|learning-path|step[- ]by[- ]step|path to|steps? to)\b/i.test(text)) return 'roadmap';
+  if (/\b(cheat[- ]?sheet|cheatsheet|quick reference|reference guide|glossary|cheat)\b/i.test(text)) return 'cheat-sheet';
+  if (/\b(notes?|summary|handbook|books?|guide)\b/i.test(text) && !/\b(pillars?|layers?|algorithms?)\b/i.test(text)) return 'note';
+  // A picture with a short caption is a visual cheat-sheet; a long text post
+  // with no picture is a note.
+  if (hasImage && text.length < 600) return 'cheat-sheet';
+  return complete ? 'note' : 'cheat-sheet';
+}
+
+/**
+ * A short course that carries a duration but no lesson count is a mini-course
+ * by the catalogue's own definition. The explicit `type:` line always wins.
+ */
+export function courseKindFrom(input: {
+  text: string;
+  title: string;
+  durationMin: number | null;
+  lessonCount: number | null;
+  fileCount?: number | null;
+  declared?: string | null;
+}): 'course' | 'mini-course' {
+  const declared = (input.declared ?? '').toLowerCase();
+  if (declared === 'mini-course') return 'mini-course';
+  if (declared === 'course') return 'course';
+  const haystack = `${input.title}\n${input.text}`;
+  if (/\bmini[- ]?course\b|\bcrash course\b|\bquick course\b/i.test(haystack)) return 'mini-course';
+  // A long course is a course even when it ships as one archive.
+  if (input.durationMin !== null && input.durationMin > 90) return 'course';
+  if (input.lessonCount !== null && input.lessonCount > 12) return 'course';
+  if (input.durationMin !== null && input.durationMin > 0) return 'mini-course';
+  if (input.lessonCount !== null && input.lessonCount > 0) return 'mini-course';
+  // A post that calls itself a course/bootcamp/masterclass is a full course,
+  // however few ZIPs it happens to arrive in.
+  if (/\b(?:course|bootcamp|masterclass)\b/i.test(input.title)) return 'course';
+  // The group's shorter uploads are a small number of ZIPs. One to three
+  // archives is a mini-course; more than that is a full curriculum.
+  if (input.fileCount !== undefined && input.fileCount !== null && input.fileCount > 0 && input.fileCount <= 3) {
+    return 'mini-course';
+  }
+  return 'course';
+}
+
+/** The first non-Telegram link on a post (O'Reilly, GitHub, a paper). */
+export function externalLink(text: string): string | null {
+  const links = Array.from(stripPromo(text).matchAll(/https?:\/\/[^\s<>()]+/g), (m) => m[0].replace(/[),.;]+$/, ''));
+  return links.find((l) => !/^https?:\/\/(?:t\.me|telegram\.me)\//i.test(l)) ?? null;
 }
 
 /** `resource:` / `kind: roadmap` turns the post into a Resource, not a Course. */
@@ -281,20 +562,29 @@ export function autoPublishBlockers(payload: DraftPayload): string[] {
   const a = payload.announcement;
   const f = payload.fields ?? {};
   const kind = payload.kind ?? 'course';
+  const signals = payload.signals ?? [];
 
-  if (!(f.title ?? a.title)?.trim()) blockers.push('title');
-  if (payload.signals.includes('course-exists')) blockers.push('already-exists');
+  if (!(f.title ?? a.title)?.trim() || signals.includes('needs-title')) blockers.push('title');
+  if (signals.includes('course-exists')) blockers.push('already-exists');
   if ((payload.confidence ?? 0) < 0.7) blockers.push('low-confidence');
 
   if (kind === 'resource') {
     const body = (f.description ?? f.resourceSummary ?? a.description ?? '').trim();
-    if (body.length < 60 && (payload.files?.length ?? 0) === 0) blockers.push('body');
+    const images = (payload.images ?? []).length;
+    const files = (payload.files ?? []).length;
+    if (body.length < 60 && files === 0 && images === 0) blockers.push('body');
     return blockers;
   }
 
-  if ((f.lecturerNames ?? a.lecturerNames ?? []).filter(Boolean).length === 0) blockers.push('lecturer');
-  const description = (f.description ?? a.description ?? '').trim();
-  if (description.length < 80) blockers.push('description');
+  // A title + image post that later received module ZIPs is a course without
+  // the full announcement template. Its files are the product; requiring a
+  // biography would leave a perfectly usable course in the queue forever.
+  const simple = signals.includes('simple-course');
+  if (!simple) {
+    if ((f.lecturerNames ?? a.lecturerNames ?? []).filter(Boolean).length === 0) blockers.push('lecturer');
+    const description = (f.description ?? a.description ?? '').trim();
+    if (description.length < 80) blockers.push('description');
+  }
   if ((payload.files?.length ?? 0) === 0) blockers.push('files');
   return blockers;
 }

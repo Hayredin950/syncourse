@@ -10,11 +10,18 @@
 import * as assert from 'assert';
 import {
   autoPublishBlockers,
+  bodyFromPost,
+  classifyStandalone,
+  cleanPostTitle,
+  courseKindFrom,
+  describeAnnouncement,
   extractFields,
   mediaName,
   mediaRole,
   parseResourcePost,
   resourceTypeOf,
+  stripPromo,
+  titleFromPost,
 } from './draft-fields';
 import type { DraftPayload } from './draft-parser';
 
@@ -57,12 +64,123 @@ console.log('\nphoto roles');
 
 ok(mediaRole('cover', []) === 'cover', 'caption "cover"');
 ok(mediaRole(null, []) === 'cover', 'first uncaptioned photo is the cover');
-ok(mediaRole(null, [{ role: 'cover', fileId: 'x', messageId: 1, caption: null }]) === null, 'second uncaptioned photo is ignored');
+ok(
+  mediaRole(null, [{ role: 'cover', fileId: 'x', messageId: 1, caption: null }]) === 'gallery',
+  'a second uncaptioned photo is a gallery frame, not a lost picture',
+);
 ok(mediaRole('Lecturer photo', []) === 'lecturer', 'caption "lecturer photo"');
 ok(mediaRole('org: Udemy', []) === 'organization', 'caption "org: Udemy"');
 ok(mediaRole('random cat', []) === null, 'unrelated caption names no role');
+ok(
+  mediaRole('🔰 Course\n📖 Body\n🔊 Taught By: Someone', [], { announcement: true }) === 'cover',
+  'an announcement photo is the cover even when its body says "Taught By"',
+);
+ok(
+  mediaRole(
+    '🔰 Course',
+    [{ role: 'cover', fileId: 'x', messageId: 1, caption: null }],
+    { announcement: true },
+  ) === 'gallery',
+  'a second announcement photo is a gallery frame',
+);
 ok(mediaName('lecturer: Stephen Grider') === 'Stephen Grider', 'lecturer name from caption');
 ok(mediaName('org: Udemy') === 'Udemy', 'organisation name from caption');
+
+console.log('\ncleaning real posts');
+
+const ultimate = `🔰 Ultimate Web Development Course 2026 - Build Modern Websites
+
+🌟 4.5 - 1646 votes  💰 Original Price: $19.99
+
+📖 This is the only modern, always up-to-date Web Development course you will ever need.
+
+🔊 Taught By: Haris Ali Khan
+
+📤  Download Full Course (https://t.me/webdev_trainings/2300)    📤  Download All Courses (https://t.me/zero_to_mastery)`;
+
+const handsOn = `🔅 Hands-On AI: Building Your First LLM-Powered App
+
+📝 Get started building apps powered by large language models (LLMs) in this hands-on, skills-based course for beginners.
+
+🌐 Author: Han-chung Lee
+🔰 Level: Beginner
+⏰ Duration: 1h 14m
+
+📋 Topics: AI Software Development, Large Language Models, Artificial Intelligence
+
+🔗  Join Artificial intelligence (https://machine_learning_courses.t.me/) for more courses`;
+
+const supplyChain = `🔅 The AI-Driven Supply Chain Manager
+
+📝 Learn practical generative AI prompts to help you enhance the efficiency, accuracy, and sustainability of your supply chain.
+
+🌐 Author: Daniel Stanton
+🔰 Level: Beginner + Intermediate
+⏰ Duration: 41m
+
+📋 Topics: Supply Chain Management, Artificial Intelligence for Business
+
+🔗  Join Artificial intelligence (https://machine_learning_courses.t.me/) for more courses`;
+
+const hacking = `🔰 Complete Ethical Hacking Bootcamp
+
+🌟 4.6 - 18169 votes  💰 Original Price: $74.99
+
+📖 Learn Ethical Hacking + Penetration Testing! Use real techniques by black hat hackers then learn to defend against them!
+
+🔊 Taught By: Andrei Neagoie, Aleksa Tamburkovski
+
+📤  Download Full Course (https://t.me/LinuxMastery/529)    📤  Download All Courses (https://t.me/zero_to_mastery)`;
+
+const cleanedUltimate = stripPromo(ultimate);
+ok(!cleanedUltimate.includes('Download Full Course'), 'the download line is not part of the post');
+ok(!cleanedUltimate.includes('Download All Courses'), 'the "all courses" line is not part of the post');
+ok(stripPromo(handsOn).includes('📝 Get started'), 'the description survives promo cleaning');
+ok(
+  !stripPromo(handsOn).includes('for more courses'),
+  'the join line is not part of the post',
+);
+ok(
+  !stripPromo('📱Artificial intelligence (https://Machine_Learning_Courses.t.me/)\n📱Hands-On AI').includes('📱'),
+  'the forwarded category header is noise',
+);
+ok(!stripPromo('Body\n━━━━━━━━━━━━━━━━━━\nMore').includes('━'), 'a divider is noise');
+
+ok(
+  titleFromPost(ultimate) === 'Ultimate Web Development Course 2026 - Build Modern Websites',
+  'title from the 🔰 line',
+);
+ok(titleFromPost(handsOn) === 'Hands-On AI: Building Your First LLM-Powered App', 'title from the 🔅 line');
+ok(titleFromPost(hacking) === 'Complete Ethical Hacking Bootcamp', 'title without the emoji');
+ok(
+  titleFromPost('🤖 IMPORTANT AI TERMS & TOOLS YOU SHOULD KNOW 🧠\n\nA paragraph.') ===
+    'IMPORTANT AI TERMS & TOOLS YOU SHOULD KNOW',
+  'a trailing decorative emoji is not part of the title',
+);
+ok(cleanPostTitle('📕 Deep Learning with TensorFlow') === 'Deep Learning with TensorFlow', 'book title cleaned');
+
+ok(
+  describeAnnouncement(ultimate) ===
+    'This is the only modern, always up-to-date Web Development course you will ever need.',
+  '🔖 🔰 template description comes from 📖',
+);
+ok(
+  describeAnnouncement(handsOn) ===
+    'Get started building apps powered by large language models (LLMs) in this hands-on, skills-based course for beginners.',
+  '🔅 template description comes from 📝',
+);
+ok(
+  !describeAnnouncement(handsOn).includes('Topics:'),
+  'topics stay out of the description',
+);
+ok(
+  !describeAnnouncement(hacking).includes('Taught By'),
+  'the teacher line stays out of the description',
+);
+ok(
+  bodyFromPost(handsOn).includes('Topics:'),
+  'the body keeps the meta lines the description drops',
+);
 
 console.log('\nresource mode');
 
@@ -80,6 +198,137 @@ const stripped = extractFields('resource: Git rescue\nFirst line of the body.\no
 const fromStripped = parseResourcePost(stripped.cleaned, stripped.values, 'Git rescue');
 ok(fromStripped?.title === 'Git rescue', 'title from the marker, not from the body');
 ok(fromStripped?.body === 'First line of the body.', 'body is not truncated and excludes field lines');
+
+console.log('\nnormal posts become resources');
+
+const termsPost = `🤖 IMPORTANT AI TERMS & TOOLS YOU SHOULD KNOW 🧠
+
+If you want to understand modern AI better, these are some of the most important terms and tools to know.
+
+🧠 1. Generative AI
+
+AI that can create new content such as text, images, audio, video and code.
+
+📝 3. Prompt
+
+A prompt is the instruction or input you give to an AI system. A clear and specific prompt generally helps you get more useful results.
+
+🔎 8. RAG
+
+RAG stands for Retrieval-Augmented Generation. It allows an AI system to retrieve relevant information from external sources and use it when generating an answer.`;
+
+const terms = classifyStandalone({
+  text: termsPost,
+  hasImage: false,
+  hasMediaFile: false,
+  hasArchive: false,
+});
+ok(Boolean(terms), 'a long text post is a resource, not noise');
+ok(terms?.title === 'IMPORTANT AI TERMS & TOOLS YOU SHOULD KNOW', 'resource title is the first real line');
+ok(terms?.resourceType === 'note', 'a long text post is a note');
+ok((terms?.body ?? '').includes('Retrieval-Augmented Generation'), 'the body keeps the whole post');
+
+const photoPost = classifyStandalone({
+  text: '📕 Deep Learning with TensorFlow',
+  hasImage: true,
+  hasMediaFile: false,
+  hasArchive: false,
+});
+ok(photoPost?.title === 'Deep Learning with TensorFlow', 'a titled photo is a resource');
+ok(photoPost?.resourceType === 'cheat-sheet', 'a short picture caption is a cheat-sheet');
+
+const album = classifyStandalone({
+  text: 'Machine Learning vs. Deep Learning\n\n🤖 Machine Learning: engineered features.\n🧠 Deep Learning: learns features end-to-end.',
+  hasImage: true,
+  hasMediaFile: false,
+  hasArchive: false,
+});
+ok(album?.title === 'Machine Learning vs. Deep Learning', 'an album uses its caption as the title');
+ok(Boolean(album?.body), 'an album caption keeps its body');
+
+const photoOnly = classifyStandalone({
+  text: null,
+  hasImage: true,
+  hasMediaFile: false,
+  hasArchive: false,
+});
+ok(photoOnly?.needsTitle === true, 'a photo with no caption is kept, flagged for a human');
+ok((photoOnly?.title ?? '').startsWith('Photo post ·'), 'the placeholder title says it is a photo post');
+
+const book = classifyStandalone({
+  text: null,
+  hasImage: true,
+  hasMediaFile: true,
+  hasArchive: false,
+  fileName: 'Ethan Mollick - Co-Existence.epub',
+});
+ok(book?.title === 'Ethan Mollick - Co-Existence', 'a file with no caption takes its filename as title');
+
+ok(
+  classifyStandalone({ text: 'hi', hasImage: false, hasMediaFile: false, hasArchive: false }) === null,
+  'a greeting is not a resource',
+);
+ok(
+  classifyStandalone({ text: 'resources', hasImage: false, hasMediaFile: false, hasArchive: false }) === null,
+  'the word "resources" alone is not a resource',
+);
+ok(
+  classifyStandalone({
+    text: 'n8n Roadmap\n\n1. Learn nodes\n2. Learn expressions\n3. Learn error handling\n4. Build your first workflow',
+    hasImage: false,
+    hasMediaFile: false,
+    hasArchive: false,
+  })?.resourceType === 'roadmap',
+  'a post that says roadmap is a roadmap',
+);
+ok(
+  classifyStandalone({ text: 'Short clip', hasImage: false, hasMediaFile: true, hasArchive: false, fileName: 'clip.mp4' })
+    ?.title === 'Short clip',
+  'a captioned video is a resource',
+);
+ok(
+  classifyStandalone({ text: null, hasImage: false, hasMediaFile: true, hasArchive: false, fileName: 'talk.mp3' })
+    ?.title === 'talk',
+  'an uncaptioned audio file becomes its own post',
+);
+
+console.log('\nmini-course rules');
+
+ok(
+  courseKindFrom({ text: handsOn, title: 'Hands-On AI', durationMin: 74, lessonCount: null }) === 'mini-course',
+  '1h 14m reads as a mini-course',
+);
+ok(
+  courseKindFrom({ text: supplyChain, title: 'Supply Chain', durationMin: 41, lessonCount: null }) === 'mini-course',
+  '41m reads as a mini-course',
+);
+ok(
+  courseKindFrom({ text: '', title: 'Ethical Hacking', durationMin: null, lessonCount: null, fileCount: 20 }) === 'course',
+  'twenty module ZIPs are a full course',
+);
+ok(
+  courseKindFrom({ text: '', title: 'Hands-On AI', durationMin: null, lessonCount: null, fileCount: 3 }) === 'mini-course',
+  'three ZIPs are a mini-course',
+);
+ok(
+  courseKindFrom({ text: '', title: 'Ultimate Web Development Course 2026', durationMin: null, lessonCount: null, fileCount: 3 }) ===
+    'course',
+  'a post that calls itself a course is not reduced by a small ZIP count',
+);
+ok(
+  courseKindFrom({ text: '', title: 'Complete Course', durationMin: 600, lessonCount: null, fileCount: 2 }) === 'course',
+  'a long duration wins over a small file count',
+);
+ok(
+  courseKindFrom({ text: '', title: 'Course', durationMin: null, lessonCount: 40, fileCount: 2 }) === 'course',
+  'a long lesson count wins over a small file count',
+);
+ok(
+  courseKindFrom({ text: '', title: 'Course', durationMin: 41, lessonCount: null, declared: 'course' }) === 'course',
+  'an explicit type line always wins',
+);
+
+
 
 console.log('\nauto-publish gate');
 
@@ -163,6 +412,57 @@ ok(
     }),
   ).length === 0,
   'a resource with a body publishes itself',
+);
+ok(
+  autoPublishBlockers(
+    payload({
+      kind: 'resource',
+      files: [],
+      images: [{ role: 'cover', fileId: 'p', messageId: 3, caption: null }],
+      announcement: { ...payload().announcement, description: '' },
+    }),
+  ).length === 0,
+  'a picture-only resource publishes itself',
+);
+ok(
+  autoPublishBlockers(
+    payload({
+      kind: 'resource',
+      files: [],
+      images: [],
+      announcement: { ...payload().announcement, description: '' },
+    }),
+  ).includes('body'),
+  'an empty resource waits for a body or a picture',
+);
+ok(
+  autoPublishBlockers(
+    payload({
+      kind: 'resource',
+      signals: ['standalone', 'needs-title'],
+      announcement: { ...payload().announcement, title: 'Photo post · 2026-11-19' },
+    }),
+  ).includes('title'),
+  'a placeholder title always waits for a human',
+);
+ok(
+  autoPublishBlockers(
+    payload({
+      signals: ['simple-course'],
+      announcement: {
+        ...payload().announcement,
+        lecturerNames: [],
+        description: '',
+      },
+    }),
+  ).length === 0,
+  'a titled picture plus ZIPs publishes as a simple course',
+);
+ok(
+  autoPublishBlockers(payload({ announcement: { ...payload().announcement, title: '' }, fields: { title: '' } })).includes(
+    'title',
+  ),
+  'a course with no title waits',
 );
 
 console.log(`\n${passed} checks passed\n`);

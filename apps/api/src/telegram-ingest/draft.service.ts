@@ -37,12 +37,21 @@ import {
 } from './draft-parser';
 import {
   autoPublishBlockers,
+  bodyFromPost,
+  classifyStandalone,
+  cleanPostTitle,
+  courseKindFrom,
+  describeAnnouncement,
+  externalLink,
   extractFields,
   mediaName,
   mediaRole,
   parseResourcePost,
   resourceTypeOf,
+  stripPromo,
+  titleFromPost,
   type DraftFieldKey,
+  type StandaloneResource,
 } from './draft-fields';
 import { slugify } from './telegram-feed.parser';
 import { TelegramMediaResolver } from './media-resolver.service';
@@ -72,6 +81,8 @@ export interface DraftIncoming {
   date: Date;
   file: DraftIncomingFile | null;
   image?: DraftIncomingImage | null;
+  /** Telegram album id. Members of one album arrive as separate updates. */
+  mediaGroupId?: string | null;
 }
 
 export type ObserveResult =
@@ -124,16 +135,53 @@ export class IngestDraftService {
     if (input.from?.isBot) return { action: 'ignored', reason: 'bot message' };
     if (!this.chatAllowed(input.chat)) return { action: 'ignored', reason: 'chat not in allowlist' };
 
-    if (input.file) return this.observeFile(input);
+    const text = (input.text ?? '').trim();
 
-    // A photo can carry a full announcement as its caption, so try the text
-    // first and only fall back to "this is the cover/lecturer/logo" when the
-    // caption is not a course post.
-    if (input.text) {
-      const result = await this.observeAnnouncement(input);
-      if (result.action !== 'ignored' || !input.image) return result;
+    // A document, video or audio file. A long caption makes the message its
+    // own post (a video explainer, an audiobook, a book), while a short or
+    // missing caption means it belongs to the post above it.
+    if (input.file) {
+      const archive = isArchiveFile(input.file);
+      const ownPost = text.length >= 80 || text.includes('\n');
+
+      // A video or document inside a photo album belongs to that album, even
+      // if Telegram delivered it before the captioned first frame.
+      if (input.mediaGroupId) {
+        const group = await this.findDraftByMediaGroup(input.chat.id, input.threadId, input.mediaGroupId);
+        if (group) {
+          const attached = await this.observeFile(input);
+          if (attached.action !== 'ignored') return attached;
+        }
+      }
+
+      if (!archive && ownPost) {
+        const standalone = await this.observeStandalone(input);
+        if (standalone.action !== 'ignored') return standalone;
+      }
+      const attached = await this.observeFile(input);
+      if (attached.action !== 'ignored' || archive) return attached;
+      // A re-post of a file already attached to the open draft is a duplicate,
+      // not a new post; only a file with nowhere to go becomes its own post.
+      if (attached.reason === 'file message already attached or duplicated') return attached;
+      return this.observeStandalone(input);
     }
-    if (input.image) return this.observeImage(input);
+
+    // Text first: a photo can carry the whole announcement as its caption.
+    // When it is not a course template, it is still a normal post.
+    if (text) {
+      const result = await this.observeAnnouncement(input);
+      if (result.action !== 'ignored') return result;
+      if (input.image) {
+        // `cover`, `lecturer`, `org: Udemy` name a role in the open draft;
+        // every other caption is the title of a new resource post.
+        if (mediaRole(input.image.caption, [])) return this.observeImage(input);
+        return this.observeStandalone(input);
+      }
+      return this.observeStandalone(input);
+    }
+
+    // A photo with no caption: an album frame, or a photo-only post.
+    if (input.image) return this.observeStandalone(input);
 
     return { action: 'ignored', reason: 'nothing to read' };
   }
@@ -183,11 +231,15 @@ export class IngestDraftService {
     // announcement parser runs, so they cannot leak into the description.
     const extracted = extractFields(text);
     const values = extracted.values;
+    // Distribution lines (`📤 Download …`, `🔗 Join …`) are not part of the
+    // post: leaving them in used to make one of them the title and another the
+    // description.
+    const cleaned = stripPromo(extracted.cleaned);
     const resourceType = resourceTypeOf(values, text);
 
-    const links = Array.from(text.matchAll(/https?:\/\/t\.me\/[^\s]+/g), (m) => m[0].replace(/[),.;]+$/, ''));
+    const links = Array.from(cleaned.matchAll(/https?:\/\/t\.me\/[^\s]+/g), (m) => m[0].replace(/[),.;]+$/, ''));
     const parsed = parseAnnouncement({
-      text: extracted.cleaned,
+      text: cleaned,
       postedAt: input.date,
       links,
     });
@@ -198,11 +250,11 @@ export class IngestDraftService {
       .map((l) => l.trim())
       .find((l) => /^resource\s*:/i.test(l));
     const resource = resourceType
-      ? parseResourcePost(extracted.cleaned, values, resourceMarker?.replace(/^resource\s*:\s*/i, ''))
+      ? parseResourcePost(cleaned, values, resourceMarker?.replace(/^resource\s*:\s*/i, ''))
       : null;
     if (!parsed && !resource) return { action: 'ignored', reason: 'not a course announcement' };
 
-    const title = (values.title ?? resource?.title ?? parsed?.title ?? '').trim();
+    const title = cleanPostTitle(values.title ?? resource?.title ?? parsed?.title ?? '');
     if (title.replace(/[^a-z0-9]/gi, '').length < 4) {
       return { action: 'ignored', reason: 'title too short to be a course' };
     }
@@ -221,7 +273,7 @@ export class IngestDraftService {
     }
 
     const fields: DraftFields = {};
-    if (values.title) fields.title = values.title;
+    if (values.title) fields.title = title;
     if (values.description) fields.description = values.description;
     if (values.lecturerNames) fields.lecturerNames = splitNames(values.lecturerNames);
     if (values.lecturerBio) fields.lecturerBio = values.lecturerBio;
@@ -243,14 +295,47 @@ export class IngestDraftService {
     const originalPrice = parseMoney(values.originalPrice);
     if (originalPrice !== undefined) fields.originalPrice = originalPrice;
 
+    // A short course announced with a duration but no lesson count is a
+    // mini-course. `type: course` / `type: mini-course` still wins.
+    if (!resourceType) {
+      fields.contentType = courseKindFrom({
+        text: cleaned,
+        title,
+        durationMin: parsed?.durationMin ?? null,
+        lessonCount: parsed?.lessonCount ?? null,
+        declared: values.contentType ?? null,
+      });
+    }
+
     const lecturerNames = fields.lecturerNames ?? parsed?.taughtBy ?? [];
-    const description = (fields.description ?? resource?.body ?? parsed?.description ?? '').trim();
-    const tags = fields.tags ?? parsed?.hashtags ?? [];
+    const described = (fields.description ?? resource?.body ?? describeAnnouncement(cleaned, parsed?.title ?? title)).trim();
+    const description = (described || parsed?.description || '').trim();
+    // Hashtags live on a line of their own, which the promo stripper removes as
+    // metadata, so they are read from the original post.
+    const rawHashtags = Array.from(text.matchAll(/#([\p{L}\p{N}_-]+)/gu), (m) => m[1]);
+    const tags = fields.tags ?? (parsed?.hashtags?.length ? parsed.hashtags : rawHashtags);
     const original = originalPrice ?? price ?? parsed?.originalPrice ?? null;
 
     const signals = resourceType
-      ? ['resource', ...(description.length >= 60 ? ['description'] : [])]
-      : announcementSignals(extracted.cleaned, parsed!);
+      ? ['explicit-resource', ...(description.length >= 60 ? ['description'] : [])]
+      : announcementSignals(cleaned, parsed!);
+    if (!resourceType) {
+      // The promo stub carried the "Download Full Course" line and the promo
+      // stripper removes it again, so the signal has to be read from the raw
+      // post. The description is often the only prose, and it counts too.
+      if (description.length >= 60 && !signals.includes('description')) signals.push('description');
+      if (/download (?:full |the )?courses?/i.test(text) && !signals.includes('download-line')) {
+        signals.push('download-line');
+      }
+      if (values.contentType) signals.push('type-explicit');
+    }
+
+    // A course's source is the group post itself; the `📤 Download` links are
+    // someone else's channel. A resource keeps its real external source.
+    const sourceUrl =
+      fields.sourceUrl ??
+      (resourceType ? externalLink(text) : null) ??
+      this.messageLink(input.chat.username ?? null, input.messageId);
 
     const payload: DraftPayload = {
       version: 1,
@@ -267,7 +352,7 @@ export class IngestDraftService {
         // `price: 0` is an explicit "free", which is not the same as unstated.
         originalPrice: original,
         hashtags: tags,
-        sourceUrl: fields.sourceUrl ?? parsed?.sourceUrl ?? this.messageLink(input.chat.username ?? null, input.messageId),
+        sourceUrl,
         postedAt: input.date.toISOString(),
       },
       chat: {
@@ -302,16 +387,20 @@ export class IngestDraftService {
       cardMessageId: null,
     };
 
-    // A photo attached to the announcement is a cover/lecturer/logo, not a file.
-    if (input.image) this.attachImage(payload, input.image);
+    // The photo that carries the announcement is the cover. Reading role words
+    // first tagged it `lecturer` whenever the body said "Taught By", which is
+    // how a course ended up with a lecturer photo and no cover.
+    if (input.image) this.attachImage(payload, input.image, 'cover', input.mediaGroupId ?? null);
 
     // A course that already exists is still worth reviewing — the post may add
     // files — but the card must say so instead of pretending it is new.
-    const duplicate = await this.prisma.course.findUnique({
-      where: { slug: draftSlug(title) },
-      select: { id: true, deletedAt: true },
-    });
-    if (duplicate && !duplicate.deletedAt) payload.signals.push('course-exists');
+    if (!resourceType) {
+      const duplicate = await this.prisma.course.findUnique({
+        where: { slug: draftSlug(title) },
+        select: { id: true, deletedAt: true },
+      });
+      if (duplicate && !duplicate.deletedAt) payload.signals.push('course-exists');
+    }
 
     const draft = await this.prisma.ingestDraft.create({
       data: {
@@ -336,14 +425,19 @@ export class IngestDraftService {
   }
 
   /**
-   * Attach a photo to a draft under the role its caption gave it. The first
-   * uncaptioned photo becomes the cover; a named `lecturer:` caption also
-   * teaches the draft who the lecturer is.
+   * Attach a photo to a draft under a role. The caller can force `cover` when
+   * the caption is the post itself; otherwise the caption decides. Gallery
+   * frames append rather than replacing each other.
    */
-  private attachImage(payload: DraftPayload, image: DraftIncomingImage): DraftImageRole | null {
+  private attachImage(
+    payload: DraftPayload,
+    image: DraftIncomingImage,
+    roleOverride?: DraftImageRole,
+    mediaGroupId?: string | null,
+  ): DraftImageRole | null {
     const images = (payload.images ??= []);
     if (images.some((i) => i.messageId === image.messageId)) return null;
-    const role = mediaRole(image.caption, images);
+    const role = roleOverride ?? mediaRole(image.caption, images);
     if (!role) return null;
 
     const name = mediaName(image.caption);
@@ -353,11 +447,17 @@ export class IngestDraftService {
       messageId: image.messageId,
       caption: image.caption ?? null,
       name,
+      mediaGroupId: mediaGroupId ?? null,
     };
-    // Re-posting a role replaces it instead of stacking two covers.
-    const at = images.findIndex((i) => i.role === role);
-    if (at >= 0) images[at] = next;
-    else images.push(next);
+    // Re-posting a role replaces it instead of stacking two covers. Gallery
+    // frames always append: an album is many pictures, not one.
+    if (role === 'gallery') {
+      images.push(next);
+    } else {
+      const at = images.findIndex((i) => i.role === role);
+      if (at >= 0) images[at] = next;
+      else images.push(next);
+    }
 
     if (role === 'organization' && name) {
       payload.fields = { ...(payload.fields ?? {}), organizationName: payload.fields?.organizationName ?? name };
@@ -407,34 +507,39 @@ export class IngestDraftService {
    */
   private async observeFile(input: DraftIncoming): Promise<ObserveResult> {
     const file = input.file!;
-    const open = await this.findOpenDraft(input.chat.id, input.threadId);
+    // A video/audio frame of an album belongs to that album, never to whatever
+    // unrelated draft happens to be open. Archives are the exception: a course
+    // posted as a ZIP album still belongs to the course draft above it.
+    const open =
+      input.mediaGroupId && !isArchiveFile(file)
+        ? await this.findDraftByMediaGroup(input.chat.id, input.threadId, input.mediaGroupId)
+        : await this.findOpenDraft(input.chat.id, input.threadId, input.mediaGroupId ?? null);
     if (!open) return { action: 'ignored', reason: 'no open draft in this topic' };
 
     const payload = open.payload as unknown as DraftPayload;
-    if (payload.files.some((f) => f.messageId === input.messageId)) {
-      return { action: 'ignored', reason: 'file message already attached' };
+    const entry = this.draftFileEntry(input, payload);
+    if (!entry) return { action: 'ignored', reason: 'file message already attached or duplicated' };
+    payload.files.push(entry);
+
+    // A title + picture post that starts receiving module ZIPs is a course,
+    // even if it never used the announcement template. A resource with real
+    // prose, an explicit `resource:` marker, or a manual approval stays one.
+    if (this.shouldUpgradeToCourse(open, payload, file)) {
+      await this.upgradeToCourse(open, payload);
     }
 
-    const fileName = cleanFileName(file.fileName);
-    const fileSizeMb = file.fileSize === null ? null : Number((file.fileSize / 1024 / 1024).toFixed(1));
-
-    // The same archive re-posted is not a second part.
-    if (payload.files.some((f) => f.fileName === fileName && f.fileSizeMb === fileSizeMb)) {
-      return { action: 'ignored', reason: 'duplicate file name and size' };
+    // One to three archives is a mini-course; a long curriculum is a course.
+    // An explicit `type:` line always wins.
+    if ((payload.kind ?? 'course') === 'course' && !payload.signals.includes('type-explicit')) {
+      payload.fields = { ...(payload.fields ?? {}) };
+      payload.fields.contentType = courseKindFrom({
+        text: payload.announcement.title,
+        title: payload.announcement.title,
+        durationMin: payload.announcement.durationMin,
+        lessonCount: payload.announcement.lessonCount,
+        fileCount: payload.files.length,
+      });
     }
-
-    const { moduleTitle, partIndex: claimed } = moduleFromFile(fileName, payload.files.length);
-    const next: DraftFile = {
-      messageId: input.messageId,
-      fileId: file.fileId,
-      fileName,
-      fileSizeMb,
-      mimeType: file.mimeType,
-      moduleTitle,
-      partIndex: nextPartIndex(payload.files, moduleTitle, claimed),
-      addedAt: new Date().toISOString(),
-    };
-    payload.files.push(next);
 
     await this.prisma.ingestDraft.update({
       where: { id: open.id },
@@ -447,22 +552,111 @@ export class IngestDraftService {
     const published = await this.maybeAutoPublish(open.id, payload);
     if (published) return published;
 
-    return { action: 'file', draftId: open.id, fileName, payload };
+    return { action: 'file', draftId: open.id, fileName: entry.fileName, payload };
+  }
+
+  /** Build the draft entry for a file, or null when it is already attached. */
+  private draftFileEntry(input: DraftIncoming, payload: DraftPayload): DraftFile | null {
+    const file = input.file!;
+    if (payload.files.some((f) => f.messageId === input.messageId)) return null;
+
+    const fileName = cleanFileName(file.fileName);
+    const fileSizeMb = file.fileSize === null ? null : Number((file.fileSize / 1024 / 1024).toFixed(1));
+
+    // The same archive re-posted is not a second part.
+    if (payload.files.some((f) => f.fileName === fileName && f.fileSizeMb === fileSizeMb)) {
+      return null;
+    }
+
+    const { moduleTitle, partIndex: claimed } = moduleFromFile(fileName, payload.files.length);
+    return {
+      messageId: input.messageId,
+      fileId: file.fileId,
+      fileName,
+      fileSizeMb,
+      mimeType: file.mimeType,
+      moduleTitle,
+      partIndex: nextPartIndex(payload.files, moduleTitle, claimed),
+      addedAt: new Date().toISOString(),
+      mediaGroupId: input.mediaGroupId ?? null,
+    };
+  }
+
+  private shouldUpgradeToCourse(
+    row: { status: string },
+    payload: DraftPayload,
+    file: NonNullable<DraftIncoming['file']>,
+  ): boolean {
+    if ((payload.kind ?? 'course') !== 'resource') return false;
+    if (!isArchiveFile(file)) return false;
+    if (payload.signals.includes('explicit-resource')) return false;
+    // Prose means a real resource with an archive attachment (a ZIP of
+    // examples); an empty body plus module ZIPs means a course.
+    if ((payload.fields?.description ?? payload.announcement.description ?? '').trim()) return false;
+    // An already-approved resource can still be converted while it is fresh
+    // and auto-published, but never after an operator approved it.
+    if (row.status === 'approved' && !payload.autoPublished) return false;
+    return true;
   }
 
   /**
-   * Photos are metadata, not course parts: a cover, the lecturer's face, or an
-   * organisation logo. The caption decides; an uncaptioned first photo is the
-   * cover, which is where people naturally put it.
+   * Turn a fresh, auto-published picture resource into a course when its ZIPs
+   * arrive a second later. The resource row is removed so the catalogue does
+   * not keep a duplicate beside the course.
+   */
+  private async upgradeToCourse(
+    row: { id: string; status: string; updatedAt: Date },
+    payload: DraftPayload,
+  ): Promise<void> {
+    if (row.status === 'approved' && payload.approvedCourseSlug) {
+      const age = Date.now() - row.updatedAt.getTime();
+      if (age < 15 * 60 * 1000) {
+        await this.prisma.resource.deleteMany({ where: { slug: payload.approvedCourseSlug } }).catch(() => undefined);
+      } else {
+        return;
+      }
+    }
+    payload.kind = 'course';
+    payload.approvedCourseSlug = undefined;
+    payload.autoPublished = false;
+    payload.signals = payload.signals.filter((s) => s !== 'resource' && !s.startsWith('resource:'));
+    if (!payload.signals.includes('simple-course')) payload.signals.push('simple-course');
+    payload.confidence = Math.max(payload.confidence, 0.8);
+    payload.fields = { ...(payload.fields ?? {}) };
+    delete payload.fields.resourceType;
+    delete payload.fields.resourceSummary;
+    payload.fields.contentType = courseKindFrom({
+      text: payload.announcement.title,
+      title: payload.announcement.title,
+      durationMin: payload.announcement.durationMin,
+      lessonCount: payload.announcement.lessonCount,
+      fileCount: payload.files.length,
+      declared: payload.fields.contentType ?? null,
+    });
+    if (row.status === 'approved') {
+      await this.prisma.ingestDraft.update({
+        where: { id: row.id },
+        data: {
+          status: 'pending',
+          approvedCourseId: null,
+          payload: payload as unknown as Prisma.InputJsonValue,
+        },
+      });
+    }
+  }
+
+  /**
+   * A role-captioned photo (`cover`, `lecturer`, `org: Udemy`) joins the open
+   * draft. A normal post never comes here: it starts its own resource instead.
    */
   private async observeImage(input: DraftIncoming): Promise<ObserveResult> {
     const image = input.image;
     if (!image) return { action: 'ignored', reason: 'no image' };
-    const open = await this.findOpenDraft(input.chat.id, input.threadId);
+    const open = await this.findOpenDraft(input.chat.id, input.threadId, input.mediaGroupId ?? null);
     if (!open) return { action: 'ignored', reason: 'no open draft in this topic' };
 
     const payload = open.payload as unknown as DraftPayload;
-    const role = this.attachImage(payload, image);
+    const role = this.attachImage(payload, image, undefined, input.mediaGroupId ?? null);
     if (!role) return { action: 'ignored', reason: 'photo caption names no role' };
 
     await this.prisma.ingestDraft.update({
@@ -480,11 +674,206 @@ export class IngestDraftService {
   }
 
   /**
+   * A normal post that is not a course template: a picture, an album, a video,
+   * a book, a note or a roadmap. It becomes a Resource draft with its image and
+   * media attached, so the next ZIP/epub can still find a post to join.
+   */
+  private async observeStandalone(input: DraftIncoming): Promise<ObserveResult> {
+    const cls = classifyStandalone({
+      text: input.text,
+      hasImage: Boolean(input.image),
+      hasMediaFile: Boolean(input.file && !isArchiveFile(input.file)),
+      hasArchive: Boolean(input.file && isArchiveFile(input.file)),
+      fileName: input.file?.fileName ?? null,
+      date: input.date,
+    });
+    if (!cls) return { action: 'ignored', reason: 'not a post' };
+
+    // A later frame of the same album belongs to the draft the first frame
+    // opened, even when Telegram delivers the frames out of order.
+    if (input.mediaGroupId) {
+      const group = await this.findDraftByMediaGroup(input.chat.id, input.threadId, input.mediaGroupId);
+      if (group) return this.joinDraftWithPost(group, input, cls);
+    }
+
+    // An uncaptioned picture that arrives just after a text-only post or an
+    // audio post is that post's cover, not a new post of its own.
+    if (cls.needsTitle && input.image && !input.mediaGroupId) {
+      const host = await this.findRecentCoverlessDraft(input.chat.id, input.threadId);
+      if (host) {
+        const attached = await this.attachToDraft(host, input);
+        if (attached.action !== 'ignored') return attached;
+      }
+    }
+
+    // Telegram redelivers updates; the same message must not open two posts.
+    const existing = await this.prisma.ingestDraft.findFirst({
+      where: { chatId: BigInt(input.chat.id), messageIds: { has: BigInt(input.messageId) } },
+      select: { id: true },
+    });
+    if (existing) return { action: 'ignored', reason: 'post already drafted' };
+
+    const title = cls.title;
+    const body = cls.body;
+    const hashtags = Array.from((input.text ?? '').matchAll(/#(\w[\w-]*)/g), (m) => m[1]);
+    const fileName = input.file?.fileName ?? null;
+    const fields: DraftFields = {
+      resourceType: cls.resourceType,
+      ...(body ? { description: body } : {}),
+    };
+
+    const payload: DraftPayload = {
+      version: 1,
+      kind: 'resource',
+      announcement: {
+        title,
+        slug: draftSlug(title),
+        description: body,
+        lecturerNames: [],
+        durationMin: null,
+        lessonCount: null,
+        ratingAvg: null,
+        ratingCount: null,
+        originalPrice: null,
+        hashtags,
+        sourceUrl: externalLink(input.text ?? '') ?? this.messageLink(input.chat.username ?? null, input.messageId),
+        postedAt: input.date.toISOString(),
+      },
+      chat: {
+        id: input.chat.id,
+        username: input.chat.username ?? null,
+        title: input.chat.title ?? null,
+      },
+      topic: { id: input.threadId, name: null },
+      author: {
+        id: input.from?.id ?? null,
+        username: input.from?.username ?? null,
+        firstName: input.from?.firstName ?? null,
+      },
+      files: [],
+      images: [],
+      fields,
+      categorySlugs: categorize({
+        title,
+        description: body,
+        hashtags,
+        fileNames: fileName ? [fileName] : [],
+        topicOverride: this.topicOverride(input.threadId),
+      }),
+      confidence: cls.confidence,
+      signals: [...cls.signals],
+      cardMessageId: null,
+    };
+
+    if (input.image) this.attachImage(payload, input.image, 'cover', input.mediaGroupId ?? null);
+    if (input.file) {
+      const entry = this.draftFileEntry(input, payload);
+      if (entry) payload.files.push(entry);
+    }
+
+    const draft = await this.prisma.ingestDraft.create({
+      data: {
+        chatId: BigInt(input.chat.id),
+        chatUsername: input.chat.username ?? null,
+        topicId: input.threadId === null ? null : BigInt(input.threadId),
+        topicName: null,
+        messageIds: [BigInt(input.messageId)],
+        payload: payload as unknown as Prisma.InputJsonValue,
+        status: 'pending',
+      },
+    });
+
+    this.logger.log(
+      `resource ${draft.id} created: "${title}" (${payload.confidence * 100}% · ${payload.signals.join(', ')})`,
+    );
+
+    const published = await this.maybeAutoPublish(draft.id, payload);
+    if (published) return published;
+
+    return { action: 'announcement', draftId: draft.id, payload, created: true };
+  }
+
+  /**
+   * Attach one more frame/file to a draft an album already opened. A caption
+   * that arrives after an uncaptioned first frame replaces the placeholder
+   * title instead of creating a second post.
+   */
+  private async joinDraftWithPost(
+    row: { id: string; payload: Prisma.JsonValue },
+    input: DraftIncoming,
+    cls: StandaloneResource,
+  ): Promise<ObserveResult> {
+    const payload = row.payload as unknown as DraftPayload;
+    let role: DraftImageRole | null = null;
+    let fileName: string | null = null;
+
+    if (input.image) {
+      // Every frame of an album is kept. A frame with a role caption still
+      // names that role; the rest are gallery pictures of the same post.
+      const suggested = mediaRole(input.image.caption, payload.images ?? []);
+      const override = input.mediaGroupId && (!suggested || suggested === 'gallery') ? 'gallery' : suggested ?? undefined;
+      role = this.attachImage(payload, input.image, override, input.mediaGroupId ?? null);
+    }
+    if (input.file) {
+      const entry = this.draftFileEntry(input, payload);
+      if (entry) {
+        payload.files.push(entry);
+        fileName = entry.fileName;
+      }
+    }
+    if (!role && !fileName) return { action: 'ignored', reason: 'album member already attached' };
+
+    const currentTitle = (payload.announcement.title ?? '').trim();
+    const placeholder =
+      payload.signals.includes('needs-title') ||
+      payload.signals.includes('title-from-filename') ||
+      !currentTitle ||
+      currentTitle.startsWith('Photo post ·');
+
+    if (placeholder && cls.title && !cls.needsTitle) {
+      payload.announcement.title = cls.title;
+      payload.announcement.slug = draftSlug(cls.title);
+      payload.fields = { ...(payload.fields ?? {}), title: cls.title };
+      payload.signals = payload.signals.filter(
+        (s) => s !== 'needs-title' && s !== 'photo-only' && s !== 'title-from-filename',
+      );
+      payload.confidence = Math.max(payload.confidence, cls.confidence);
+    }
+
+    if (!(payload.fields?.description ?? payload.announcement.description ?? '').trim() && cls.body) {
+      payload.announcement.description = cls.body;
+      payload.fields = { ...(payload.fields ?? {}), description: cls.body };
+    }
+    if (!payload.fields?.resourceType && cls.resourceType) {
+      payload.fields = { ...(payload.fields ?? {}), resourceType: cls.resourceType };
+    }
+    for (const signal of cls.signals) {
+      if (signal === 'standalone' || signal === 'needs-title') continue;
+      if (!payload.signals.includes(signal)) payload.signals.push(signal);
+    }
+
+    await this.prisma.ingestDraft.update({
+      where: { id: row.id },
+      data: {
+        payload: payload as unknown as Prisma.InputJsonValue,
+        messageIds: { push: BigInt(input.messageId) },
+      },
+    });
+
+    const published = await this.maybeAutoPublish(row.id, payload);
+    if (published) return published;
+
+    if (fileName) return { action: 'file', draftId: row.id, fileName, payload };
+    return { action: 'image', draftId: row.id, role: role ?? 'gallery', payload };
+  }
+
+  /**
    * The draft a new file or photo belongs to: a pending review first, then a
    * draft that already auto-published and is still collecting parts, so a
    * 20-part course is not cut in half by the first ZIP being enough to publish.
+   * A media group always wins, because albums arrive out of order.
    */
-  private async findOpenDraft(chatId: number, threadId: number | null) {
+  private async findOpenDraft(chatId: number, threadId: number | null, mediaGroupId?: string | null) {
     const rows = await this.prisma.ingestDraft.findMany({
       where: {
         chatId: BigInt(chatId),
@@ -493,14 +882,87 @@ export class IngestDraftService {
         createdAt: { gte: new Date(Date.now() - COLLECT_WINDOW_MS) },
       },
       orderBy: { createdAt: 'desc' },
-      take: 10,
+      take: 12,
     });
+    if (mediaGroupId) {
+      for (const row of rows) {
+        const payload = row.payload as unknown as DraftPayload;
+        const inGroup = [...(payload.images ?? []), ...(payload.files ?? [])].some(
+          (item) => item.mediaGroupId === mediaGroupId,
+        );
+        if (inGroup) return row;
+      }
+    }
     for (const row of rows) {
-      if (row.status === 'pending') return row;
       const payload = row.payload as unknown as DraftPayload;
+      // A photo-only placeholder is not a home for an unrelated ZIP.
+      if (payload.signals.includes('needs-title')) continue;
+      if (row.status === 'pending') return row;
       if (payload.autoPublished) return row;
     }
     return null;
+  }
+
+  /** The recent draft that already holds a frame of this album. */
+  private async findDraftByMediaGroup(chatId: number, threadId: number | null, mediaGroupId: string) {
+    const rows = await this.prisma.ingestDraft.findMany({
+      where: {
+        chatId: BigInt(chatId),
+        topicId: threadId === null ? null : BigInt(threadId),
+        status: { in: ['pending', 'approved'] },
+        createdAt: { gte: new Date(Date.now() - COLLECT_WINDOW_MS) },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 12,
+    });
+    for (const row of rows) {
+      const payload = row.payload as unknown as DraftPayload;
+      const inGroup = [...(payload.images ?? []), ...(payload.files ?? [])].some(
+        (item) => item.mediaGroupId === mediaGroupId,
+      );
+      if (inGroup) return row;
+    }
+    return null;
+  }
+
+  /** A post published moments ago that still has no picture to lead with. */
+  private async findRecentCoverlessDraft(chatId: number, threadId: number | null) {
+    const rows = await this.prisma.ingestDraft.findMany({
+      where: {
+        chatId: BigInt(chatId),
+        topicId: threadId === null ? null : BigInt(threadId),
+        status: { in: ['pending', 'approved'] },
+        createdAt: { gte: new Date(Date.now() - 10 * 60 * 1000) },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 6,
+    });
+    for (const row of rows) {
+      const payload = row.payload as unknown as DraftPayload;
+      if (!payload.images?.some((image) => image.role === 'cover')) return row;
+    }
+    return null;
+  }
+
+  /** Attach a picture to a specific draft (used for a late cover). */
+  private async attachToDraft(
+    row: { id: string; payload: Prisma.JsonValue },
+    input: DraftIncoming,
+  ): Promise<ObserveResult> {
+    const payload = row.payload as unknown as DraftPayload;
+    const role = this.attachImage(payload, input.image!, undefined, input.mediaGroupId ?? null);
+    if (!role) return { action: 'ignored', reason: 'picture already attached' };
+
+    await this.prisma.ingestDraft.update({
+      where: { id: row.id },
+      data: {
+        payload: payload as unknown as Prisma.InputJsonValue,
+        messageIds: { push: BigInt(input.messageId) },
+      },
+    });
+    const published = await this.maybeAutoPublish(row.id, payload);
+    if (published) return published;
+    return { action: 'image', draftId: row.id, role, payload };
   }
 
   /**
@@ -603,13 +1065,44 @@ export class IngestDraftService {
     if (draft.status === 'approved' && draft.approvedCourseId) {
       const course = await this.prisma.course.findUnique({
         where: { id: draft.approvedCourseId },
-        select: { id: true, slug: true, title: true },
+        select: { id: true, slug: true, title: true, thumbnailUrl: true },
       });
       if (!course) throw new BadRequestException('The published course no longer exists');
       const attached = await this.attachFiles(course.id, payload, actor);
       const modules = new Set(
         (payload.files ?? []).map((f) => f.moduleTitle ?? ''),
       ).size;
+
+      // A cover posted after the course published is still its cover.
+      if (!course.thumbnailUrl && (payload.images ?? []).length > 0) {
+        const resolved = await this.media.resolveMany(payload.images ?? []);
+        const cover = this.resourceCover(payload, resolved);
+        if (cover) {
+          await this.prisma.course
+            .update({ where: { id: course.id }, data: { thumbnailUrl: cover } })
+            .catch(() => undefined);
+        }
+      }
+
+      // A course can publish on its first ZIP, then keep receiving parts. Once
+      // the fourth archive proves it is a full curriculum (not a mini-course),
+      // the published row follows, unless an operator declared the type.
+      if (payload.autoPublished && !payload.signals.includes('type-explicit')) {
+        const nextType = courseKindFrom({
+          text: payload.announcement.title,
+          title: payload.announcement.title,
+          durationMin: payload.announcement.durationMin,
+          lessonCount: payload.announcement.lessonCount,
+          fileCount: (payload.files ?? []).length,
+          declared: null,
+        });
+        if (nextType) {
+          payload.fields = { ...(payload.fields ?? {}), contentType: nextType };
+          await this.prisma.course
+            .update({ where: { id: course.id }, data: { contentType: courseTypeOf(nextType) } })
+            .catch(() => undefined);
+        }
+      }
       return { alreadyApproved: true as const, course, filesAdded: attached, modules };
     }
 
@@ -765,13 +1258,30 @@ export class IngestDraftService {
     if (draft.status === 'approved' && payload.approvedCourseSlug) {
       const existing = await this.prisma.resource.findUnique({
         where: { slug: payload.approvedCourseSlug },
-        select: { id: true, slug: true, title: true },
+        select: { id: true, slug: true, title: true, coverUrl: true },
       });
       if (existing) {
-        const mediaAdded = await this.attachResourceMedia(existing.id, payload);
+        // Resolve only pictures that are not stored yet: a ten-frame album
+        // must not upload every frame again when the last one arrives.
+        const stored = await this.prisma.resourceMedia.findMany({
+          where: { resourceId: existing.id },
+          select: { telegramFileId: true, url: true },
+        });
+        const known = new Map(
+          stored.filter((m) => m.telegramFileId && m.url).map((m) => [m.telegramFileId as string, m.url as string]),
+        );
+        const resolved: Array<string | null> = [];
+        for (const image of payload.images ?? []) {
+          resolved.push(known.get(image.fileId) ?? (await this.media.resolve(image.fileId)));
+        }
+        const coverUrl = this.resourceCover(payload, resolved);
+        if (!existing.coverUrl && coverUrl) {
+          await this.prisma.resource.update({ where: { id: existing.id }, data: { coverUrl } });
+        }
+        const mediaAdded = await this.attachResourceMedia(existing.id, payload, resolved);
         return {
           alreadyApproved: true as const,
-          resource: existing,
+          resource: { id: existing.id, slug: existing.slug, title: existing.title },
           mediaAdded,
           filesAdded: mediaAdded,
           modules: 0,
@@ -780,9 +1290,12 @@ export class IngestDraftService {
     }
 
     try {
-      const images = await this.media.resolveRoles(payload.images ?? []);
+      const resolved = await this.media.resolveMany(payload.images ?? []);
+      const lecturerPhoto = this.imageByRole(payload, resolved, 'lecturer');
+      const logo = this.imageByRole(payload, resolved, 'organization');
+      const coverUrl = this.resourceCover(payload, resolved);
       const lecturerIds = await this.upsertLecturers(payload.fields?.lecturerNames ?? [], {
-        photoUrl: images.lecturer ?? null,
+        photoUrl: lecturerPhoto,
         bio: payload.fields?.lecturerBio ?? null,
       });
       const categories = await this.resolveCategories(
@@ -791,7 +1304,7 @@ export class IngestDraftService {
       const organizationId = await this.resolveOrganization(
         payload.fields?.organizationName,
         payload.fields?.organizationType,
-        images.organization ?? null,
+        logo,
         payload.fields?.organizationDescription,
       );
 
@@ -803,7 +1316,7 @@ export class IngestDraftService {
           slug,
           summary: (payload.fields?.resourceSummary ?? body).slice(0, 200) || null,
           bodyMd: body,
-          coverUrl: payload.fields?.coverUrl ?? images.cover ?? null,
+          coverUrl,
           categoryId: categories[0]?.id ?? null,
           organizationId,
           lecturerId: lecturerIds[0] ?? null,
@@ -814,7 +1327,7 @@ export class IngestDraftService {
         select: { id: true, slug: true, title: true },
       });
 
-      const mediaAdded = await this.attachResourceMedia(resource.id, payload);
+      const mediaAdded = await this.attachResourceMedia(resource.id, payload, resolved);
       payload.approvedCourseSlug = resource.slug;
       await this.prisma.ingestDraft.update({
         where: { id: draft.id },
@@ -904,20 +1417,89 @@ export class IngestDraftService {
     }, { timeout: 30_000 });
   }
 
-  /** Same idea for a resource: one row per attachment, deduped by file id. */
-  private async attachResourceMedia(resourceId: string, payload: DraftPayload): Promise<number> {
+  /**
+   * The URL a resource page leads with: an explicit `cover:` line wins, then
+   * the picture posted with the announcement, then the first album frame.
+   */
+  private resourceCover(payload: DraftPayload, resolved: Array<string | null>): string | null {
+    const explicit = (payload.fields?.coverUrl ?? '').trim();
+    if (/^https?:\/\//i.test(explicit)) return explicit;
+    return (
+      this.imageByRole(payload, resolved, 'cover') ??
+      this.imageByRole(payload, resolved, 'gallery')
+    );
+  }
+
+  /** The resolved URL of one picture role, or null when it was not posted. */
+  private imageByRole(
+    payload: DraftPayload,
+    resolved: Array<string | null>,
+    role: DraftImageRole,
+  ): string | null {
+    const images = payload.images ?? [];
+    for (let i = 0; i < images.length; i++) {
+      if (images[i].role === role && resolved[i]) return resolved[i] ?? null;
+    }
+    return null;
+  }
+
+  /**
+   * One row per picture and per attachment. A photo post is nothing but its
+   * pictures, so image rows are written first and keep the album's order; the
+   * files (video, audio, epub, zip) follow. Deduped by Telegram file id.
+   */
+  private async attachResourceMedia(
+    resourceId: string,
+    payload: DraftPayload,
+    resolved: Array<string | null> = [],
+  ): Promise<number> {
+    const images = payload.images ?? [];
     const files = payload.files ?? [];
-    if (files.length === 0) return 0;
+    if (images.length === 0 && files.length === 0) return 0;
 
     return this.prisma.$transaction(async (tx) => {
       const existing = await tx.resourceMedia.findMany({
         where: { resourceId },
-        select: { telegramFileId: true, fileName: true },
+        select: { telegramFileId: true, fileName: true, url: true },
       });
-      const seen = new Set(existing.map((m) => `${m.telegramFileId ?? ''}\u0000${m.fileName ?? ''}`));
+      const seen = new Set(
+        existing.map((m) => `${m.telegramFileId ?? m.url ?? ''}\u0000${m.fileName ?? ''}`),
+      );
+      const existingByFile = new Map(
+        existing.filter((m) => m.telegramFileId).map((m) => [m.telegramFileId as string, m]),
+      );
       let orderIndex = existing.length;
 
       const rows: Prisma.ResourceMediaCreateManyInput[] = [];
+      const fillUrls: Array<{ fileId: string; url: string }> = [];
+      images.forEach((image, index) => {
+        const already = existingByFile.get(image.fileId);
+        if (already) {
+          // A row whose upload failed before gets its URL now.
+          if (!already.url && resolved[index]) fillUrls.push({ fileId: image.fileId, url: resolved[index] as string });
+          return;
+        }
+        const key = `${image.fileId}\u0000`;
+        if (seen.has(key)) return;
+        seen.add(key);
+        rows.push({
+          resourceId,
+          kind: 'image',
+          url: resolved[index] ?? null,
+          telegramFileId: image.fileId,
+          fileName: null,
+          fileSizeMb: null,
+          caption: image.caption ?? null,
+          orderIndex: orderIndex++,
+        });
+      });
+      for (const fill of fillUrls) {
+        await tx.resourceMedia.updateMany({
+          where: { resourceId, telegramFileId: fill.fileId, url: null },
+          data: { url: fill.url },
+        });
+      }
+
       for (const file of files) {
         const key = `${file.fileId}\u0000${file.fileName}`;
         if (seen.has(key)) continue;
@@ -1313,6 +1895,31 @@ function resourceTypeOfValue(value?: string): string {
   return 'cheat-sheet';
 }
 
+/**
+ * A course part archive (ZIP/RAR/7z). Videos, audio, PDFs and epubs are post
+ * media, never module archives, so they open a resource instead of being
+ * attached to whatever draft happens to be open.
+ */
+function isArchiveFile(file: { fileName: string; mimeType: string | null }): boolean {
+  const ext = (file.fileName.split('.').pop() ?? '').toLowerCase();
+  if (['zip', 'rar', '7z', 'tar', 'gz', 'tgz', 'bz2', 'xz'].includes(ext)) return true;
+  // Books and office files are post media even when their mime type mentions
+  // zip (`application/epub+zip`), and must never trigger a course upgrade.
+  if (
+    [
+      'epub', 'mobi', 'azw3', 'pdf', 'doc', 'docx', 'odt', 'rtf', 'txt', 'md',
+      'ppt', 'pptx', 'odp', 'key', 'xls', 'xlsx', 'csv', 'ods',
+      'mp4', 'mov', 'mkv', 'webm', 'mp3', 'wav', 'm4a', 'ogg',
+      'png', 'jpg', 'jpeg', 'gif', 'webp', 'svg',
+    ].includes(ext)
+  ) {
+    return false;
+  }
+  const mime = (file.mimeType ?? '').toLowerCase();
+  if (mime.startsWith('image/') || mime.startsWith('video/') || mime.startsWith('audio/')) return false;
+  return /(?:zip|rar|7z|tar|gzip|x-compressed)/.test(mime);
+}
+
 /** Map a Telegram attachment to the viewer the resource page should open. */
 function mediaKindOf(mime: string | null, fileName: string): string {
   const ext = (fileName.split('.').pop() ?? '').toLowerCase();
@@ -1321,7 +1928,7 @@ function mediaKindOf(mime: string | null, fileName: string): string {
   if (m.startsWith('video/') || ['mp4', 'mov', 'mkv', 'webm'].includes(ext)) return 'video';
   if (m.startsWith('audio/') || ['mp3', 'wav', 'm4a', 'ogg'].includes(ext)) return 'audio';
   if (m === 'application/pdf' || ext === 'pdf') return 'pdf';
-  if (['doc', 'docx', 'odt', 'rtf', 'txt', 'md'].includes(ext)) return 'doc';
+  if (['doc', 'docx', 'odt', 'rtf', 'txt', 'md', 'epub', 'mobi', 'azw3'].includes(ext)) return 'doc';
   if (['xls', 'xlsx', 'csv', 'ods'].includes(ext)) return 'sheet';
   if (['ppt', 'pptx', 'odp', 'key'].includes(ext)) return 'slide';
   if (['zip', 'rar', '7z', 'tar', 'gz'].includes(ext)) return 'archive';

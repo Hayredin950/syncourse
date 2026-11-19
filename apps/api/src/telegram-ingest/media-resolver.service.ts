@@ -56,12 +56,20 @@ export class TelegramMediaResolver {
     }
   }
 
+  /** Resolve every photo in order; a failed one stays null rather than vanishing. */
+  async resolveMany(images: Array<{ fileId: string }> = []): Promise<Array<string | null>> {
+    const out: Array<string | null> = [];
+    for (const image of images) out.push(await this.resolve(image.fileId));
+    return out;
+  }
+
   /** Resolve several roles at once, skipping the ones that were not posted. */
   async resolveRoles(
-    images: Array<{ role: 'cover' | 'lecturer' | 'organization'; fileId: string }> = [],
+    images: Array<{ role: 'cover' | 'lecturer' | 'organization' | 'gallery'; fileId: string }> = [],
   ): Promise<Partial<Record<'cover' | 'lecturer' | 'organization', string>>> {
     const picked: Partial<Record<'cover' | 'lecturer' | 'organization', string>> = {};
     for (const image of images) {
+      if (image.role === 'gallery') continue;
       const url = await this.resolve(image.fileId);
       if (url) picked[image.role] = url;
     }
