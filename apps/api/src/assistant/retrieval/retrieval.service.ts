@@ -43,6 +43,15 @@ export interface RetrievedSource {
   text: string;
 }
 
+interface ChunkRow {
+  courseId: string;
+  sourceKind: string;
+  sourceName: string;
+  moduleTitle: string | null;
+  text: string;
+  rank: number;
+}
+
 export interface Retrieval {
   keywords: string[];
   courses: RetrievedCourse[];
@@ -177,6 +186,21 @@ export function expandKeywords(question: string): string[] {
   return Array.from(new Set(out.filter(Boolean))).slice(0, 20);
 }
 
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/**
+ * Whole-word match. A two-letter expansion like "ui" must not match
+ * "building", and "ai" must not match "training" — substring matching here was
+ * making every course look relevant to every question.
+ */
+function hasWord(haystack: string, needle: string): boolean {
+  if (!haystack || !needle) return false;
+  const boundary = '(?:^|[^a-z0-9+#])';
+  return new RegExp(`${boundary}${escapeRegExp(needle)}(?:$|[^a-z0-9+#])`, 'i').test(haystack);
+}
+
 /** A short window around the first keyword hit, so a citation shows why it matched. */
 export function snippetOf(text: string, keywords: string[], size = SNIPPET_CHARS): string {
   const flat = text.replace(/\s+/g, ' ').trim();
@@ -238,10 +262,14 @@ export class RetrievalService {
       candidateIds = await this.rankedCandidates(question, keywords);
     }
 
-    // 2. Text. Restrict to the candidates when there are any; a question the
-    //    catalogue search could not match still deserves one honest look inside
-    //    the indexed transcripts.
-    const chunkRows = await this.searchChunks(keywords, candidateIds, limit * 2);
+    // 2. Text. Restrict to the candidates when there are any. A question with
+    //    no candidate course gets a *strict* look inside the transcripts (all
+    //    original words must appear) rather than a broad OR that would let the
+    //    largest course answer every unrelated question.
+    const chunkRows =
+      candidateIds.length > 0
+        ? await this.searchChunks(keywords, candidateIds, limit * 2)
+        : await this.searchChunksStrict(keywordsOf(question), limit * 2);
     const chunkCourseIds = Array.from(new Set(chunkRows.map((r) => r.courseId)));
     const allIds = Array.from(new Set([...candidateIds, ...chunkCourseIds]));
 
@@ -355,14 +383,30 @@ export class RetrievalService {
       }
     }
 
-    // Readable material leads the answer; an archive filename is the last
-    // thing a reader should see quoted at them.
+    // Readable material leads the answer, and the course the question is
+    // actually about leads the readable material. Without the first key, one
+    // file-heavy course could sit at the top of every answer.
+    const courseRank = new Map(courses.map((c, i) => [c.id, i]));
     const sourceRank = (kind: string) => (WEAK_SOURCE_KINDS.has(kind) ? 3 : kind === 'course' ? 2 : 1);
-    sources.sort((a, b) => sourceRank(a.kind) - sourceRank(b.kind));
+    sources.sort((a, b) => {
+      const ra = courseRank.get(a.courseId) ?? 999;
+      const rb = courseRank.get(b.courseId) ?? 999;
+      if (ra !== rb) return ra - rb;
+      return sourceRank(a.kind) - sourceRank(b.kind);
+    });
+
+    // The rail is a suggestion, not a dump of every weak match. Keep the best
+    // course plus any course the answer actually cites.
+    const cited = new Set(sources.map((s) => s.courseId));
+    const freeCourses = courses.filter((c) => !lockedIds.has(c.id));
+    const suggested =
+      sources.length > 0
+        ? freeCourses.filter((c, i) => i === 0 || cited.has(c.id)).slice(0, 4)
+        : freeCourses.slice(0, 3);
 
     return {
       keywords,
-      courses: courses.filter((c) => !lockedIds.has(c.id)).slice(0, limit),
+      courses: suggested,
       sources,
       locked,
       premiumActive,
@@ -377,7 +421,12 @@ export class RetrievalService {
    * to master mobile app development" contains neither "Flutter" nor "Dart",
    * so full-text search alone finds the wrong course. Tags, categories and the
    * description are what let the right course surface, and a search hit is
-   * still given a strong bonus so typos and synonyms are not lost.
+   * still given a small tie-break so typos and synonyms are not lost.
+   *
+   * The relative floor is deliberate. Without it, one large AI course whose
+   * category happens to contain "machine learning" appeared beside every
+   * question, and the answer read as if that were the only course in the
+   * catalogue.
    */
   private async rankedCandidates(question: string, keywords: string[]): Promise<string[]> {
     const searchIds = await this.rankedIdsFor(question);
@@ -423,35 +472,43 @@ export class RetrievalService {
         const categories = row.categories.map((c) => c.category.name.toLowerCase());
         const lecturer = (row.lecturers[0]?.lecturer.name ?? '').toLowerCase();
 
-        let score = 0;
+        let lexical = 0;
         for (const term of keywords) {
           // A word the reader typed is worth more than a topic we inferred.
           const weight = primary.has(term) ? 1 : 0.65;
           const needle = term.toLowerCase();
 
-          if (title.includes(needle)) score += 7 * weight;
-          if (tags.some((t) => t === needle)) score += 5 * weight;
-          else if (tags.some((t) => t.includes(needle))) score += 4 * weight;
-          if (categories.some((c) => c.includes(needle))) score += 4 * weight;
-          if (description.includes(needle)) score += 1.5 * weight;
-          if (lecturer.includes(needle)) score += 3 * weight;
+          if (hasWord(title, needle)) lexical += 7 * weight;
+          if (tags.some((t) => t === needle)) lexical += 5 * weight;
+          else if (tags.some((t) => hasWord(t, needle))) lexical += 4 * weight;
+          if (categories.some((c) => hasWord(c, needle))) lexical += 4 * weight;
+          if (hasWord(description, needle)) lexical += 1.5 * weight;
+          if (hasWord(lecturer, needle)) lexical += 3 * weight;
         }
 
-        // Keep whatever the real search found. Its trigram and synonym paths
-        // catch misspellings that an exact substring score cannot.
-        const at = searchIds.indexOf(row.id);
-        if (at >= 0) score += Math.max(2, 9 - at * 0.8);
-
-        return { id: row.id, score, rating: row.ratingAvg, downloads: row.downloadCount };
+        return {
+          id: row.id,
+          lexical,
+          // Search membership breaks ties; it must not lift a weak content
+          // match over the floor below.
+          score: lexical + (searchIds.includes(row.id) ? 0.75 : 0),
+          rating: row.ratingAvg,
+          downloads: row.downloadCount,
+        };
       })
-      .filter((row) => row.score >= 2)
+      .filter((row) => row.lexical > 0)
       .sort((a, b) => b.score - a.score || b.rating - a.rating || b.downloads - a.downloads);
 
-    const ranked = scored.map((row) => row.id);
-    for (const id of searchIds) {
-      if (!ranked.includes(id)) ranked.push(id);
-    }
-    return ranked.slice(0, 8);
+    // Keep only courses that genuinely match the subject. A course that shares
+    // one broad category word is not a candidate for every question about it.
+    const top = scored[0]?.lexical ?? 0;
+    const cutoff = top > 0 ? Math.max(3.5, top * 0.3) : 0;
+    const ranked = scored.filter((row) => row.lexical >= cutoff).map((row) => row.id);
+    if (ranked.length > 0) return ranked.slice(0, 8);
+
+    // No content match at all: fall back to the search page's typo/synonym
+    // path, but only when nothing else matched.
+    return searchIds.slice(0, 8);
   }
 
   /** The course row, described in the same words the course page uses. */
@@ -517,32 +574,17 @@ export class RetrievalService {
     keywords: string[],
     courseIds: string[],
     take: number,
-  ): Promise<
-    Array<{
-      courseId: string;
-      sourceKind: string;
-      sourceName: string;
-      moduleTitle: string | null;
-      text: string;
-      rank: number;
-    }>
-  > {
+  ): Promise<ChunkRow[]> {
     if (keywords.length === 0) return [];
     const tsQuery = keywords.join(' or ');
-    const patterns = keywords.map((k) => `%${k}%`);
+    // ILIKE is a substring match: "ui" would find "building" and "ai" would
+    // find "training". Only terms long enough to be a word fragment use it;
+    // short terms rely on full-text, which matches whole words.
+    const patterns = keywords.filter((k) => k.length >= 4).map((k) => `%${k}%`);
     const allCourses = courseIds.length === 0;
 
     try {
-      return await this.prisma.$queryRaw<
-        Array<{
-          courseId: string;
-          sourceKind: string;
-          sourceName: string;
-          moduleTitle: string | null;
-          text: string;
-          rank: number;
-        }>
-      >`
+      return await this.prisma.$queryRaw<ChunkRow[]>`
         SELECT ch."courseId"                        AS "courseId",
                ch."sourceKind"                      AS "sourceKind",
                ch."sourceName"                      AS "sourceName",
@@ -564,6 +606,43 @@ export class RetrievalService {
       // pg_trgm missing, a language the `simple` config dislikes, a cold
       // connection — retrieval must not take the endpoint down with it.
       this.logger.warn(`chunk search failed: ${(err as Error).message}`);
+      return [];
+    }
+  }
+
+  /**
+   * Last-resort search when no course matched the question at all.
+   *
+   * Two rules keep it honest: the question needs more than one word, and the
+   * words must appear together as a phrase. An AND of separate words was still
+   * enough for the biggest course to answer "graphic design" because its
+   * LinkedIn workflow said "graphic" in one place and "design" in another.
+   * A phrase match means the material actually discusses the topic named.
+   */
+  private async searchChunksStrict(keywords: string[], take: number): Promise<ChunkRow[]> {
+    const terms = keywords.filter(Boolean);
+    if (terms.length < 2) return [];
+    const tsQuery = `"${terms.join(' ').replace(/"/g, '')}"`;
+
+    try {
+      return await this.prisma.$queryRaw<ChunkRow[]>`
+        SELECT ch."courseId"                        AS "courseId",
+               ch."sourceKind"                      AS "sourceKind",
+               ch."sourceName"                      AS "sourceName",
+               ch."moduleTitle"                     AS "moduleTitle",
+               left(ch.text, ${CHUNK_CHARS}::int)   AS "text",
+               ts_rank(to_tsvector('simple', ch.text), websearch_to_tsquery('simple', ${tsQuery})) AS "rank"
+        FROM "ContentChunk" ch
+        JOIN "Course" c ON c."id" = ch."courseId"
+        WHERE c."deletedAt" IS NULL
+          AND to_tsvector('simple', ch.text) @@ websearch_to_tsquery('simple', ${tsQuery})
+        ORDER BY CASE WHEN ch."sourceKind" IN ('entry-name', 'archive-name') THEN 1 ELSE 0 END,
+                 "rank" DESC,
+                 length(ch.text) ASC
+        LIMIT ${take}::int
+      `;
+    } catch (err) {
+      this.logger.warn(`strict chunk search failed: ${(err as Error).message}`);
       return [];
     }
   }

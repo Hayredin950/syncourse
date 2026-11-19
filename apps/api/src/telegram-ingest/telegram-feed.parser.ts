@@ -233,7 +233,8 @@ export function parsePastedText(text: string): FeedMessage[] {
 // 3) course-announcement detection
 // ----------------------------------------------------------------
 
-const TITLE_EMOJI_RE = /^(?:🔰|🔅|📕|⭐️|🌟|🧿|🔆|💡|🌐|📚|💎|🤝|🔥|📢)/;
+const TITLE_EMOJI_RE =
+  /^(?:(?:🖥|💻|📺|🖱|⌨️?|🔰|🔅|📕|⭐️|🌟|🧿|🔆|💡|🌐|📚|💎|🤝|🔥|📢)\uFE0F?)/;
 const HOURS_RE =
   /(?:⏱️?|⏱|⏲|⏰|⏳|Duration\s*:)\s*(\d+(?:\.\d+)?)\s*(?:hrs?|hours?|h)\b(?:\s*(\d+)\s*m(?:in(?:ute)?s?)?\b)?/i;
 const MINUTES_RE = /(?:⏱️?|⏱|⏲|⏰|⏳|Duration\s*:)\s*(\d+)\s*m(?:in(?:ute)?s?)?\b/i;
@@ -261,8 +262,19 @@ export function looksLikeCoursePost(msg: FeedMessage): ParsedCourse | null {
   if (!isCourse) return null;
 
   const lines = text.split('\n');
-  let titleLine = lines.find((l) => l.length > 4 && TITLE_EMOJI_RE.test(l));
-  if (!titleLine) titleLine = lines.find((l) => l.length > 6 && !/^(Download|Taught|🌟|💰|⏱|⏲|⏰|📦|📖|📝|🔊|🔗|📋|#)/.test(l));
+  // A `🌟`/`💰` line is metadata even though it starts with an emoji the title
+  // template also uses. Without this check the rating line became the title and
+  // the course published as "4.5 - 21424 votes 💰 Original Price: $59.99".
+  const isMetaLine = (line: string) =>
+    RATING_RE.test(line) || PRICE_RE.test(line) || /^\s*💰/.test(line);
+  let titleLine = lines.find(
+    (l) => l.trim().length > 4 && TITLE_EMOJI_RE.test(l.trim()) && !isMetaLine(l),
+  );
+  if (!titleLine) {
+    titleLine = lines.find(
+      (l) => l.length > 6 && !/^(Download|Taught|🌟|💰|⏱|⏲|⏰|📦|📖|📝|🔊|🔗|📋|#)/.test(l),
+    );
+  }
   let title = (titleLine ?? lines[0] ?? 'Untitled course')
     .replace(TITLE_EMOJI_RE, '')
     .replace(/^[^A-Za-z0-9]+/, '')

@@ -33,6 +33,7 @@ import {
   draftSlug,
   moduleFromFile,
   nextPartIndex,
+  normalizeCourseTitle,
   parseAnnouncement,
 } from './draft-parser';
 import {
@@ -1060,7 +1061,6 @@ export class IngestDraftService {
     }
 
     const title = (payload.fields?.title ?? payload.announcement.title).trim();
-    const slug = await this.uniqueSlug(draftSlug(title), title);
 
     if (draft.status === 'approved' && draft.approvedCourseId) {
       const course = await this.prisma.course.findUnique({
@@ -1111,6 +1111,14 @@ export class IngestDraftService {
       payload.fields?.lecturerNames ?? payload.announcement.lecturerNames ?? [],
       { photoUrl: images.lecturer ?? null, bio: payload.fields?.lecturerBio ?? null },
     );
+
+    // A course created from "Add to catalogue" and the same announcement
+    // arriving through the watcher must converge on one row. Matching only on
+    // the generated slug was not enough: a slightly different title produced a
+    // second course, a second slug and a duplicate page.
+    const equivalent = await this.findEquivalentCourse(title, lecturerIds);
+    const slug = equivalent?.slug ?? (await this.uniqueSlug(draftSlug(title), title));
+
     const categories = await this.resolveCategories(
       payload.fields?.categorySlugs?.length ? payload.fields.categorySlugs : payload.categorySlugs ?? [],
     );
@@ -1165,14 +1173,27 @@ export class IngestDraftService {
           });
         } else {
           // A re-post can fill a gap, but must never rewrite an edited course.
+          // That includes the announcement's rating: it is only copied into a
+          // course that has none, so an existing local score is not replaced.
+          const incomingAvg = payload.announcement.ratingAvg ?? 0;
+          const incomingCount = payload.announcement.ratingCount ?? 0;
           row = await tx.course.update({
             where: { id: row.id },
             data: {
               sourceUrl: row.sourceUrl ?? payload.fields?.sourceUrl ?? payload.announcement.sourceUrl ?? null,
               originalPrice: row.originalPrice ?? originalPrice ?? null,
+              price: row.price ?? price ?? null,
               thumbnailUrl: row.thumbnailUrl ?? payload.fields?.coverUrl ?? images.cover ?? null,
               levelId: row.levelId ?? levelId,
               organizationId: row.organizationId ?? organizationId,
+              ...(row.ratingCount === 0 && incomingCount > 0
+                ? {
+                    baseRatingAvg: incomingAvg,
+                    baseRatingCount: incomingCount,
+                    ratingAvg: incomingAvg,
+                    ratingCount: incomingCount,
+                  }
+                : {}),
               deletedAt: null,
             },
           });
@@ -1672,6 +1693,47 @@ export class IngestDraftService {
       select: { id: true },
     });
     return org.id;
+  }
+
+  /**
+   * Find the row an announcement is really about. Title alone is not enough
+   * when two courses share a name, so a conflicting lecturer credit blocks the
+   * merge; a shared lecturer or an unambiguous single match allows it.
+   */
+  private async findEquivalentCourse(
+    title: string,
+    lecturerIds: string[],
+  ): Promise<{ id: string; slug: string; title: string } | null> {
+    const wanted = normalizeCourseTitle(title);
+    if (wanted.length < 8) return null;
+
+    const rows = await this.prisma.course.findMany({
+      where: { deletedAt: null },
+      select: {
+        id: true,
+        slug: true,
+        title: true,
+        lecturers: { select: { lecturerId: true } },
+      },
+      take: 1000,
+    });
+    const sameTitle = rows.filter((row) => normalizeCourseTitle(row.title) === wanted);
+    if (sameTitle.length === 0) return null;
+
+    const incoming = new Set(lecturerIds);
+    const sharesLecturer = (row: (typeof sameTitle)[number]) =>
+      incoming.size > 0 && row.lecturers.some((l) => incoming.has(l.lecturerId));
+
+    if (sameTitle.length === 1) {
+      const [row] = sameTitle;
+      // One course with the same title but a completely different lecturer is
+      // a different course, not a duplicate.
+      if (incoming.size > 0 && row.lecturers.length > 0 && !sharesLecturer(row)) return null;
+      return row;
+    }
+
+    const withLecturer = sameTitle.filter(sharesLecturer);
+    return withLecturer.length === 1 ? withLecturer[0] : null;
   }
 
   /**

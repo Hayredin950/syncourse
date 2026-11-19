@@ -16,6 +16,7 @@ import {
   draftSlug,
   moduleFromFile,
   nextPartIndex,
+  normalizeCourseTitle,
   parseAnnouncement,
 } from './draft-parser';
 
@@ -146,5 +147,20 @@ ok(nextPartIndex(files, 'X', 3) === 2, 'never reuses a claimed number');
 ok(cleanFileName('../../etc/passwd') === 'passwd', 'strips a path');
 ok(cleanFileName('  course.zip  ') === 'course.zip', 'trims whitespace');
 ok(draftSlug('AI & Machine Learning') === 'ai-and-machine-learning', 'slugify for approval');
+
+// --- duplicate identity ------------------------------------------------
+ok(
+  normalizeCourseTitle('ChatGPT, Midjourney, DALL-E 3 & APIs - The Complete Guide') ===
+    normalizeCourseTitle('🖥 ChatGPT Midjourney DALL-E 3 and APIs the complete guide'),
+  'a typed title and the announcement compare equal',
+);
+ok(
+  normalizeCourseTitle('Über Design: 101') === normalizeCourseTitle('uber design 101'),
+  'accents and punctuation do not split a course',
+);
+ok(
+  normalizeCourseTitle('Python') !== normalizeCourseTitle('Python for Data Science'),
+  'different titles stay different',
+);
 
 console.log(`\n${passed} assertions passed`);

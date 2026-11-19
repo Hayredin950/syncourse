@@ -72,6 +72,33 @@ ok(course!.taughtBy[0] === 'Andrei Neagoie', `taughtBy: ${course!.taughtBy}`);
 ok(course!.hashtags.includes('web') && course!.hashtags.includes('development'), 'hashtags parsed');
 ok(course!.sourceUrl === 'https://t.me/webdev_trainings/6', 'sourceUrl = download link');
 
+// --- announcement whose title starts with 🖥 and rating with 🌟 ------------
+// The rating line also begins with an emoji in TITLE_EMOJI_RE. It must stay
+// metadata, and the 🖥 line must win even though it is not first.
+const chatgptText = [
+  '🖥  ChatGPT, Midjourney, DALL-E 3 & APIs - The Complete Guide',
+  '',
+  '🌟 4.5 - 21424 votes  💰 Original Price: $59.99',
+  '',
+  '📖 10x your productivity via ChatGPT & OpenAI APIs efficiently. Learn Midjourney, prompt engineering, Cursor IDE & more',
+  '',
+  '🔊 Taught By: Academind by Maximilian Schwarzmüller, Maximilian Schwarzmüller',
+  '',
+  '📤  Download Full Course (https://t.me/OpenAI_Mastery/591)    📤  Download All Courses (https://t.me/zero_to_mastery)',
+].join('\n');
+const chatgpt = looksLikeCoursePost({ postId: null, date: null, text: chatgptText, links: [], fileName: null, fileList: [], isPoll: false, isPhoto: false });
+ok(chatgpt !== null, '🖥 announcement detected');
+ok(
+  chatgpt!.title === 'ChatGPT, Midjourney, DALL-E 3 & APIs - The Complete Guide',
+  `🖥 title: ${chatgpt!.title}`,
+);
+ok(chatgpt!.ratingAvg === 4.5 && chatgpt!.ratingCount === 21424, 'rating line parsed as 4.5 / 21424');
+ok(chatgpt!.originalPrice === 59.99, `original price: ${chatgpt!.originalPrice}`);
+ok(
+  chatgpt!.taughtBy.join(', ') === 'Academind by Maximilian Schwarzmüller, Maximilian Schwarzmüller',
+  `🖥 lecturers: ${chatgpt!.taughtBy.join(', ')}`,
+);
+
 // --- pasted text transcript ---------------------------------------------
 const pasted = `[4/28/21 5:09 AM] AI and Machine Learning: [ Photo ]
 🔰 Complete Machine Learning and Data Science 2021

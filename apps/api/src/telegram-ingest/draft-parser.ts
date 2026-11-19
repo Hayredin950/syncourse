@@ -323,3 +323,19 @@ export function cleanFileName(raw: string): string {
 export function draftSlug(title: string): string {
   return slugify(title) || 'course';
 }
+
+/**
+ * Compare titles the way a reader would: case, accents, emoji, punctuation and
+ * "&"/"and" are not part of a course's identity. Used to stop an announcement
+ * from creating a second row when the same course was already added by hand.
+ */
+export function normalizeCourseTitle(value: string): string {
+  return value
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/&/g, ' and ')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
