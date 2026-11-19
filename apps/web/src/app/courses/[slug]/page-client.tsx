@@ -721,7 +721,7 @@ export function CourseDetailView({ slug }: { slug: string }) {
               <span className="muted">/ 5</span>
             </div>
             <div className="rating" style={{ fontSize: 11, marginTop: 2 }}>
-              <Star size={13} fill="currentColor" style={{ display: "inline" }} /> Source rating · {compact(course.ratings.count)} votes
+              <Star size={13} fill="currentColor" style={{ display: "inline" }} /> Overall rating · {compact(course.ratings.count)} votes
             </div>
             {course.ratings.count > 0 ? (
               <div className="bars">
@@ -742,7 +742,7 @@ export function CourseDetailView({ slug }: { slug: string }) {
               <p className="muted" style={{ fontSize: 11, margin: "16px 0 0" }}>No ratings yet — be the first to rate this course.</p>
             )}
             <p className="muted mono" style={{ fontSize: 10, margin: "12px 0 0" }}>
-              Community mean · {compact(course.ratings.count)} learners
+              Source + community · {compact(course.ratings.count)} ratings
             </p>
             <div style={{ marginTop: 14 }}>
               <StarPicker value={myRating} onChange={onRate} />

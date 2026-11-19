@@ -34,6 +34,22 @@ UPDATE "Course" c
    AND (c."ratingCount" > 0 OR c."ratingAvg" > 0)
    AND NOT EXISTS (SELECT 1 FROM "Rating" r WHERE r."courseId" = c.id);
 
+-- Recover the source rating for a course the watcher published: the draft
+-- payload still holds what the post said, even when the old code had already
+-- replaced the row with a single local vote.
+UPDATE "Course" c
+   SET "baseRatingAvg"   = (d.payload #>> '{announcement,ratingAvg}')::double precision,
+       "baseRatingCount" = CASE
+         WHEN jsonb_typeof(d.payload #> '{announcement,ratingCount}') = 'number'
+           THEN (d.payload #>> '{announcement,ratingCount}')::int
+         ELSE 0
+       END
+  FROM "IngestDraft" d
+ WHERE d."approvedCourseId" = c.id
+   AND c."baseRatingAvg" = 0
+   AND c."baseRatingCount" = 0
+   AND jsonb_typeof(d.payload #> '{announcement,ratingAvg}') = 'number';
+
 -- Keep the cached columns consistent with baseline + local votes. This is a
 -- no-op on a healthy row and repairs a row that was written by the old code.
 WITH local AS (
