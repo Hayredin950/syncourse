@@ -18,7 +18,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import { AdminService } from './admin.service';
+import { AdminService, type AdminBatchField, type AdminBatchMode, type AdminBatchSnapshot } from './admin.service';
 import { CurrentUser } from '../common/current-user.decorator';
 import { AuthUser } from '../common/jwt-auth.guard';
 
@@ -370,6 +370,22 @@ class BroadcastDto {
   text: string;
 }
 
+class BatchApplyDto {
+  @IsIn(['lecturer', 'organization', 'category', 'level', 'prerequisites', 'audience', 'tags'])
+  field: AdminBatchField;
+
+  @IsOptional()
+  @IsIn(['add', 'remove', 'replace'])
+  mode?: AdminBatchMode;
+
+  @IsString()
+  value: string;
+
+  @IsArray()
+  @IsString({ each: true })
+  courseIds: string[];
+}
+
 @Controller('admin')
 export class AdminController {
   constructor(private readonly admin: AdminService) {}
@@ -413,6 +429,23 @@ export class AdminController {
   @Post('courses/:slug/cover')
   updateCover(@CurrentUser() user: AuthUser, @Param('slug') slug: string, @Body() dto: UpdateCoverDto) {
     return this.admin.updateCourseCover(user.id, slug, dto);
+  }
+
+  // --- Batch editing ---
+
+  @Get('batch/options')
+  batchOptions(@CurrentUser() user: AuthUser) {
+    return this.admin.batchOptions(user.id);
+  }
+
+  @Post('batch/apply')
+  batchApply(@CurrentUser() user: AuthUser, @Body() dto: BatchApplyDto) {
+    return this.admin.batchApply(user.id, dto);
+  }
+
+  @Post('batch/revert')
+  batchRevert(@CurrentUser() user: AuthUser, @Body() body: { snapshot: AdminBatchSnapshot }) {
+    return this.admin.batchRevert(user.id, body.snapshot);
   }
 
   /** Staff-only. All users with admin/plan metadata — powers the Users tab. */

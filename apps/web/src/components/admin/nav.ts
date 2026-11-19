@@ -6,6 +6,7 @@ import {
   FileText,
   GraduationCap,
   Inbox,
+  Layers,
   LayoutDashboard,
   Scale,
   ScrollText,
@@ -52,6 +53,12 @@ export const ADMIN_NAV: AdminNavGroup[] = [
     label: "Catalogue",
     items: [
       { href: "/admin/courses", label: "Courses", icon: BookOpen, keywords: "catalog lessons sections content" },
+      {
+        href: "/admin/batch",
+        label: "Batch edit",
+        icon: Layers,
+        keywords: "bulk multi select lecturer instructor organisation publisher category level prerequisites audience tags apply undo",
+      },
       {
         href: "/admin/drafts",
         label: "Course drafts",

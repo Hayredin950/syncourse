@@ -15,6 +15,7 @@
  * explained to an operator line by line.
  */
 import type { DraftImage, DraftImageRole, DraftPayload } from './draft-parser';
+import { cleanTitlePointers } from './telegram-feed.parser';
 
 /** Every key a post may set explicitly. Aliases map to one canonical name. */
 export type DraftFieldKey =
@@ -278,16 +279,57 @@ export function stripPromo(text: string): string {
 
 /** `🔰 Title` / `📕 Book` / `**Title**` → `Title`, safe to store as a title. */
 export function cleanPostTitle(raw: string): string {
-  return raw
+  const pointed = cleanTitlePointers(raw);
+  const hasFire = /🔥\uFE0F?$/u.test(pointed);
+  const bare = pointed
     .replace(/^[\s>*_#•\-–—]+/u, '')
     .replace(/^[^\p{L}\p{N}]+/u, '')
     .replace(/[*_`]/g, '')
     .replace(/\s+/g, ' ')
     // A decorative emoji at the end (`… SHOULD KNOW 🧠`) is not the title.
+    // The fire is the one exception: it is the app's course marker.
     .replace(/[\p{Extended_Pictographic}\uFE0F\u200D]+$/gu, '')
     .replace(/[\s:;,–—-]+$/u, '')
     .trim()
-    .slice(0, 200);
+    .slice(0, hasFire ? 199 : 200);
+  return hasFire && !/🔥$/u.test(bare) ? `${bare} 🔥` : bare;
+}
+
+/**
+ * A heading that classifies the files below it: "⚡️The Ultimate Design
+ * Patterns: Part 1", "Part 2 of 3", "Part III". It is a one-line label, not a
+ * description, so a paragraph that merely mentions a part does not match.
+ */
+const PART_HEADING_RE =
+  /^[^\p{L}\p{N}]*[^\n]{0,140}?\bpart[\s-]*(\d{1,2}|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|[ivx]{1,4})\b(?:\s*(?:of|\/)\s*\d+)?\s*[:.!–—-]?\s*$/iu;
+
+const NUMBER_WORDS: Record<string, number> = {
+  one: 1, two: 2, three: 3, four: 4, five: 5, six: 6,
+  seven: 7, eight: 8, nine: 9, ten: 10, eleven: 11, twelve: 12,
+  i: 1, ii: 2, iii: 3, iv: 4, v: 5, vi: 6, vii: 7, viii: 8, ix: 9, x: 10,
+};
+
+/** `⚡️… : Part 1` → `{ label: 'Part 1', title: 'The Ultimate Design Patterns' }`. */
+export function partHeading(text: string): { label: string; title: string } | null {
+  const cleaned = stripPromo((text ?? '').replace(/\r/g, '')).trim();
+  if (!cleaned || cleaned.length > 160) return null;
+  // A ZIP, a link or a multi-line body is a real post, not a section marker.
+  if (/\.(?:zip|rar|7z|pdf|epub)\b/i.test(cleaned)) return null;
+  if (/https?:\/\//i.test(cleaned)) return null;
+  const line = cleaned.split('\n').map((l) => l.trim()).filter(Boolean)[0] ?? '';
+  if (!line) return null;
+  const m = line.match(PART_HEADING_RE);
+  if (!m) return null;
+  const raw = m[1].toLowerCase();
+  const num = /^\d+$/.test(raw) ? Number(raw) : NUMBER_WORDS[raw];
+  if (!num || num < 1 || num > 99) return null;
+  const title = line
+    .replace(/\s*[—–-]?\s*\bpart[\s-]*\S+\s*$/i, '')
+    .replace(/^[^\p{L}\p{N}]+/u, '')
+    .replace(/\s+/g, ' ')
+    .replace(/[\s:;,–—-]+$/u, '')
+    .trim();
+  return { label: `Part ${num}`, title };
 }
 
 const DESCRIPTION_PREFIX = /^(?:📖|📝|📔|📄)\s*/;

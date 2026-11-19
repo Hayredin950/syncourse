@@ -359,7 +359,11 @@ export function ResourceDetailView({ slug }: { slug: string }) {
           )}
 
           {r.bodyMd.trim() && (
-            <section className="res-block" id="read">
+            <section className="res-block res-read" id="read">
+              <div className="res-block__head">
+                <h2>Read</h2>
+                <span className="muted mono res-block__hint">{r.readMinutes} min</span>
+              </div>
               <Markdown text={r.bodyMd} anchors className="md--doc res-body" />
             </section>
           )}

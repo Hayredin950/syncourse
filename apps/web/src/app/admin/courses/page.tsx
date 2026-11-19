@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { CoverImage } from "@/components/CoverImage";
 import Link from "next/link";
-import { BookOpen, ChevronRight, Pencil, Plus, Search } from "lucide-react";
+import { BookOpen, ChevronRight, Layers, Pencil, Plus, Search } from "lucide-react";
 import { del, get } from "@/lib/api";
 import type { AdminCourseRow } from "@/lib/types";
 import { formatDate } from "@/lib/format";
@@ -84,6 +84,9 @@ export default function AdminCourses() {
           </p>
         </div>
         <div className="admin-page-head__actions">
+          <Link href="/admin/batch" className="admin-btn admin-btn--ghost">
+            <Layers size={13} /> Batch edit
+          </Link>
           <Link href="/admin/courses/new" className="admin-btn admin-btn--primary">
             <Plus size={13} /> New course
           </Link>

@@ -1992,3 +1992,51 @@ a.admin-tile:hover {
 /* The same wordmark as the rest of the app, scaled to the rail. */
 .admin-sidebar__word { font-size: 16px; letter-spacing: -0.015em; color: var(--adm-ink); }
 .admin-sidebar__word .brand-ourse { color: #e8a13a; }
+
+/* ---- batch editing wizard ----
+   Three questions in the order an operator asks them (what, which, value).
+   The step strip is orientation, not navigation: steps become clickable only
+   once the choice they depend on exists. */
+.admin-steps { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 14px; }
+.admin-step {
+  display: inline-flex; align-items: center; gap: 7px;
+  padding: 5px 11px 5px 6px; border-radius: 999px;
+  border: 1px solid var(--adm-line); background: var(--adm-raised);
+  color: var(--adm-ink-4); font-size: 11px; font-weight: 600;
+}
+.admin-step__n {
+  display: grid; place-items: center; width: 19px; height: 19px;
+  border-radius: 999px; background: var(--adm-overlay); color: var(--adm-ink-3);
+  font-size: 10px; font-weight: 700;
+}
+.admin-step--on { color: var(--adm-ink); border-color: var(--adm-accent); background: var(--adm-accent-soft); }
+.admin-step--on .admin-step__n { background: var(--adm-accent); color: #141311; }
+.admin-step--done { color: var(--adm-ink-2); }
+.admin-step--done .admin-step__n { background: var(--adm-good-soft); color: var(--adm-good); }
+
+/* A field choice is a card, not a radio: the hint is the reason to pick it. */
+.admin-choice {
+  display: flex; align-items: flex-start; gap: 10px; text-align: left;
+  padding: 12px; border-radius: var(--adm-r);
+  border: 1px solid var(--adm-line); background: var(--adm-raised);
+  color: var(--adm-ink); font: inherit; cursor: pointer;
+  transition: border-color var(--adm-fast), background var(--adm-fast), transform var(--adm-fast);
+}
+.admin-choice:hover { border-color: var(--adm-accent); background: var(--adm-overlay); }
+.admin-choice:active { transform: scale(0.99); }
+.admin-choice:focus-visible { outline: none; box-shadow: 0 0 0 3px var(--adm-accent-soft); }
+.admin-choice__icon {
+  display: grid; place-items: center; flex: 0 0 30px; width: 30px; height: 30px;
+  border-radius: 8px; background: var(--adm-accent-soft); color: var(--adm-accent);
+}
+.admin-choice__body { display: grid; gap: 3px; flex: 1 1 auto; min-width: 0; }
+.admin-choice__body strong { font-size: 12.5px; }
+.admin-choice__body span { font-size: 10.5px; line-height: 1.45; color: var(--adm-ink-4); }
+.admin-choice > svg { flex: 0 0 auto; margin-top: 6px; color: var(--adm-ink-4); }
+
+/* A selected row has to read as selected even when the checkbox is off-screen. */
+.admin-table tr.admin-row--on { background: var(--adm-accent-soft); }
+.admin-cell-link--button {
+  display: block; width: 100%; padding: 0; border: 0; background: none;
+  font: inherit; text-align: left; cursor: pointer;
+}

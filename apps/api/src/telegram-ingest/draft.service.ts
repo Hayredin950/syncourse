@@ -49,6 +49,7 @@ import {
   mediaName,
   mediaRole,
   parseResourcePost,
+  partHeading,
   resourceTypeOf,
   stripPromo,
   titleFromPost,
@@ -104,6 +105,7 @@ export type ObserveResult =
   | { action: 'ignored'; reason: string }
   | { action: 'announcement'; draftId: string; payload: DraftPayload; created: boolean }
   | { action: 'file'; draftId: string; fileName: string; payload: DraftPayload }
+  | { action: 'part'; draftId: string; label: string; payload: DraftPayload }
   | { action: 'image'; draftId: string; role: DraftImageRole; payload: DraftPayload }
   | { action: 'published'; draftId: string; payload: DraftPayload; courseSlug: string | null };
 
@@ -189,6 +191,14 @@ export class IngestDraftService {
     // Text first: a photo can carry the whole announcement as its caption.
     // When it is not a course template, it is still a normal post.
     if (text) {
+      // A section heading ("⚡️The Ultimate Design Patterns: Part 2") classifies
+      // the ZIPs that follow it. It is not a post of its own, so it must be
+      // read before the announcement/standalone rules try to publish it.
+      const part = partHeading(text);
+      if (part) {
+        const labelled = await this.observePartHeading(input, part.label);
+        if (labelled.action !== 'ignored') return labelled;
+      }
       const result = await this.observeAnnouncement(input);
       if (result.action !== 'ignored') return result;
       if (input.image) {
@@ -575,6 +585,44 @@ export class IngestDraftService {
     return { action: 'file', draftId: open.id, fileName: entry.fileName, payload };
   }
 
+  /**
+   * A part/section heading labels the files that follow it. It is remembered on
+   * the open draft (not published as a resource), so `draftFileEntry` can prefix
+   * module titles with it and one course keeps its parts in order.
+   */
+  private async observePartHeading(input: DraftIncoming, label: string): Promise<ObserveResult> {
+    const open = await this.findOpenDraft(input.chat.id, input.threadId, null);
+    if (!open) return { action: 'ignored', reason: 'part heading with no open draft' };
+    const payload = open.payload as unknown as DraftPayload;
+    const kind = payload.kind ?? 'course';
+    // A picture post publishes itself as a resource a moment before its ZIPs
+    // arrive. The part heading lands in that gap, so it is accepted for a draft
+    // that is still eligible to become a course — it simply waits on the draft
+    // until a file proves the upgrade.
+    const canUpgrade =
+      kind === 'course' ||
+      (payload.autoPublished &&
+        !payload.signals.includes('explicit-resource') &&
+        !hasMeaningfulProse(payload.fields?.description ?? payload.announcement.description));
+    if (!canUpgrade) {
+      return { action: 'ignored', reason: 'part heading before a resource post' };
+    }
+    if (payload.partLabel === label && open.messageIds.some((id) => Number(id) === input.messageId)) {
+      return { action: 'part', draftId: open.id, label, payload };
+    }
+    payload.partLabel = label;
+    await this.prisma.ingestDraft.update({
+      where: { id: open.id },
+      data: {
+        payload: payload as unknown as Prisma.InputJsonValue,
+        ...(open.messageIds.some((id) => Number(id) === input.messageId)
+          ? {}
+          : { messageIds: { push: BigInt(input.messageId) } }),
+      },
+    });
+    return { action: 'part', draftId: open.id, label, payload };
+  }
+
   /** Build the draft entry for a file, or null when it is already attached. */
   private draftFileEntry(input: DraftIncoming, payload: DraftPayload): DraftFile | null {
     const file = input.file!;
@@ -589,14 +637,16 @@ export class IngestDraftService {
     }
 
     const { moduleTitle, partIndex: claimed } = moduleFromFile(fileName, payload.files.length);
+    const part = payload.partLabel?.trim() || null;
+    const labelled = part ? (moduleTitle ? `${part} · ${moduleTitle}` : part) : moduleTitle;
     return {
       messageId: input.messageId,
       fileId: file.fileId,
       fileName,
       fileSizeMb,
       mimeType: file.mimeType,
-      moduleTitle,
-      partIndex: nextPartIndex(payload.files, moduleTitle, claimed),
+      moduleTitle: labelled,
+      partIndex: nextPartIndex(payload.files, labelled, claimed),
       addedAt: new Date().toISOString(),
       mediaGroupId: input.mediaGroupId ?? null,
     };

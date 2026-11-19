@@ -61,6 +61,48 @@ export interface AdminCourseInput {
   sections?: AdminSectionInput[];
 }
 
+/** Fields an operator can apply to many courses at once. */
+export type AdminBatchField =
+  | 'lecturer'
+  | 'organization'
+  | 'category'
+  | 'level'
+  | 'prerequisites'
+  | 'audience'
+  | 'tags';
+
+export type AdminBatchMode = 'add' | 'remove' | 'replace';
+
+export interface AdminBatchInput {
+  field: AdminBatchField;
+  mode?: AdminBatchMode;
+  /** One name (lecturer, organisation, category, level) or one value per line. */
+  value: string;
+  courseIds: string[];
+}
+
+/**
+ * What each selected course looked like before a batch ran. Returned to the
+ * browser so the operator can undo the whole batch without the API keeping
+ * server-side session state (the console is stateless and multi-tenant).
+ */
+export interface AdminBatchSnapshot {
+  field: AdminBatchField;
+  mode: AdminBatchMode;
+  value: string;
+  entries: Array<{
+    courseId: string;
+    lecturerIds?: string[];
+    legacyLecturerId?: string | null;
+    organizationId?: string | null;
+    categoryIds?: string[];
+    levelId?: string | null;
+    prerequisites?: string | null;
+    audience?: string[];
+    tags?: string[];
+  }>;
+}
+
 export interface AdminLecturerInput {
   name?: string;
   bio?: string;
@@ -1457,6 +1499,371 @@ export class AdminService {
         ? `${label} published as v${doc.version}${notified > 0 ? ` — ${notified} user${notified === 1 ? '' : 's'} notified to re-accept` : ''}`
         : `${label} saved without a version change — nobody was prompted`,
     };
+  }
+
+  // --- Batch editing ---
+
+  /**
+   * Everything the batch wizard needs in one call: the catalogue rows an
+   * operator can filter/select, plus the values already on file so a single
+   * field can be filled from a dropdown instead of typed from memory.
+   */
+  async batchOptions(userId: string) {
+    await this.assertStaff(userId);
+    const [courses, lecturers, organizations, categories, levels, tags, audience] = await Promise.all([
+      this.prisma.course.findMany({
+        where: { deletedAt: null },
+        orderBy: { title: 'asc' },
+        select: {
+          id: true,
+          slug: true,
+          title: true,
+          contentType: true,
+          level: { select: { name: true } },
+          organization: { select: { name: true } },
+          lecturers: { orderBy: { orderIndex: 'asc' }, select: { lecturer: { select: { name: true } } } },
+          categories: { select: { category: { select: { name: true } } } },
+          tags: { select: { tag: true } },
+          audience: { select: { audienceTag: true } },
+          prerequisites: true,
+        },
+      }),
+      this.prisma.lecturer.findMany({ orderBy: { name: 'asc' }, select: { id: true, name: true } }),
+      this.prisma.organization.findMany({ orderBy: { name: 'asc' }, select: { id: true, name: true } }),
+      this.prisma.category.findMany({ orderBy: { name: 'asc' }, select: { id: true, name: true } }),
+      this.prisma.level.findMany({ orderBy: { name: 'asc' }, select: { id: true, name: true } }),
+      this.prisma.courseTag.findMany({ distinct: ['tag'], orderBy: { tag: 'asc' }, select: { tag: true } }),
+      this.prisma.courseAudience.findMany({
+        distinct: ['audienceTag'],
+        orderBy: { audienceTag: 'asc' },
+        select: { audienceTag: true },
+      }),
+    ]);
+
+    return {
+      courses: courses.map((c) => ({
+        id: c.id,
+        slug: c.slug,
+        title: c.title,
+        contentType: c.contentType,
+        level: c.level?.name ?? null,
+        organization: c.organization?.name ?? null,
+        lecturers: c.lecturers.map((l) => l.lecturer.name),
+        categories: c.categories.map((x) => x.category.name),
+        tags: c.tags.map((t) => t.tag),
+        audience: c.audience.map((a) => a.audienceTag),
+        prerequisites: c.prerequisites,
+      })),
+      lecturers,
+      organizations,
+      categories,
+      levels,
+      tags: tags.map((t) => t.tag),
+      audience: audience.map((a) => a.audienceTag),
+    };
+  }
+
+  /**
+   * Apply one field to every selected course and return a snapshot of exactly
+   * what changed, so the console can offer Undo. A failure inside the batch
+   * rolls every row back rather than leaving half a catalogue relabelled.
+   */
+  async batchApply(userId: string, input: AdminBatchInput) {
+    await this.assertStaff(userId);
+    const field = input.field;
+    const mode: AdminBatchMode = input.mode ?? (field === 'organization' || field === 'level' ? 'replace' : 'add');
+    const courseIds = [...new Set((input.courseIds ?? []).filter(Boolean))];
+    if (courseIds.length === 0) throw new BadRequestException('Select at least one course');
+    if (courseIds.length > 200) throw new BadRequestException('A batch can change at most 200 courses at once');
+
+    const raw = (input.value ?? '').trim();
+    const values = raw
+      .split(/\r?\n|,(?![^(]*\))/)
+      .map((v) => v.trim())
+      .filter(Boolean);
+    if (values.length === 0) throw new BadRequestException('Type the value to apply');
+
+    const courses = await this.prisma.course.findMany({
+      where: { id: { in: courseIds }, deletedAt: null },
+      select: {
+        id: true,
+        lecturerId: true,
+        organizationId: true,
+        levelId: true,
+        prerequisites: true,
+        lecturers: { orderBy: { orderIndex: 'asc' }, select: { lecturerId: true } },
+        categories: { select: { categoryId: true } },
+        audience: { select: { audienceTag: true } },
+        tags: { select: { tag: true } },
+      },
+    });
+    if (courses.length === 0) throw new NotFoundException('None of those courses exist');
+
+    // Resolve (and create) the named values once, before touching any course.
+    let lecturerId: string | null = null;
+    let organizationId: string | null = null;
+    let categoryId: string | null = null;
+    let levelId: string | null = null;
+    if (field === 'lecturer' && mode !== 'remove' && values[0]) {
+      lecturerId = await this.batchLecturer(values[0]);
+    }
+    if (field === 'organization' && mode !== 'remove' && values[0]) {
+      organizationId = await this.batchOrganization(values[0]);
+    }
+    if (field === 'category' && mode === 'add' && values[0]) {
+      categoryId = await this.batchCategory(values[0]);
+    }
+    if (field === 'level' && mode !== 'remove' && values[0]) {
+      levelId = await this.batchLevel(values[0]);
+    }
+
+    const snapshot: AdminBatchSnapshot = { field, mode, value: raw, entries: [] };
+
+    await this.prisma.$transaction(
+      async (tx) => {
+        for (const course of courses) {
+          if (field === 'lecturer') {
+            snapshot.entries.push({
+              courseId: course.id,
+              lecturerIds: course.lecturers.map((l) => l.lecturerId),
+              legacyLecturerId: course.lecturerId,
+            });
+            if (mode === 'remove') {
+              const byName = await tx.lecturer.findMany({
+                where: { name: { in: values, mode: 'insensitive' } },
+                select: { id: true },
+              });
+              // Values may also be ids when a script calls the endpoint.
+              const removeIds = new Set([
+                ...byName.map((l) => l.id),
+                ...values.filter((v) => course.lecturers.some((l) => l.lecturerId === v)),
+              ]);
+              if (removeIds.size > 0) {
+                await tx.courseLecturer.deleteMany({
+                  where: { courseId: course.id, lecturerId: { in: [...removeIds] } },
+                });
+              }
+            } else {
+              if (mode === 'replace') {
+                await tx.courseLecturer.deleteMany({ where: { courseId: course.id } });
+              }
+              if (lecturerId) {
+                const last = await tx.courseLecturer.aggregate({
+                  where: { courseId: course.id },
+                  _max: { orderIndex: true },
+                });
+                await tx.courseLecturer.upsert({
+                  where: { courseId_lecturerId: { courseId: course.id, lecturerId } },
+                  update: {},
+                  create: {
+                    courseId: course.id,
+                    lecturerId,
+                    orderIndex: (last._max.orderIndex ?? -1) + 1,
+                  },
+                });
+              }
+            }
+            await this.syncLegacyLecturer(tx, course.id);
+          } else if (field === 'organization') {
+            snapshot.entries.push({ courseId: course.id, organizationId: course.organizationId });
+            await tx.course.update({
+              where: { id: course.id },
+              data: { organizationId: mode === 'remove' ? null : organizationId },
+            });
+          } else if (field === 'category') {
+            snapshot.entries.push({ courseId: course.id, categoryIds: course.categories.map((c) => c.categoryId) });
+            if (mode === 'remove') {
+              const byName = await tx.category.findMany({
+                where: { name: { in: values, mode: 'insensitive' } },
+                select: { id: true },
+              });
+              const ids = new Set([...byName.map((c) => c.id), ...values]);
+              await tx.courseCategory.deleteMany({ where: { courseId: course.id, categoryId: { in: [...ids] } } });
+            } else {
+              if (mode === 'replace') {
+                await tx.courseCategory.deleteMany({ where: { courseId: course.id } });
+              }
+              const targetIds: string[] = [];
+              for (const value of values) {
+                targetIds.push(await this.batchCategory(value, tx));
+              }
+              for (const categoryId of targetIds) {
+                await tx.courseCategory.upsert({
+                  where: { courseId_categoryId: { courseId: course.id, categoryId } },
+                  update: {},
+                  create: { courseId: course.id, categoryId },
+                });
+              }
+            }
+          } else if (field === 'level') {
+            snapshot.entries.push({ courseId: course.id, levelId: course.levelId });
+            await tx.course.update({
+              where: { id: course.id },
+              data: { levelId: mode === 'remove' ? null : levelId },
+            });
+          } else if (field === 'prerequisites') {
+            snapshot.entries.push({ courseId: course.id, prerequisites: course.prerequisites });
+            const next =
+              mode === 'remove'
+                ? null
+                : mode === 'replace'
+                  ? raw
+                  : course.prerequisites?.trim()
+                    ? `${course.prerequisites.trim()}\n\n${raw}`
+                    : raw;
+            await tx.course.update({ where: { id: course.id }, data: { prerequisites: next } });
+          } else if (field === 'audience' || field === 'tags') {
+            const before =
+              field === 'audience' ? course.audience.map((a) => a.audienceTag) : course.tags.map((t) => t.tag);
+            snapshot.entries.push(field === 'audience' ? { courseId: course.id, audience: before } : { courseId: course.id, tags: before });
+            if (field === 'audience') {
+              if (mode === 'replace' || mode === 'remove') {
+                await tx.courseAudience.deleteMany({ where: { courseId: course.id } });
+              }
+              if (mode !== 'remove') {
+                const have = new Set(before.map((v) => v.toLowerCase()));
+                for (const value of values) {
+                  if (mode === 'add' && have.has(value.toLowerCase())) continue;
+                  await tx.courseAudience.create({ data: { courseId: course.id, audienceTag: value } });
+                }
+              }
+            } else {
+              if (mode === 'replace' || mode === 'remove') {
+                await tx.courseTag.deleteMany({ where: { courseId: course.id } });
+              }
+              if (mode !== 'remove') {
+                const have = new Set(before.map((v) => v.toLowerCase()));
+                for (const value of values) {
+                  if (mode === 'add' && have.has(value.toLowerCase())) continue;
+                  await tx.courseTag.create({ data: { courseId: course.id, tag: value } });
+                }
+              }
+            }
+          }
+        }
+      },
+      { timeout: 60_000 },
+    );
+
+    return {
+      applied: courses.length,
+      field,
+      mode,
+      value: raw,
+      snapshot,
+    };
+  }
+
+  /** Undo a batch from the snapshot the apply call returned. */
+  async batchRevert(userId: string, snapshot: AdminBatchSnapshot) {
+    await this.assertStaff(userId);
+    if (!snapshot || !Array.isArray(snapshot.entries) || snapshot.entries.length === 0) {
+      throw new BadRequestException('There is nothing to undo');
+    }
+    await this.prisma.$transaction(
+      async (tx) => {
+        for (const entry of snapshot.entries) {
+          const courseId = entry.courseId;
+          if (snapshot.field === 'lecturer') {
+            await tx.courseLecturer.deleteMany({ where: { courseId } });
+            const ids = entry.lecturerIds ?? [];
+            for (const [i, lecturerId] of ids.entries()) {
+              await tx.courseLecturer.create({ data: { courseId, lecturerId, orderIndex: i } });
+            }
+            await tx.course.update({
+              where: { id: courseId },
+              data: { lecturerId: entry.legacyLecturerId ?? ids[0] ?? null },
+            });
+          } else if (snapshot.field === 'organization') {
+            await tx.course.update({
+              where: { id: courseId },
+              data: { organizationId: entry.organizationId ?? null },
+            });
+          } else if (snapshot.field === 'category') {
+            await tx.courseCategory.deleteMany({ where: { courseId } });
+            for (const categoryId of entry.categoryIds ?? []) {
+              await tx.courseCategory.create({ data: { courseId, categoryId } });
+            }
+          } else if (snapshot.field === 'level') {
+            await tx.course.update({ where: { id: courseId }, data: { levelId: entry.levelId ?? null } });
+          } else if (snapshot.field === 'prerequisites') {
+            await tx.course.update({
+              where: { id: courseId },
+              data: { prerequisites: entry.prerequisites ?? null },
+            });
+          } else if (snapshot.field === 'audience') {
+            await tx.courseAudience.deleteMany({ where: { courseId } });
+            for (const value of entry.audience ?? []) {
+              await tx.courseAudience.create({ data: { courseId, audienceTag: value } });
+            }
+          } else if (snapshot.field === 'tags') {
+            await tx.courseTag.deleteMany({ where: { courseId } });
+            for (const value of entry.tags ?? []) {
+              await tx.courseTag.create({ data: { courseId, tag: value } });
+            }
+          }
+        }
+      },
+      { timeout: 60_000 },
+    );
+    return { reverted: snapshot.entries.length };
+  }
+
+  /** Keep the deprecated one-lecturer column in step with the credit list. */
+  private async syncLegacyLecturer(tx: Prisma.TransactionClient, courseId: string): Promise<void> {
+    const first = await tx.courseLecturer.findFirst({
+      where: { courseId },
+      orderBy: { orderIndex: 'asc' },
+      select: { lecturerId: true },
+    });
+    await tx.course.update({ where: { id: courseId }, data: { lecturerId: first?.lecturerId ?? null } });
+  }
+
+  private async batchLecturer(name: string): Promise<string> {
+    const trimmed = name.trim();
+    const existing = await this.prisma.lecturer.findFirst({
+      where: { name: { equals: trimmed, mode: 'insensitive' } },
+    });
+    if (existing) return existing.id;
+    const created = await this.prisma.lecturer.create({
+      data: { name: trimmed, slug: await this.uniqueSlugFor('lecturer', slugify(trimmed)) },
+    });
+    return created.id;
+  }
+
+  private async batchOrganization(name: string): Promise<string> {
+    const trimmed = name.trim();
+    const existing = await this.prisma.organization.findFirst({
+      where: { name: { equals: trimmed, mode: 'insensitive' } },
+    });
+    if (existing) return existing.id;
+    const created = await this.prisma.organization.create({
+      data: { name: trimmed, slug: await this.uniqueSlugFor('organization', slugify(trimmed)) },
+    });
+    return created.id;
+  }
+
+  private async batchCategory(name: string, tx?: Prisma.TransactionClient): Promise<string> {
+    const db = tx ?? this.prisma;
+    const trimmed = name.trim();
+    const existing = await db.category.findFirst({
+      where: { name: { equals: trimmed, mode: 'insensitive' } },
+    });
+    if (existing) return existing.id;
+    const created = await db.category.create({
+      data: { name: trimmed, slug: await this.uniqueSlugFor('category', slugify(trimmed)) },
+    });
+    return created.id;
+  }
+
+  private async batchLevel(name: string): Promise<string> {
+    const trimmed = name.trim();
+    const existing = await this.prisma.level.findFirst({
+      where: { name: { equals: trimmed, mode: 'insensitive' } },
+    });
+    if (existing) return existing.id;
+    const created = await this.prisma.level.create({ data: { name: trimmed } });
+    return created.id;
   }
 
   // --- helpers ---

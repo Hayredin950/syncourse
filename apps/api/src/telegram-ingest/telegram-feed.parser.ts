@@ -86,6 +86,37 @@ export interface ParsedFeed {
 // HTML / text helpers
 // ----------------------------------------------------------------
 
+/**
+ * A post title ends with a pointing hand when the download link sits below it
+ * (`The Ultimate Design Pattern Series 👇🏼`). The hand is a layout cue, never
+ * part of the name, so it is replaced by the app's own course marker 🔥. A
+ * leading 🎓 / 🔰 / ⚡️ is a subject marker and is left alone.
+ */
+const POINTER_EMOJI_RE = /[\u{1F446}\u{1F447}](?:[\u{1F3FB}-\u{1F3FF}])?\uFE0F?/gu;
+const FIRE_EMOJI_RE = /[\u{1F525}]\uFE0F?/gu;
+
+export function cleanTitlePointers(raw: string): string {
+  const text = (raw ?? '').normalize('NFC').replace(/\s+/g, ' ').trim();
+  if (!text) return '';
+  const hadPointer = POINTER_EMOJI_RE.test(text);
+  POINTER_EMOJI_RE.lastIndex = 0;
+  let title = text
+    .replace(POINTER_EMOJI_RE, ' ')
+    .replace(/\s+/g, ' ')
+    .replace(/[\s·:;,–—-]+$/u, '')
+    .trim();
+  // Exactly one fire, at the end: two fires or a stray one mid-title are noise.
+  const fires = title.match(FIRE_EMOJI_RE)?.length ?? 0;
+  if (fires > 0) {
+    title = title.replace(FIRE_EMOJI_RE, ' ').replace(/\s+/g, ' ').trim();
+  }
+  if (hadPointer || fires > 0) {
+    title = `${title} 🔥`;
+  }
+  FIRE_EMOJI_RE.lastIndex = 0;
+  return title.trim();
+}
+
 export function slugify(s: string): string {
   return s
     .toLowerCase()
@@ -281,6 +312,8 @@ export function looksLikeCoursePost(msg: FeedMessage): ParsedCourse | null {
     .trim();
   // strip a trailing vote counter suffix like "4.5 - 8341 votes"
   title = title.replace(/\s*[—-]\s*\d+(?:\.\d+)?\s*-\s*[\d,]+\s*votes?\s*$/i, '').trim();
+  // "… Series 👇🏼" points at the download line below; it is not part of the name.
+  title = cleanTitlePointers(title);
   if (!title) title = 'Untitled course';
 
   const taughtBy = (text.match(TAUGHT_BY_RE)?.[1] ?? '')

@@ -1948,3 +1948,148 @@ input:focus-visible, textarea:focus-visible, select:focus-visible { outline-offs
 
 
 
+
+/* ---- markdown link shelf ----
+   A "free books" post is a title plus a bare domain, twelve times. As a
+   numbered list it looked like a wall of text and none of it was clickable.
+   A shelf keeps the list's order but gives each work its own surface: the
+   title leads, the host reads as a chip, and the cards deal themselves in
+   with a small stagger. The 3D tilt is the "card table" feel the flat dark
+   panels do not have — deliberately light, and removed for reduced motion. */
+.md-links {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
+  margin: 4px 0 22px;
+  perspective: 1000px;
+}
+.md-link-card {
+  --tilt: 0deg;
+  position: relative;
+  display: flex;
+  gap: 12px;
+  padding: 14px 14px 13px;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--r-lg);
+  background:
+    radial-gradient(120% 90% at 0% 0%, hsl(var(--primary) / .07), transparent 55%),
+    linear-gradient(160deg, hsl(30 9% 12%), hsl(30 6% 9%));
+  overflow: hidden;
+  opacity: 0;
+  animation: mdCardIn .5s var(--ease) forwards;
+  animation-delay: calc(var(--i, 0) * 45ms);
+  transition: transform .35s var(--ease), border-color .35s var(--ease), box-shadow .35s var(--ease);
+}
+/* A faint checker tint on alternate cards keeps a long shelf from reading as a
+   uniform table, without turning it into a rainbow. */
+.md-link-card:nth-child(2n) {
+  background:
+    radial-gradient(120% 90% at 100% 0%, hsl(var(--primary) / .09), transparent 55%),
+    linear-gradient(200deg, hsl(30 8% 13%), hsl(30 5% 9%));
+}
+.md-link-card::after {
+  content: "";
+  position: absolute;
+  inset: -40% -60%;
+  background: linear-gradient(115deg, transparent 42%, rgba(255,255,255,.055) 50%, transparent 58%);
+  transform: translateX(-55%);
+  transition: transform .6s var(--ease);
+  pointer-events: none;
+}
+.md-link-card:hover,
+.md-link-card:focus-within {
+  transform: translateY(-4px) rotateX(2deg) rotateZ(-.35deg);
+  border-color: hsl(var(--primary) / .55);
+  box-shadow: 0 16px 34px -20px rgba(0,0,0,.9), 0 0 0 1px hsl(var(--primary) / .12);
+}
+.md-link-card:hover::after,
+.md-link-card:focus-within::after { transform: translateX(55%); }
+.md-link-card__n {
+  flex: 0 0 auto;
+  font-family: var(--app-font-mono);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: .06em;
+  color: hsl(var(--primary));
+  opacity: .85;
+  padding-top: 2px;
+}
+.md-link-card__body { display: grid; gap: 7px; min-width: 0; flex: 1 1 auto; }
+.md-link-card__title {
+  font-size: 13.5px;
+  font-weight: 750;
+  line-height: 1.35;
+  letter-spacing: -.005em;
+  color: #fff;
+  text-decoration: none;
+}
+.md-link-card__title:hover { color: hsl(var(--primary)); }
+/* The whole card is the click target of its title link. */
+.md-link-card__title::after { content: ""; position: absolute; inset: 0; }
+.md-link-card__links { position: relative; z-index: 1; display: flex; flex-wrap: wrap; gap: 6px; }
+.md-link-card__chip {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  padding: 3px 8px;
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--r-full);
+  background: rgba(255,255,255,.035);
+  color: hsl(var(--muted-foreground));
+  font-size: 10px;
+  font-family: var(--app-font-mono);
+  text-decoration: none;
+  transition: color var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease), background var(--t-fast) var(--ease);
+}
+.md-link-card__chip b { color: hsl(var(--foreground) / .8); font-family: var(--app-font-sans); font-weight: 700; }
+.md-link-card__chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.md-link-card__chip i { font-style: normal; color: hsl(var(--primary)); opacity: .8; }
+.md-link-card__chip:hover {
+  color: hsl(var(--foreground));
+  border-color: hsl(var(--primary) / .5);
+  background: hsl(var(--primary) / .1);
+}
+@keyframes mdCardIn {
+  from { opacity: 0; transform: translateY(10px) rotateX(-4deg); }
+  to { opacity: 1; transform: translateY(0) rotateX(0); }
+}
+
+/* Long-form resource prose: a touch larger and airier than legal copy, with
+   links that read as links even inside a paragraph. */
+.res-body.md--doc { font-size: 14.5px; line-height: 1.8; max-width: 72ch; }
+.res-body .md-p { margin-bottom: 16px; }
+.res-body .md-p:first-of-type { font-size: 15.5px; color: hsl(var(--foreground) / .94); }
+.res-body .md-list { gap: 8px; padding-left: 24px; }
+.res-body .md-list li { padding-left: 3px; }
+.res-body .md a { text-decoration-thickness: 1px; text-decoration-color: hsl(var(--primary) / .45); transition: text-decoration-color var(--t-fast) var(--ease); }
+.res-body .md a:hover { text-decoration-color: currentColor; }
+
+@media (prefers-reduced-motion: reduce) {
+  .md-link-card { opacity: 1; animation: none; }
+  .md-link-card:hover, .md-link-card:focus-within { transform: none; }
+  .md-link-card::after { display: none; }
+}
+
+/* The reading pane: a page inside the page. A body that is a list of links or
+   ten short paragraphs used to float directly on the dark background with no
+   edge, which read as leftover text rather than an artefact worth keeping. */
+.res-read {
+  position: relative;
+  padding: clamp(18px, 3vw, 30px);
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--r-2xl);
+  background:
+    radial-gradient(90% 60% at 100% 0%, hsl(var(--primary) / .055), transparent 60%),
+    linear-gradient(180deg, hsl(30 8% 11%), hsl(30 5% 9%));
+  overflow: hidden;
+}
+.res-read::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, hsl(var(--primary) / .55), transparent);
+}
+.res-read .res-block__head { margin-bottom: 14px; }

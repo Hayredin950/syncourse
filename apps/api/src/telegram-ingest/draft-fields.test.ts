@@ -20,6 +20,7 @@ import {
   mediaName,
   mediaRole,
   parseResourcePost,
+  partHeading,
   resourceTypeOf,
   stripPromo,
   titleFromPost,
@@ -159,6 +160,33 @@ ok(
   'a trailing decorative emoji is not part of the title',
 );
 ok(cleanPostTitle('📕 Deep Learning with TensorFlow') === 'Deep Learning with TensorFlow', 'book title cleaned');
+ok(
+  cleanPostTitle('The Ultimate Design Pattern Series 👇🏼🔥') === 'The Ultimate Design Pattern Series 🔥',
+  'a trailing pointer becomes one fire',
+);
+ok(
+  cleanPostTitle('Claude Code for Professional Developers 🔥👇🏼') === 'Claude Code for Professional Developers 🔥',
+  'the pointer is dropped even when the fire comes first',
+);
+ok(
+  cleanPostTitle('The ultimate Git Mastery course 👇🏼') === 'The ultimate Git Mastery course 🔥',
+  'a pointer alone gains a fire',
+);
+ok(
+  cleanPostTitle('🎓 Claude Code for Professional Developers') === 'Claude Code for Professional Developers',
+  'a leading study emoji is still trimmed for storage',
+);
+
+console.log('\npart headings');
+
+ok(partHeading('⚡️The Ultimate Design Patterns: Part 1')?.label === 'Part 1', 'a one-line part heading is read');
+ok(partHeading('⚡️The Ultimate Design Patterns: Part 2')?.title === 'The Ultimate Design Patterns', 'the heading names the course');
+ok(partHeading('Part 3 of 3')?.label === 'Part 3', '"Part 3 of 3" normalises');
+ok(partHeading('The course, part two')?.label === 'Part 2', 'a spelled-out number normalises');
+ok(partHeading('Part IV')?.label === 'Part 4', 'a roman numeral normalises');
+ok(partHeading('01 - Getting Started (5m).zip') === null, 'a ZIP is not a part heading');
+ok(partHeading('This is a long paragraph that mentions part 1 while explaining something else entirely, which is not a heading but prose that should stay prose.') === null, 'prose that mentions a part is not a heading');
+ok(partHeading('https://t.me/syncourse/1 Part 1') === null, 'a link post is not a heading');
 
 ok(
   describeAnnouncement(ultimate) ===

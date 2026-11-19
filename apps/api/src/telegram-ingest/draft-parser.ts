@@ -103,6 +103,12 @@ export interface DraftPayload {
   files: DraftFile[];
   /** Photos carried by the post, with the role their caption gave them. */
   images?: DraftImage[];
+  /**
+   * The last section heading seen above the files ("Part 2"). Files posted
+   * after it are grouped under that label, which is how a single design-pattern
+   * course keeps its three parts apart instead of mixing 28 modules together.
+   */
+  partLabel?: string | null;
   /** Explicit overrides typed in the post. */
   fields?: DraftFields;
   /** Existing `Category.slug` values, resolved again at approval time. */

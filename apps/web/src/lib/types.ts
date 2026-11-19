@@ -443,6 +443,68 @@ export interface AdminCourseRow {
   organization: string | null;
 }
 
+export type AdminBatchField =
+  | "lecturer"
+  | "organization"
+  | "category"
+  | "level"
+  | "prerequisites"
+  | "audience"
+  | "tags";
+
+export type AdminBatchMode = "add" | "remove" | "replace";
+
+export interface AdminBatchCourse {
+  id: string;
+  slug: string;
+  title: string;
+  contentType: string;
+  level: string | null;
+  organization: string | null;
+  lecturers: string[];
+  categories: string[];
+  tags: string[];
+  audience: string[];
+  prerequisites: string | null;
+}
+
+export interface AdminBatchOptions {
+  courses: AdminBatchCourse[];
+  lecturers: { id: string; name: string }[];
+  organizations: { id: string; name: string }[];
+  categories: { id: string; name: string }[];
+  levels: { id: string; name: string }[];
+  tags: string[];
+  audience: string[];
+}
+
+export interface AdminBatchEntry {
+  courseId: string;
+  lecturerIds?: string[];
+  legacyLecturerId?: string | null;
+  organizationId?: string | null;
+  categoryIds?: string[];
+  levelId?: string | null;
+  prerequisites?: string | null;
+  audience?: string[];
+  tags?: string[];
+}
+
+export interface AdminBatchSnapshot {
+  field: AdminBatchField;
+  mode: AdminBatchMode;
+  value: string;
+  entries: AdminBatchEntry[];
+}
+
+export interface AdminBatchResult {
+  applied: number;
+  field: AdminBatchField;
+  mode: AdminBatchMode;
+  value: string;
+  snapshot: AdminBatchSnapshot;
+}
+
 export interface AdminUserRow {
   id: string;
   name: string;
