@@ -95,6 +95,11 @@ model Course {
   isFeatured      Boolean       @default(false)
   contentType     String        @default("course") // course | mini-course | cheat-sheet | roadmap
   prerequisites   String?
+  /// Imported source rating from the post. Local stars are appended to these
+  /// instead of replacing them: ratingCount = base + local, ratingAvg = both.
+  baseRatingAvg   Float         @default(0)
+  baseRatingCount Int           @default(0)
+  /// Cached combined rating (source + local). Read by every listing.
   ratingAvg       Float         @default(0)
   ratingCount     Int           @default(0)
   downloadCount   Int           @default(0)

@@ -1150,6 +1150,8 @@ export class IngestDraftService {
               organizationId,
               originalPrice,
               price,
+              baseRatingAvg: payload.announcement.ratingAvg ?? 0,
+              baseRatingCount: payload.announcement.ratingCount ?? 0,
               ratingAvg: payload.announcement.ratingAvg ?? 0,
               ratingCount: payload.announcement.ratingCount ?? 0,
               sourceUrl: payload.fields?.sourceUrl ?? payload.announcement.sourceUrl ?? null,

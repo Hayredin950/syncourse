@@ -1,6 +1,7 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { combineRating } from './rating';
 
 @Injectable()
 export class ReviewsService {
@@ -24,20 +25,28 @@ export class ReviewsService {
       await this.prisma.rating.create({ data: { userId, courseId, stars } });
     }
 
-    // denormalize aggregates on the course row (spec B.7 optimization)
+    // The post's own rating is the baseline. Local stars are appended to it so
+    // one learner's vote moves a 4.5 / 1,646 course to 4.5 / 1,647 instead of
+    // replacing it with 5.0 / 1.
     const agg = await this.prisma.rating.aggregate({
       where: { courseId },
-      _avg: { stars: true },
       _count: true,
+      _sum: { stars: true },
+    });
+    const combined = combineRating({
+      baseAvg: course.baseRatingAvg,
+      baseCount: course.baseRatingCount,
+      localCount: agg._count,
+      localSum: agg._sum.stars ?? 0,
     });
     await this.prisma.course.update({
       where: { id: courseId },
       data: {
-        ratingAvg: agg._avg.stars ? +agg._avg.stars.toFixed(2) : 0,
-        ratingCount: agg._count,
+        ratingAvg: combined.avg,
+        ratingCount: combined.count,
       },
     });
-    return { rated: true, stars, ratingAvg: +((agg._avg.stars ?? 0)).toFixed(2), ratingCount: agg._count };
+    return { rated: true, stars, ratingAvg: combined.avg, ratingCount: combined.count };
   }
 
   async postReview(userId: string, courseIdOrSlug: string, body: string, containsSpoilers: boolean, parentId?: string) {

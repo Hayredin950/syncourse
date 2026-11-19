@@ -315,6 +315,8 @@ async function main() {
         isFeatured: d.featured,
         contentType: d.contentType,
         prerequisites: d.prereq,
+        baseRatingAvg: d.rating,
+        baseRatingCount: d.votes,
         ratingAvg: d.rating,
         ratingCount: d.votes,
         downloadCount: d.downloads,

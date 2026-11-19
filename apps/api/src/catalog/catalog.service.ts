@@ -3,6 +3,7 @@ import { Course, Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { legalTitle } from '../legal/legal.constants';
 import { withPartNumbers } from '../telegram/part-numbering';
+import { combineRating } from '../reviews/rating';
 
 type CourseWith = Prisma.CourseGetPayload<{
   include: {
@@ -335,7 +336,7 @@ export class CatalogService {
     if (!course || course.deletedAt) throw new NotFoundException('Course not found');
 
     const [ratings, reviewRows, reviewTotal, downloadStats, myUpvotes, reviewRatings, likeCount, mine] = await Promise.all([
-      this.prisma.rating.aggregate({ where: { courseId: course.id }, _avg: { stars: true }, _count: true }),
+      this.prisma.rating.aggregate({ where: { courseId: course.id }, _count: true, _sum: { stars: true } }),
       this.prisma.review.findMany({
         where: { courseId: course.id, parentId: null },
         orderBy: [{ upvotes: 'desc' }, { createdAt: 'desc' }],
@@ -390,6 +391,13 @@ export class CatalogService {
     const [savedRow, likedRow, myRatingRow] = mine;
 
     const ratingDistribution = await this.ratingDistribution(course.id);
+    // Source votes + local votes, the same number the button writes back.
+    const combinedRating = combineRating({
+      baseAvg: course.baseRatingAvg,
+      baseCount: course.baseRatingCount,
+      localCount: ratings._count,
+      localSum: ratings._sum.stars ?? 0,
+    });
 
     const sections = course.sections.map((s) => ({
       id: s.id,
@@ -420,8 +428,8 @@ export class CatalogService {
       organization: course.organization,
       sections,
       ratings: {
-        avg: ratings._avg.stars ? +ratings._avg.stars.toFixed(1) : 0,
-        count: ratings._count,
+        avg: combinedRating.count > 0 ? +combinedRating.avg.toFixed(1) : 0,
+        count: combinedRating.count,
         distribution: ratingDistribution,
       },
       // What this reader has already done to the course, so the buttons can open

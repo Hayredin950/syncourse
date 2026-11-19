@@ -240,6 +240,12 @@ Notes:
       description, `🔊 Taught By` / `🌐 Author`, `🔰 Level`, `⏰ Duration`
       (`1h 14m` and `41m`), `📋 Topics`, hashtags, and an external source link
       (O'Reilly, GitHub, a paper) instead of a Telegram invite.
+- [x] Ratings append instead of overwrite: the post's own number is stored in
+      `baseRatingAvg` / `baseRatingCount`, and a learner's star is added to it
+      (`count = source + local`, `avg = both`). A 4.5 from 1,646 votes stays
+      4.5 / 1,647 after the first tap, and changing your vote replaces only
+      your vote. Applied with additive SQL (`prisma/sql/2026-11-rating-baseline.sql`),
+      no `db push`.
 - [x] Mini-course rules: an explicit `type:` wins; a duration ≤ 90 minutes or
       ≤ 12 lessons is a mini-course; a title carrying *mini-course / crash
       course / quick course* is one; 1–3 module ZIPs are one. A title that

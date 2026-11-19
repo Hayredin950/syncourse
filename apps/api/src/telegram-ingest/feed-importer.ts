@@ -11,6 +11,7 @@
 import { PrismaClient } from '@prisma/client';
 import { ParsedFeed, ParsedCourse, ParsedSection, slugify } from './telegram-feed.parser';
 import { matchRows } from '../common/match-rows';
+import { combineRating } from '../reviews/rating';
 
 export interface ImportOptions {
   /** Extra categories (by slug) attached to every course from this feed. */
@@ -183,6 +184,8 @@ export class FeedImporter {
         description: pc.description || `${pc.title} — added from the ${channelUsername ?? 'Telegram'} feed.`,
         organizationId: result.organization?.id ?? null,
         lecturerId: lecturers[0]?.id ?? null,
+        baseRatingAvg: pc.ratingAvg ?? 0,
+        baseRatingCount: pc.ratingCount ?? 0,
         ratingAvg: pc.ratingAvg ?? 0,
         ratingCount: pc.ratingCount ?? 0,
         originalPrice: pc.originalPrice ?? null,
@@ -196,12 +199,32 @@ export class FeedImporter {
         description: pc.description || undefined,
         organizationId: result.organization?.id ?? null,
         lecturerId: lecturers[0]?.id ?? null,
-        ratingAvg: pc.ratingAvg ?? undefined,
-        ratingCount: pc.ratingCount ?? undefined,
+        // A re-import corrects the source rating; local stars stay and the
+        // combined number is recomputed below.
+        ...(pc.ratingAvg === null ? {} : { baseRatingAvg: pc.ratingAvg }),
+        ...(pc.ratingCount === null ? {} : { baseRatingCount: pc.ratingCount }),
         originalPrice: pc.originalPrice ?? undefined,
         sourceUrl: pc.sourceUrl ?? undefined,
       },
     });
+
+    if (pc.ratingAvg !== null || pc.ratingCount !== null) {
+      const local = await this.prisma.rating.aggregate({
+        where: { courseId: course.id },
+        _count: true,
+        _sum: { stars: true },
+      });
+      const combined = combineRating({
+        baseAvg: course.baseRatingAvg,
+        baseCount: course.baseRatingCount,
+        localCount: local._count,
+        localSum: local._sum.stars ?? 0,
+      });
+      await this.prisma.course.update({
+        where: { id: course.id },
+        data: { ratingAvg: combined.avg, ratingCount: combined.count },
+      });
+    }
 
     // Credits are replaced, not appended, so re-importing a corrected post
     // converges instead of piling up every name the feed has ever shown.
