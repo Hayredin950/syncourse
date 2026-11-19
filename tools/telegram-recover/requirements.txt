@@ -1,0 +1,4 @@
+# Only what the forwarder needs. Telethon talks MTProto directly; there is no
+# bot token involved because bots cannot read channel history.
+telethon>=1.36,<2
+python-dotenv>=1.0

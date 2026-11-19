@@ -1,0 +1,6 @@
+# Credentials and local run state never belong in git.
+.env
+*.session
+*.session-journal
+state.json
+__pycache__/
