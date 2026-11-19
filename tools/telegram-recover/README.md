@@ -30,10 +30,10 @@ they came from the original channel.
 1. Open <https://my.telegram.org> → **API development tools**.
 2. Create an app (any name) and copy its **api_id** and **api_hash**.
 3. Make sure the account you will sign in with:
-   - can open `t.me/Mosh4Learning` (public channels are readable without joining,
-     but joining makes rate limits friendlier),
-   - is a **member with permission to post** in the destination
-     (`t.me/syncourse`), otherwise it will get `CHAT_WRITE_FORBIDDEN`.
+   - can open the source channel (public channels are readable without
+     joining, but joining makes rate limits friendlier),
+   - is a **member with permission to post** in the destination,
+     otherwise it will get `CHAT_WRITE_FORBIDDEN`.
 
 ## 2. Install
 
@@ -50,7 +50,27 @@ asks for the login code (and 2FA password if set); after that the
 `recover.session` file keeps you signed in. Treat that file like a password —
 it is gitignored.
 
-## 3. Dry run, then batches
+## 3. Check access first
+
+If a run seems to do nothing, run the diagnostic. It signs in, then reports
+what the account can actually see and do — without forwarding anything:
+
+```bash
+.venv/bin/python forward.py --check
+```
+
+It prints both chats (title, kind, id, username), whether the source has
+**Restrict saving content** on, how many posts exist and the newest message
+id, whether the account may post in the destination, whether the destination
+is a forum, and the saved resume point. The common answers:
+
+- `Source posts: 0` — there is nothing there to forward.
+- `Can post in destination: NO` — make the account an admin of `DEST`.
+- `Resume point is already at the newest post` — an earlier run consumed the
+  history, so nothing is left. Use `--reset --from-id 0` only if you really
+  want to forward it again.
+
+## 4. Dry run, then batches
 
 ```bash
 # See what it would forward; no messages sent, no state written.
@@ -78,9 +98,9 @@ Reattach with `tmux attach -t recover`.
 
 ## Destination topic
 
-`t.me/syncourse/824` is normally a link to message 824 in the group. If the
-group is a **forum** and you want everything inside one topic, set the topic's
-top-message id:
+`t.me/somegroup/824` is normally a link to message 824 in the group, not a
+topic. If the group is a **forum** and you want everything inside one topic,
+set that topic's top-message id:
 
 ```env
 DEST_TOPIC=824

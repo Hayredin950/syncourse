@@ -23,6 +23,7 @@ instead of duplicating the channel.
 
 Usage
 -----
+    python forward.py --check
     python forward.py --dry-run --limit 20
     python forward.py --limit 500
     python forward.py --yes
@@ -44,6 +45,7 @@ from typing import Any, Awaitable, Callable, Sequence
 from dotenv import load_dotenv
 from telethon import TelegramClient, errors
 from telethon.tl.custom.message import Message
+from telethon.tl.functions.messages import GetHistoryRequest
 
 ROOT = Path(__file__).resolve().parent
 load_dotenv(ROOT / ".env")
@@ -159,6 +161,65 @@ async def forward_batch(
     return sent
 
 
+def entity_kind(entity: Any) -> str:
+    if getattr(entity, "broadcast", False):
+        return "channel"
+    if getattr(entity, "megagroup", False):
+        return "supergroup"
+    return "group"
+
+
+async def check(
+    client: TelegramClient,
+    src: Any,
+    dst: Any,
+    state: dict[str, Any],
+    topic: int | None,
+) -> None:
+    """Report what the account can actually do, without forwarding anything."""
+    me = await client.get_me()
+    log(f"Signed in as {me.first_name or me.username or 'account'} (id {me.id})")
+
+    for label, entity in (("SOURCE", src), ("DEST", dst)):
+        username = f"@{entity.username}" if getattr(entity, "username", None) else "—"
+        log(f"{label}: {entity.title!r} · {entity_kind(entity)} · id {entity.id} · {username}")
+
+    protected = bool(getattr(src, "noforwards", False))
+    log(f"Source protected content ('Restrict saving'): {'YES — cannot forward' if protected else 'no'}")
+
+    try:
+        history = await client(GetHistoryRequest(
+            peer=src, offset_id=0, offset_date=None, add_offset=0,
+            limit=1, max_id=0, min_id=0, hash=0,
+        ))
+        newest = history.messages[0].id if history.messages else 0
+        log(f"Source posts: {history.count} · newest message id {newest}")
+        if newest and state["last_id"] >= newest:
+            log("Resume point is already at the newest post — nothing new to forward.")
+    except Exception as exc:  # noqa: BLE001
+        log(f"Could not read source history: {type(exc).__name__}: {exc}")
+
+    try:
+        perms = await client.get_permissions(dst, me)
+        can_post = bool(getattr(perms, "send_messages", False) or getattr(perms, "is_admin", False))
+        log(
+            "Can post in destination: "
+            f"{'yes' if can_post else 'NO'} "
+            f"(send_messages={getattr(perms, 'send_messages', None)}, "
+            f"admin={getattr(perms, 'is_admin', None)}, "
+            f"creator={getattr(perms, 'is_creator', None)})"
+        )
+    except Exception as exc:  # noqa: BLE001
+        log(f"Could not read destination permissions: {type(exc).__name__}: {exc}")
+
+    forum = bool(getattr(dst, "forum", False))
+    log(f"Destination forum: {'yes' if forum else 'no'}" + (f" · DEST_TOPIC={topic}" if topic else ""))
+    if topic and not forum:
+        log("WARNING: DEST_TOPIC is set but the destination is not a forum — clear it.")
+
+    log(f"Saved resume point: message id {state['last_id']}")
+
+
 async def run(args: argparse.Namespace) -> None:
     api_id = int(env("TG_API_ID"))
     api_hash = env("TG_API_HASH")
@@ -188,6 +249,11 @@ async def run(args: argparse.Namespace) -> None:
         sys.exit("That channel is private and this account cannot read it.")
     except Exception as exc:  # noqa: BLE001
         sys.exit(f"Could not resolve source/destination: {type(exc).__name__}: {exc}")
+
+    if args.check:
+        await check(client, src, dst, state, topic)
+        await client.disconnect()
+        return
 
     me = await client.get_me()
     log(f"Signed in as {me.first_name or me.username or 'account'}")
@@ -287,6 +353,7 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(
         description="Forward all posts from your own Telegram channel to another chat."
     )
+    parser.add_argument("--check", action="store_true", help="diagnose access and permissions only")
     parser.add_argument("--dry-run", action="store_true", help="list what would be forwarded")
     parser.add_argument(
         "--limit",
@@ -317,7 +384,7 @@ def main() -> None:
     args = parse_args()
     if args.reset and STATE_FILE.exists():
         STATE_FILE.unlink()
-    if not args.limit and not args.dry_run and not args.yes:
+    if not args.limit and not args.dry_run and not args.check and not args.yes:
         sys.exit(
             "A full channel run is a lot of forwarding. Try --limit 20 first, then "
             "--limit 500, then add --yes for the whole history."
