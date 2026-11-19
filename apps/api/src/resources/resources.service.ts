@@ -28,6 +28,13 @@ type ResourceWith = Prisma.ResourceGetPayload<{ include: typeof resourceInclude 
 const WPM = 180;
 
 /**
+ * Media that could not be mirrored (a 149 MB podcast, for instance) is handed
+ * to the bot by row id rather than raw `file_id`: a start payload is capped at
+ * 64 characters and a Telegram file id is often longer than that.
+ */
+const BOT_USERNAME = process.env.TELEGRAM_BOT_USERNAME || 'syncourse_bot';
+
+/**
  * Reading time, when the author has not set one. Counting words in the markdown
  * source over-counts link targets and code, so both are dropped first.
  */
@@ -86,6 +93,13 @@ export class ResourcesService {
             id: m.id,
             kind: m.kind,
             url: m.url,
+            // A file with no public URL is not gone: the bot still holds the
+            // original and can deliver it on request. The web page renders the
+            // row and links here instead of hiding the attachment.
+            telegramUrl:
+              !m.url && m.telegramFileId
+                ? `https://t.me/${BOT_USERNAME}?start=dlm_${m.id}`
+                : null,
             fileName: m.fileName,
             fileSizeMb: m.fileSizeMb,
             caption: m.caption,

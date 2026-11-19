@@ -15,11 +15,13 @@ import { PrismaClient } from '@prisma/client';
 import { IngestDraftService } from '../src/telegram-ingest/draft.service';
 
 const prisma = new PrismaClient();
-// The check never uploads a photo, so a resolver that returns null is enough.
+// The check never uploads a photo or a document, so a resolver that returns
+// null is enough.
 const drafts = new IngestDraftService(prisma as never, {
   resolve: async () => null,
   resolveMany: async (images: Array<{ fileId: string }>) => images.map(() => null),
   resolveRoles: async () => ({}),
+  resolveFile: async () => null,
 } as never);
 
 // The parser strips a leading non-alphanumeric run (that is how it drops a

@@ -14,6 +14,7 @@ import {
   ImageOff,
   Maximize2,
   Paperclip,
+  Send,
   Share2,
   X,
 } from "lucide-react";
@@ -64,6 +65,7 @@ function Shot({ item, index, onOpen }: { item: ResourceMedia; index: number; onO
       className="res-shot"
       onClick={onOpen}
       aria-label={`Enlarge ${label}`}
+      title={label}
       style={ratio ? ({ "--shot-ratio": ratio } as React.CSSProperties) : undefined}
     >
       <span className="res-shot__frame">
@@ -90,7 +92,6 @@ function Shot({ item, index, onOpen }: { item: ResourceMedia; index: number; onO
           <Maximize2 size={13} />
         </span>
       </span>
-      {item.caption && <span className="res-shot__caption">{item.caption}</span>}
     </button>
   );
 }
@@ -130,9 +131,11 @@ export function ResourceDetailView({ slug }: { slug: string }) {
 
   const media = r?.media ?? [];
   const images = useMemo(() => media.filter((m) => m.kind === "image" && m.url), [media]);
-  const videos = useMemo(() => media.filter((m) => m.kind === "video" && m.url), [media]);
-  const audio = useMemo(() => media.filter((m) => m.kind === "audio" && m.url), [media]);
-  const pdfs = useMemo(() => media.filter((m) => m.kind === "pdf" && m.url), [media]);
+  // A video or recording with no mirrored URL is still attached: the bot holds
+  // the original, so it gets a card and a Telegram link instead of vanishing.
+  const videos = useMemo(() => media.filter((m) => m.kind === "video"), [media]);
+  const audio = useMemo(() => media.filter((m) => m.kind === "audio"), [media]);
+  const pdfs = useMemo(() => media.filter((m) => m.kind === "pdf"), [media]);
   const links = useMemo(() => media.filter((m) => m.kind === "link" && m.url), [media]);
 
   /* The lightbox is a `role="dialog" aria-modal` overlay, and Escape is how one
@@ -148,9 +151,11 @@ export function ResourceDetailView({ slug }: { slug: string }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [shot, images.length]);
   // Files with no viewer above come first: the panel is the only place they
-  // appear, where an image or a PDF has already been shown in full.
+  // appear, where an image or a PDF has already been shown in full. Media the
+  // bot holds rather than Cloudinary stays in the list too — a missing URL is
+  // not a missing attachment.
   const keepable = useMemo(() => {
-    const items = media.filter((m) => m.kind !== "link" && m.url);
+    const items = media.filter((m) => m.kind !== "link");
     return [
       ...items.filter((m) => PLAIN_KINDS.includes(m.kind)),
       ...items.filter((m) => !PLAIN_KINDS.includes(m.kind)),
@@ -312,9 +317,7 @@ export function ResourceDetailView({ slug }: { slug: string }) {
           {images.length > 0 && (
             <section className="res-block">
               <div className="res-block__head">
-                <h2>
-                  {images.length === 1 ? "The sheet" : `${images.length} sheets`}
-                </h2>
+                <h2>{images.length === 1 ? "Image" : `${images.length} images`}</h2>
                 <span className="muted mono res-block__hint">Click to enlarge</span>
               </div>
               <div className={`res-gallery ${images.length === 1 ? "res-gallery--one" : ""}`}>
@@ -332,8 +335,12 @@ export function ResourceDetailView({ slug }: { slug: string }) {
                 <div className="res-block__head">
                   <h2>{title}</h2>
                 </div>
-                {/* Controls only — autoplay on a reference page is hostile. */}
-                <video className="res-player" src={m.url ?? undefined} controls preload="metadata" />
+                {m.url ? (
+                  // Controls only — autoplay on a reference page is hostile.
+                  <video className="res-player" src={m.url} controls preload="metadata" />
+                ) : (
+                  <TelegramFile item={m} action="Watch on Telegram" fallback="Video" />
+                )}
                 {/* Only if the caption is not already serving as the heading. */}
                 {m.caption && m.caption.trim() !== title && <p className="res-cap">{m.caption}</p>}
               </section>
@@ -351,7 +358,11 @@ export function ResourceDetailView({ slug }: { slug: string }) {
                   return (
                     <div className="res-audio" key={m.id}>
                       <span className="res-audio__name">{title}</span>
-                      <audio src={m.url ?? undefined} controls preload="none" />
+                      {m.url ? (
+                        <audio src={m.url} controls preload="none" />
+                      ) : (
+                        <TelegramFile item={m} action="Listen on Telegram" fallback="Recording" />
+                      )}
                       {m.caption && m.caption.trim() !== title && <span className="res-cap">{m.caption}</span>}
                     </div>
                   );
@@ -390,8 +401,8 @@ export function ResourceDetailView({ slug }: { slug: string }) {
               </div>
               <div className="files-panel">
                 <p className="files-note">
-                  Everything attached to this {meta.label.toLowerCase()}, ready to keep. Downloads are served
-                  straight from storage — <strong>no Telegram needed</strong>.
+                  Everything attached to this {meta.label.toLowerCase()}. Mirrored files download straight from
+                  storage; the rest open in Telegram, where the bot sends you the original.
                 </p>
                 <div className="file-rows">
                   {keepable.map((m) => (
@@ -582,8 +593,7 @@ export function ResourceDetailView({ slug }: { slug: string }) {
           )}
           <div className="res-lightbox__foot" onClick={(e) => e.stopPropagation()}>
             <span className="mono">
-              {images.length > 1 ? `${shot + 1} / ${images.length}` : ""}
-              {images[shot].caption ? ` · ${images[shot].caption}` : ""}
+              {images.length > 1 ? `${shot + 1} / ${images.length}` : mediaTitle(images[shot], "Image")}
             </span>
             <a
               className="btn primary file-btn"
@@ -630,28 +640,86 @@ function PdfReader({ item, onDownload }: { item: ResourceMedia; onDownload: () =
             {cap && cap !== title ? ` · ${cap}` : ""}
           </span>
         </span>
-        <button type="button" className="btn ghost file-btn" onClick={() => setOpen((o) => !o)}>
-          {open ? "Hide" : "Read here"}
-        </button>
-        <a className="btn ghost file-btn" href={item.url ?? "#"} target="_blank" rel="noreferrer">
-          <ExternalLink size={12} /> Tab
-        </a>
-        <a
-          className="btn primary file-btn"
-          href={attachmentUrl(item.url) ?? "#"}
-          target="_blank"
-          rel="noreferrer"
-          onClick={onDownload}
-        >
-          <Download size={12} /> Save
-        </a>
+        {item.url ? (
+          <>
+            <button type="button" className="btn ghost file-btn" onClick={() => setOpen((o) => !o)}>
+              {open ? "Hide" : "Read here"}
+            </button>
+            <a className="btn ghost file-btn" href={item.url} target="_blank" rel="noreferrer">
+              <ExternalLink size={12} /> Tab
+            </a>
+            <a
+              className="btn primary file-btn"
+              href={attachmentUrl(item.url) ?? "#"}
+              target="_blank"
+              rel="noreferrer"
+              onClick={onDownload}
+            >
+              <Download size={12} /> Save
+            </a>
+          </>
+        ) : item.telegramUrl ? (
+          <a className="btn primary file-btn" href={item.telegramUrl} target="_blank" rel="noreferrer">
+            <Send size={12} /> Open in Telegram
+          </a>
+        ) : null}
       </div>
-      {open && (
+      {open && item.url && (
         <div className="res-pdf__frame">
           <iframe src={`${item.url}#view=FitH`} title={title} loading="lazy" />
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * A video or recording the bot holds but Cloudinary could not mirror — a
+ * 149 MB podcast is past both `getFile` and the free upload ceiling. The card
+ * still names the file and its size, and the link delivers the original.
+ */
+function TelegramFile({
+  item,
+  action,
+  fallback,
+}: {
+  item: ResourceMedia;
+  action: string;
+  fallback: string;
+}) {
+  const meta = mediaMeta(item.kind);
+  const Icon = meta.icon;
+  const title = mediaTitle(item, fallback);
+  if (!item.telegramUrl) {
+    return (
+      <div className="res-telegram res-telegram--off">
+        <span className="res-telegram__icon">
+          <Icon size={20} />
+        </span>
+        <span className="res-telegram__body">
+          <span className="res-telegram__kicker">{meta.label}</span>
+          <span className="res-telegram__name">{title}</span>
+          <span className="res-telegram__meta mono">Not available to play here</span>
+        </span>
+      </div>
+    );
+  }
+  return (
+    <a className="res-telegram" href={item.telegramUrl} target="_blank" rel="noreferrer">
+      <span className="res-telegram__icon">
+        <Icon size={20} />
+      </span>
+      <span className="res-telegram__body">
+        <span className="res-telegram__kicker">{meta.label}</span>
+        <span className="res-telegram__name">{title}</span>
+        <span className="res-telegram__meta mono">
+          {item.fileSizeMb ? `${item.fileSizeMb} MB · ` : ""}Delivered by the bot
+        </span>
+      </span>
+      <span className="res-telegram__cta">
+        <Send size={14} /> {action}
+      </span>
+    </a>
   );
 }
 
@@ -661,6 +729,8 @@ function FileRow({ item, onDownload }: { item: ResourceMedia; onDownload: () => 
   const Icon = m.icon;
   const title = mediaTitle(item, m.label);
   const cap = item.caption?.trim();
+  const href = item.url ? (attachmentUrl(item.url) ?? "#") : (item.telegramUrl ?? "#");
+  const remote = !item.url;
   return (
     <div className="file-row">
       <span className="file-row__num">
@@ -676,12 +746,13 @@ function FileRow({ item, onDownload }: { item: ResourceMedia; onDownload: () => 
       </span>
       <a
         className="btn primary file-btn"
-        href={attachmentUrl(item.url) ?? "#"}
+        href={href}
         target="_blank"
         rel="noreferrer"
-        onClick={onDownload}
+        onClick={remote ? undefined : onDownload}
       >
-        <Download size={13} /> Download
+        {remote ? <Send size={13} /> : <Download size={13} />}
+        {remote ? "Open in Telegram" : "Download"}
       </a>
     </div>
   );

@@ -721,6 +721,8 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
           await this.sendLinkedFile(chatId, payload.slice(4), 'file', threadId);
         } else if (payload.startsWith('dlmod_')) {
           await this.sendLinkedFile(chatId, payload.slice(6), 'module', threadId);
+        } else if (payload.startsWith('dlm_')) {
+          await this.sendResourceMedia(chatId, payload.slice(4), threadId);
         } else if (payload.startsWith('dl_')) {
           await this.sendCourseFile(chatId, payload.slice(3), threadId);
         } else if (payload.startsWith('download_')) {
@@ -3457,6 +3459,64 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
     }
     const files = scope === 'module' ? mod.files : mod.files.filter((f) => f.id === link.id);
     return this.deliverFiles(chatId, course, files, threadId, mod.title);
+  }
+
+  /**
+   * Deliver one attachment of a resource.
+   *
+   * A video, recording or document can be larger than anything a serverless
+   * response may carry (and larger than `getFile` will hand out at all), so the
+   * original stays in Telegram. Tapping "Watch on Telegram" on the resource
+   * page opens the bot with the row id and the file arrives in this chat.
+   */
+  private async sendResourceMedia(
+    chatId: number,
+    mediaId: string,
+    threadId?: number | null,
+  ) {
+    const media = await this.prisma.resourceMedia.findUnique({
+      where: { id: mediaId },
+      select: {
+        telegramFileId: true,
+        fileName: true,
+        fileSizeMb: true,
+        resource: { select: { id: true, title: true, slug: true, isPremium: true } },
+      },
+    });
+    if (!media?.telegramFileId) {
+      return this.sendText(chatId, 'That file is no longer attached — open the resource again.', threadId);
+    }
+    if (media.resource.isPremium && !(await this.canDownloadPremium(chatId))) {
+      return this.denyPremiumDownload(chatId, media.resource.title, threadId);
+    }
+
+    const caption =
+      `📄 <b>${esc(media.resource.title)}</b>\n` +
+      (media.fileName ? `📦 ${esc(media.fileName)}\n` : '') +
+      (media.fileSizeMb ? `⚖️ ${media.fileSizeMb} MB\n` : '') +
+      `${DIV}\n` +
+      `More at <a href="${APP_URL}/resources/${media.resource.slug}">syncourse-web.vercel.app</a>`;
+
+    const sent = await this.sendOneFile(
+      chatId,
+      {
+        fileId: media.telegramFileId,
+        fileName: media.fileName,
+        fileSizeMb: media.fileSizeMb,
+      } as unknown as TelegramFileRow,
+      caption,
+      threadId,
+    );
+    if (!sent) {
+      return this.sendText(
+        chatId,
+        'Could not send that file. The bot may have lost access to the source chat — please contact support.',
+        threadId,
+      );
+    }
+    await this.prisma.resource
+      .update({ where: { id: media.resource.id }, data: { downloadCount: { increment: 1 } } })
+      .catch(() => undefined);
   }
 
   /**

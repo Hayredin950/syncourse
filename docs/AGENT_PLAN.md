@@ -240,6 +240,12 @@ Notes:
       description, `🔊 Taught By` / `🌐 Author`, `🔰 Level`, `⏰ Duration`
       (`1h 14m` and `41m`), `📋 Topics`, hashtags, and an external source link
       (O'Reilly, GitHub, a paper) instead of a Telegram invite.
+- [x] Media delivery: photos are mirrored to Cloudinary, and so are videos,
+      recordings and documents up to the Bot API's 19 MB `getFile` ceiling. A
+      file past that line (a 149 MB podcast) is not dropped: the page still
+      names it and a "Listen/Watch on Telegram" card delivers the original
+      through the bot. The gallery no longer repeats the post caption under
+      every image — the body below already says it.
 - [x] Ratings append instead of overwrite: the post's own number is stored in
       `baseRatingAvg` / `baseRatingCount`, and a learner's star is added to it
       (`count = source + local`, `avg = both`). A 4.5 from 1,646 votes stays

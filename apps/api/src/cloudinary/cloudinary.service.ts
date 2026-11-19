@@ -160,6 +160,21 @@ export class CloudinaryService {
 
   /** Upload a raw image buffer (signed request). */
   async uploadBuffer(buffer: Buffer, mime: string, folder = 'syncourse'): Promise<CloudinaryUpload> {
+    return this.uploadFile(buffer, mime, folder, 'image');
+  }
+
+  /**
+   * Upload a buffer to any Cloudinary bucket. Audio goes to `video` — that is
+   * Cloudinary's bucket for anything that is played rather than displayed — and
+   * documents go to `raw`, where the bytes are served untouched.
+   */
+  async uploadFile(
+    buffer: Buffer,
+    mime: string,
+    folder: string,
+    resourceType: 'image' | 'video' | 'raw',
+    fileName?: string | null,
+  ): Promise<CloudinaryUpload> {
     if (!this.enabled) {
       throw new Error('Cloudinary is not configured — set CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY and CLOUDINARY_API_SECRET');
     }
@@ -168,15 +183,17 @@ export class CloudinaryService {
     const signature = this.sign({ folder, timestamp });
 
     const ext = (mime.split('/')[1] ?? 'png').split(';')[0] || 'png';
+    const safeName = (fileName ?? '').replace(/[^\w.-]+/g, '_').slice(-80);
+    const uploadName = safeName && /\.[a-z0-9]{1,5}$/i.test(safeName) ? safeName : `upload-${timestamp}.${ext}`;
     const form = new FormData();
-    form.append('file', new Blob([buffer as unknown as BlobPart], { type: mime }), `upload-${timestamp}.${ext}`);
+    form.append('file', new Blob([buffer as unknown as BlobPart], { type: mime }), uploadName);
     form.append('cloud_name', this.cloudName);
     form.append('api_key', this.apiKey);
     form.append('folder', folder);
     form.append('timestamp', timestamp);
     form.append('signature', signature);
 
-    const res = await fetch(`https://api.cloudinary.com/v1_1/${this.cloudName}/image/upload`, {
+    const res = await fetch(`https://api.cloudinary.com/v1_1/${this.cloudName}/${resourceType}/upload`, {
       method: 'POST',
       body: form,
     });

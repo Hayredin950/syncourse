@@ -561,6 +561,8 @@ export interface ResourceMedia {
   id: string;
   kind: ResourceMediaKind;
   url: string | null;
+  /** Deep link to the bot for a file too large to mirror; null when `url` is set. */
+  telegramUrl?: string | null;
   fileName: string | null;
   fileSizeMb: number | null;
   caption: string | null;

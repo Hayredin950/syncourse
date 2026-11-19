@@ -1365,10 +1365,11 @@ select option { background: var(--s-3); color: var(--ink-1); }
 .res-cap { margin: 8px 0 0; font-size: 11px; color: hsl(var(--muted-foreground)); }
 
 /* detail — gallery + lightbox */
-.res-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 12px; }
+.res-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 14px; }
 .res-gallery--one { grid-template-columns: minmax(0, 1fr); }
-.res-shot { position: relative; display: block; padding: 0; border: 1px solid hsl(var(--border)); border-radius: var(--r-lg); overflow: hidden; background: var(--s-1); cursor: zoom-in; transition: border-color var(--t-fast) var(--ease); }
-.res-shot:hover { border-color: hsl(var(--primary) / .55); }
+.res-shot { position: relative; display: block; padding: 0; border: 1px solid hsl(var(--border)); border-radius: var(--r-lg); overflow: hidden; background: var(--s-1); cursor: zoom-in; transition: border-color var(--t-fast) var(--ease), transform var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease); }
+.res-shot:hover { border-color: hsl(var(--primary) / .55); transform: translateY(-2px); box-shadow: var(--e-2); }
+.res-shot:focus-visible { outline: 2px solid hsl(var(--primary)); outline-offset: 2px; }
 /* The picture fills a box the tile already has, rather than being the thing that
    gives the tile a height. `--shot-ratio` opens at the portrait shape a scanned
    sheet almost always has and is replaced by the real one on load; an image that
@@ -1378,8 +1379,8 @@ select option { background: var(--s-3); color: var(--ink-1); }
 .res-shot__fail { position: absolute; inset: 0; display: grid; place-content: center; justify-items: center; gap: 5px; padding: 14px; text-align: center; color: hsl(var(--muted-foreground)); }
 .res-shot__fail-name { font-size: 11px; font-weight: 700; color: hsl(var(--foreground)); overflow-wrap: anywhere; }
 .res-shot__fail small { font-size: 10px; }
-.res-shot__zoom { position: absolute; top: 9px; right: 9px; display: grid; place-items: center; width: 27px; height: 27px; border-radius: var(--r-xs); background: rgba(8,7,6,.7); color: var(--ink-1); opacity: 0; transition: opacity var(--t-fast) var(--ease); }
-.res-shot:hover .res-shot__zoom { opacity: 1; }
+.res-shot__zoom { position: absolute; top: 9px; right: 9px; display: grid; place-items: center; width: 27px; height: 27px; border-radius: var(--r-xs); background: rgba(8,7,6,.72); color: var(--ink-1); opacity: 0; transition: opacity var(--t-fast) var(--ease); }
+.res-shot:hover .res-shot__zoom, .res-shot:focus-visible .res-shot__zoom { opacity: 1; }
 .res-shot__caption { display: block; padding: 9px 12px; text-align: left; font-size: 11px; color: hsl(var(--muted-foreground)); border-top: 1px solid hsl(var(--border)); }
 .res-lightbox { position: fixed; inset: 0; z-index: 90; display: grid; place-items: center; padding: 5vh 6vw; background: rgba(6,5,4,.94); backdrop-filter: blur(4px); cursor: zoom-out; }
 .res-lightbox img { max-width: 100%; max-height: 82vh; border-radius: var(--r-md); cursor: default; }
@@ -1401,6 +1402,20 @@ select option { background: var(--s-3); color: var(--ink-1); }
 .res-audio { display: flex; flex-direction: column; gap: 8px; padding: 13px 15px; border: 1px solid hsl(var(--border)); border-radius: var(--r-md); background: var(--s-1); }
 .res-audio__name { font-size: 12px; font-weight: 600; }
 .res-audio audio { width: 100%; }
+/* A file the bot holds rather than Cloudinary: big enough that a serverless
+   response cannot carry it, so the card is the attachment and the link is the
+   delivery. */
+.res-telegram { display: flex; align-items: center; gap: 14px; padding: 15px 16px; border: 1px solid hsl(var(--border)); border-radius: var(--r-lg); background: radial-gradient(120% 160% at 4% -20%, hsl(var(--primary) / .12), transparent 52%), var(--s-1); color: inherit; transition: border-color var(--t-fast) var(--ease), transform var(--t-fast) var(--ease); }
+.res-telegram:hover { border-color: hsl(var(--primary) / .5); transform: translateY(-1px); }
+.res-telegram--off { opacity: .72; }
+.res-telegram__icon { display: grid; place-items: center; flex: none; width: 42px; height: 42px; border-radius: var(--r-md); background: hsl(var(--primary) / .14); color: hsl(var(--primary)); }
+.res-telegram__body { display: flex; min-width: 0; flex: 1; flex-direction: column; gap: 2px; }
+.res-telegram__kicker { font-size: 9px; font-weight: 800; letter-spacing: .1em; text-transform: uppercase; color: hsl(var(--primary)); }
+.res-telegram__name { font-size: 13px; font-weight: 600; color: var(--ink-1); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.res-telegram__meta { font-size: 10px; color: hsl(var(--muted-foreground)); }
+.res-telegram__cta { display: inline-flex; align-items: center; gap: 6px; flex: none; padding: 8px 13px; border-radius: var(--r-full); background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); font-size: 11px; font-weight: 800; white-space: nowrap; }
+.res-audio .res-telegram { padding: 0; border: 0; background: transparent; }
+.res-audio .res-telegram:hover { transform: none; }
 .res-pdf-list { display: flex; flex-direction: column; gap: 12px; }
 .res-pdf { border: 1px solid hsl(var(--border)); border-radius: var(--r-lg); background: linear-gradient(180deg, hsl(30 8% 11%), #100f0d); overflow: hidden; }
 .res-pdf__head { display: flex; align-items: center; gap: 11px; padding: 12px 13px; flex-wrap: wrap; }

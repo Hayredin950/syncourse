@@ -1459,6 +1459,25 @@ export class IngestDraftService {
     const files = payload.files ?? [];
     if (images.length === 0 && files.length === 0) return 0;
 
+    // Non-image media used to be stored with only a Telegram `file_id`, so the
+    // resource page had nothing to render. Mirror what the Bot API can hand
+    // over (≤19 MB); a larger file keeps its id and is delivered by the bot's
+    // deep link instead. Done before the transaction, because an upload must
+    // not hold a database transaction open.
+    const current = await this.prisma.resourceMedia.findMany({
+      where: { resourceId },
+      select: { telegramFileId: true, url: true },
+    });
+    const alreadyMirrored = new Set(
+      current.filter((m) => m.telegramFileId && m.url).map((m) => m.telegramFileId as string),
+    );
+    const mirrored = new Map<string, string>();
+    for (const file of files) {
+      if (alreadyMirrored.has(file.fileId)) continue;
+      const url = await this.media.resolveFile(file);
+      if (url) mirrored.set(file.fileId, url);
+    }
+
     return this.prisma.$transaction(async (tx) => {
       const existing = await tx.resourceMedia.findMany({
         where: { resourceId },
@@ -1501,6 +1520,14 @@ export class IngestDraftService {
           data: { url: fill.url },
         });
       }
+      // A row written before mirroring existed gets its URL now, even when the
+      // file was attached in an earlier webhook and is not created again here.
+      for (const [fileId, url] of mirrored) {
+        await tx.resourceMedia.updateMany({
+          where: { resourceId, telegramFileId: fileId, url: null },
+          data: { url },
+        });
+      }
 
       for (const file of files) {
         const key = `${file.fileId}\u0000${file.fileName}`;
@@ -1509,6 +1536,7 @@ export class IngestDraftService {
         rows.push({
           resourceId,
           kind: mediaKindOf(file.mimeType, file.fileName),
+          url: mirrored.get(file.fileId) ?? null,
           telegramFileId: file.fileId,
           fileName: file.fileName,
           fileSizeMb: file.fileSizeMb,
