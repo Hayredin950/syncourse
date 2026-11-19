@@ -146,6 +146,10 @@ h3 { font-size: 16px; }
    too. Without an explicit basis they shrink when the header is measured, and
    the 46px field collapsed to 20px — text touching both borders. */
 .topbar-center > .top-search { flex: 0 0 46px; }
+/* The chip row keeps its natural width and scrolls inside the centre column
+   when the labels no longer fit, so every shelf stays reachable without
+   wrapping the header or hiding a label. */
+.topbar-center > .nav-cats { flex: 0 0 auto; }
 
 .top-search svg { flex: none; color: #b8afa4; }
 .top-search input {
@@ -223,20 +227,22 @@ h3 { font-size: 16px; }
 .nav-pill--me.open .nav-me__chevron { transform: rotate(180deg); }
 
 /* --- category chips (All Courses / Mini-courses / Resources) --------------- */
-/* Chips sit under the search field in the centre column. Three short labels fit
-   on one line inside the 460px search width, so nothing wraps and the row keeps
-   space on both sides. Roadmaps are a resource type, not a separate shelf, so
-   they stay inside Resources instead of taking a chip. */
+/* The row scrolls sideways when the centre column is narrower than the labels,
+   with the scrollbar hidden so it reads as one clean line. Roadmaps are a
+   resource type, not a separate shelf, so they stay inside Resources instead of
+   taking a chip. */
 .nav-cats {
   display: flex;
   flex-wrap: nowrap;
   align-items: center;
-  justify-content: center;
   gap: 6px;
   max-width: 100%;
   padding-inline: 4px;
-  overflow: visible;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
 }
+.nav-cats::-webkit-scrollbar { display: none; }
 .nav-cat {
   display: inline-flex;
   align-items: center;
