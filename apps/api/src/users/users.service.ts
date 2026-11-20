@@ -47,6 +47,22 @@ export class UsersService {
       }),
     ]);
 
+    // A pending banner is a prompt to finish a payment that can still land.
+    // Two things make that untrue: the account already has an active plan (the
+    // banner would nag someone who has paid), and the order is older than the
+    // rail's own window (Tikur sessions die after 15 minutes, so a day-old
+    // "pending" row is just abandoned). Neither case is shown; the admin queue
+    // still has the row for a person to review.
+    const now = Date.now();
+    const premiumActive =
+      user.planType === 'premium' &&
+      (!user.planExpiresAt || user.planExpiresAt.getTime() > now);
+    const pendingTtlMs = pendingSub?.paymentMethod === 'tikurpay' ? 20 * 60_000 : 24 * 60 * 60_000;
+    const payablePending =
+      !premiumActive && pendingSub && now - pendingSub.createdAt.getTime() <= pendingTtlMs
+        ? pendingSub
+        : null;
+
     return {
       id: user.id,
       name: user.name,
@@ -63,8 +79,8 @@ export class UsersService {
       privacy: user.privacy as Record<string, string> | null,
       hasGoogle: !!user.googleId,
       hasPassword: !!user.passwordHash,
-      pendingPayment: pendingSub
-        ? { id: pendingSub.id, planName: pendingSub.planName, paymentMethod: pendingSub.paymentMethod, amount: pendingSub.amount }
+      pendingPayment: payablePending
+        ? { id: payablePending.id, planName: payablePending.planName, paymentMethod: payablePending.paymentMethod, amount: payablePending.amount }
         : null,
       memberSince: user.createdAt,
       stats: { downloaded: downloadedCourses.length, saved, liked, lists, reviews },

@@ -367,6 +367,15 @@ export class PaymentsService {
       );
     }
 
+    // Only the newest checkout is the one the shopper is looking at. Opening
+    // the page a few times used to leave a trail of payable-looking pending
+    // orders (and a "finish your payment" nag for a 15-minute session that had
+    // already died), so the previous session is retired first.
+    await this.prisma.subscription.updateMany({
+      where: { userId, status: 'pending', paymentMethod: 'tikurpay' },
+      data: { status: 'expired' },
+    });
+
     const subscription = await this.prisma.subscription.create({
       data: {
         userId,
