@@ -15,12 +15,32 @@ import { typeMeta } from "@/components/ResourceCard";
 
 interface SearchData {
   query?: string;
+  type?: SearchKind;
   total: number;
   courses: CourseSummary[];
   lecturers: { id: string; name: string; slug: string; photoUrl: string | null }[];
   organizations: { id: string; name: string; slug: string; logoUrl: string | null }[];
   resources: ResourceSummary[];
   trending: string[];
+}
+
+/**
+ * The tabs above the results. `people` and `channels` are the catalogue's own
+ * words for lecturers and organisations; the API accepts the model names too,
+ * but these are what a reader recognises.
+ */
+type SearchKind = "all" | "courses" | "resources" | "people" | "channels";
+
+const KINDS: { value: SearchKind; label: string }[] = [
+  { value: "all", label: "Everything" },
+  { value: "courses", label: "Courses" },
+  { value: "resources", label: "Resources" },
+  { value: "people", label: "People" },
+  { value: "channels", label: "Channels" },
+];
+
+function isKind(value: string | null): value is SearchKind {
+  return !!value && KINDS.some((k) => k.value === value);
 }
 
 /** Matches the API's default page size. */
@@ -91,6 +111,10 @@ function ResourceHit({ r }: { r: ResourceSummary }) {
 function SearchInner() {
   const params = useSearchParams();
   const [q, setQ] = useState(params.get("q") ?? "");
+  const [kind, setKind] = useState<SearchKind>(() => {
+    const fromUrl = params.get("type");
+    return isKind(fromUrl) ? fromUrl : "all";
+  });
   const [data, setData] = useState<SearchData | null>(null);
   const [busy, setBusy] = useState(false);
   /* A failed search used to leave the previous query's hits on screen under the
@@ -159,7 +183,7 @@ function SearchInner() {
     setBusy(true);
     let cancelled = false;
     debounce.current = setTimeout(() => {
-      get<SearchData>(`/search?q=${encodeURIComponent(query)}&limit=${SEARCH_PAGE}&offset=0`)
+      get<SearchData>(`/search?q=${encodeURIComponent(query)}&type=${kind}&limit=${SEARCH_PAGE}&offset=0`)
         .then((d) => {
           if (cancelled) return;
           setData(d);
@@ -178,23 +202,32 @@ function SearchInner() {
       cancelled = true;
       clearTimeout(debounce.current);
     };
-  }, [q, retry]);
+  }, [q, retry, kind]);
 
   const loadMore = () => {
     if (!data || moreBusy) return;
     const query = q.trim();
     if (!query) return;
-    const offset = data.courses.length;
+    const offset =
+      kind === "resources" ? data.resources.length : data.courses.length;
     setMoreBusy(true);
     setMoreFailed(false);
-    get<SearchData>(`/search?q=${encodeURIComponent(query)}&limit=${SEARCH_PAGE}&offset=${offset}`)
+    get<SearchData>(
+      `/search?q=${encodeURIComponent(query)}&type=${kind}&limit=${SEARCH_PAGE}&offset=${offset}`,
+    )
       .then((d) => {
         setData((prev) => {
           if (!prev) return d;
           // A late page from the previous query must not be appended to the
           // current one — the user may have typed while it was in flight.
           if (prev.query && d.query && prev.query !== d.query) return prev;
-          return { ...prev, total: d.total, courses: [...prev.courses, ...d.courses] };
+          if (prev.type !== d.type) return prev;
+          return {
+            ...prev,
+            total: d.total,
+            courses: prev.courses.concat(d.courses),
+            resources: prev.resources.concat(d.resources),
+          };
         });
       })
       .catch(() => setMoreFailed(true))
@@ -270,6 +303,23 @@ function SearchInner() {
           </Link>
         </p>
       )}
+
+      {q.trim() && (
+        <div className="pills s-filter" role="tablist" aria-label="Filter search results">
+          {KINDS.map((k) => (
+            <button
+              key={k.value}
+              type="button"
+              role="tab"
+              aria-selected={kind === k.value}
+              className={`tab${kind === k.value ? " active" : ""}`}
+              onClick={() => setKind(k.value)}
+            >
+              {k.label}
+            </button>
+          ))}
+        </div>
+      )}
       {!q.trim() ? (
         <section className="s-idle">
           {trending.length > 0 && (
@@ -307,21 +357,23 @@ function SearchInner() {
       ) : (
         data && (
           <div className={busy ? "s-results is-stale" : "s-results"}>
-            {entities > 0 && (
+            {(kind === "all" || kind === "people" || kind === "channels") && entities > 0 && (
               <section className="s-group">
                 <h2 className="s-group__head">People &amp; channels</h2>
                 <div className="dark-panel s-hits">
-                  {data.lecturers.map((l) => (
-                    <EntityHit key={l.id} href={`/lecturers/${l.slug}`} name={l.name} imageUrl={l.photoUrl} kind="Lecturer" />
-                  ))}
-                  {data.organizations.map((o) => (
-                    <EntityHit key={o.id} href={`/organizations/${o.slug}`} name={o.name} imageUrl={o.logoUrl} kind="Channel" />
-                  ))}
+                  {(kind === "all" || kind === "people") &&
+                    data.lecturers.map((l) => (
+                      <EntityHit key={l.id} href={`/lecturers/${l.slug}`} name={l.name} imageUrl={l.photoUrl} kind="Lecturer" />
+                    ))}
+                  {(kind === "all" || kind === "channels") &&
+                    data.organizations.map((o) => (
+                      <EntityHit key={o.id} href={`/organizations/${o.slug}`} name={o.name} imageUrl={o.logoUrl} kind="Channel" />
+                    ))}
                 </div>
               </section>
             )}
 
-            {data.resources.length > 0 && (
+            {(kind === "all" || kind === "resources") && data.resources.length > 0 && (
               <section className="s-group">
                 <h2 className="s-group__head">
                   Resources <span className="s-group__n mono">{data.resources.length}</span>
@@ -331,10 +383,34 @@ function SearchInner() {
                     <ResourceHit key={r.id} r={r} />
                   ))}
                 </div>
+                {kind === "resources" && (
+                  <div className="s-more">
+                    {moreFailed && (
+                      <span className="s-more__note">Couldn’t load the next page — check your connection.</span>
+                    )}
+                    {data.resources.length < data.total ? (
+                      <button
+                        type="button"
+                        className="btn"
+                        onClick={loadMore}
+                        disabled={moreBusy}
+                        style={{ minHeight: 40 }}
+                      >
+                        {moreBusy
+                          ? "Loading…"
+                          : `Load ${Math.min(SEARCH_PAGE, data.total - data.resources.length)} more · ${data.total - data.resources.length} left`}
+                      </button>
+                    ) : (
+                      <span className="s-more__note">
+                        {data.total === 1 ? "The only match." : `All ${data.total} matches shown.`}
+                      </span>
+                    )}
+                  </div>
+                )}
               </section>
             )}
 
-            {data.courses.length > 0 && (
+            {(kind === "all" || kind === "courses") && data.courses.length > 0 && (
               <section className="s-group">
                 <h2 className="s-group__head">
                   Courses <span className="s-group__n mono">{data.total}</span>

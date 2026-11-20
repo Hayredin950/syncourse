@@ -4,6 +4,39 @@ import { PrismaService } from '../prisma/prisma.service';
 import { ResourcesService } from '../resources/resources.service';
 
 /**
+ * One tab on the search page. `people` and `channels` are the catalogue's
+ * names for lecturers and organisations; accepting the model names as aliases
+ * keeps links and API clients from breaking when they use either.
+ */
+export type SearchType = 'all' | 'courses' | 'resources' | 'people' | 'channels';
+
+export function normalizeType(raw: string | undefined): SearchType {
+  switch ((raw || '').trim().toLowerCase()) {
+    case 'course':
+    case 'courses':
+      return 'courses';
+    case 'resource':
+    case 'resources':
+    case 'notes':
+      return 'resources';
+    case 'people':
+    case 'person':
+    case 'lecturer':
+    case 'lecturers':
+      return 'people';
+    case 'channel':
+    case 'channels':
+    case 'organisation':
+    case 'organisations':
+    case 'organization':
+    case 'organizations':
+      return 'channels';
+    default:
+      return 'all';
+  }
+}
+
+/**
  * Global search.
  *
  * The original implementation was case-insensitive `LIKE` across five columns,
@@ -37,7 +70,10 @@ export class SearchService {
     private readonly resources: ResourcesService,
   ) {}
 
-  async search(q: string, opts: { limit?: number; offset?: number; recordTrending?: boolean } = {}) {
+  async search(
+    q: string,
+    opts: { limit?: number; offset?: number; recordTrending?: boolean; type?: string } = {},
+  ) {
     const query = (q || '').trim();
     // Never let a query string turn into NaN/negative paging values: Prisma
     // throws on `take: NaN`, which surfaced as a 500 from /search?limit=abc.
@@ -47,6 +83,7 @@ export class SearchService {
     const offset = Number.isFinite(opts.offset)
       ? Math.max(Math.trunc(opts.offset as number), 0)
       : 0;
+    const type = normalizeType(opts.type);
 
     // Record only a real search, not every prefix the debounced input sent.
     // The assistant reuses this ranking but its full questions must not show up
@@ -60,52 +97,122 @@ export class SearchService {
     ]);
 
     if (!query) {
-      return this.browse(limit, offset, trending.map((t) => t.query));
+      return this.browse(limit, offset, trending.map((t) => t.query), type);
     }
 
-    const ranked = await this.rankedIds(query, limit, offset);
-    if (!ranked) {
-      // A database without pg_trgm (or a raw-SQL failure) must still return
-      // results. The plain path is slower but never breaks the page.
-      return this.legacySearch(query, limit, offset, trending.map((t) => t.query));
-    }
+    const wantsAll = type === 'all';
+    const wantsCourses = wantsAll || type === 'courses';
+    const wantsResources = wantsAll || type === 'resources';
+    const wantsPeople = wantsAll || type === 'people';
+    const wantsChannels = wantsAll || type === 'channels';
+    // A mixed page shows a handful of each; a filtered page is the whole page.
+    const entityLimit = wantsAll ? 6 : Math.min(limit, 50);
+    // "People" and "channels" are name lookups, so a two-word prefix is enough
+    // regardless of length once the reader has explicitly picked that tab.
+    const nameWhere =
+      query.length >= 3 || !wantsAll
+        ? { name: { contains: query, mode: 'insensitive' as const } }
+        : undefined;
 
-    const [courses, lecturers, organizations, resources] = await Promise.all([
-      this.prisma.course.findMany({
-        where: { id: { in: ranked.ids } },
-        include: courseInclude,
-      }),
-      this.prisma.lecturer.findMany({
-        where: query.length >= 3 ? { name: { contains: query, mode: 'insensitive' } } : undefined,
-        take: 6,
-        orderBy: { name: 'asc' },
-      }),
-      this.prisma.organization.findMany({
-        where: query.length >= 3 ? { name: { contains: query, mode: 'insensitive' } } : undefined,
-        take: 6,
-        orderBy: { name: 'asc' },
-      }),
-      this.resources.search(query, 8),
-    ]);
+    const [coursePage, resourcePage, lecturers, organizations, peopleTotal, channelsTotal] =
+      await Promise.all([
+        wantsCourses ? this.coursePage(query, limit, offset) : Promise.resolve({ courses: [], total: 0 }),
+        wantsResources
+          ? this.resources.searchPage(query, wantsAll ? 8 : limit, wantsAll ? 0 : offset)
+          : Promise.resolve({ resources: [], total: 0 }),
+        wantsPeople
+          ? this.prisma.lecturer.findMany({
+              where: nameWhere,
+              take: entityLimit,
+              orderBy: { name: 'asc' },
+            })
+          : Promise.resolve([]),
+        wantsChannels
+          ? this.prisma.organization.findMany({
+              where: nameWhere,
+              take: entityLimit,
+              orderBy: { name: 'asc' },
+            })
+          : Promise.resolve([]),
+        // A filtered tab reports its own match count. The mixed page does not
+        // paginate entities, so the count there would be an extra query for a
+        // number nobody shows.
+        wantsPeople && !wantsAll ? this.prisma.lecturer.count({ where: nameWhere }) : Promise.resolve(0),
+        wantsChannels && !wantsAll
+          ? this.prisma.organization.count({ where: nameWhere })
+          : Promise.resolve(0),
+      ]);
 
-    // `findMany` returns whatever order Postgres likes; the ranking is the
-    // point, so put the rows back in the order the SQL produced.
-    const byId = new Map(courses.map((c) => [c.id, c]));
-    const ordered = ranked.ids.map((id) => byId.get(id)).filter((c): c is NonNullable<typeof c> => Boolean(c));
+    const total = wantsCourses
+      ? coursePage.total
+      : wantsResources
+        ? resourcePage.total
+        : wantsPeople
+          ? peopleTotal
+          : channelsTotal;
 
     return {
       query,
+      type,
       // `count(*) OVER()` from the ranked query — the real match count, not the
-      // page size.
-      total: ranked.total,
+      // page size. For a filtered tab it is that tab's own count.
+      total,
       limit,
       offset,
-      courses: ordered.map(summary),
+      courses: coursePage.courses,
       lecturers: lecturers.map((l) => ({ id: l.id, name: l.name, slug: l.slug, photoUrl: l.photoUrl })),
       organizations: organizations.map((o) => ({ id: o.id, name: o.name, slug: o.slug, logoUrl: o.logoUrl })),
-      resources,
+      resources: resourcePage.resources,
       trending: trending.map((t) => t.query),
     };
+  }
+
+  /**
+   * Courses for one page, ranked when the database can do it.
+   *
+   * `rankedIds` returns null when pg_trgm or the raw query is unavailable; that
+   * is a deployment problem, not a reason to return nothing, so the LIKE query
+   * below is the safety net. Only courses are involved here, so the filtered
+   * tab cannot be made empty by a failure in an unrelated section.
+   */
+  private async coursePage(query: string, limit: number, offset: number) {
+    const ranked = await this.rankedIds(query, limit, offset);
+    if (ranked) {
+      const rows = await this.prisma.course.findMany({
+        where: { id: { in: ranked.ids } },
+        include: courseInclude,
+      });
+      // `findMany` returns whatever order Postgres likes; the ranking is the
+      // point, so put the rows back in the order the SQL produced.
+      const byId = new Map(rows.map((c) => [c.id, c]));
+      const ordered = ranked.ids
+        .map((id) => byId.get(id))
+        .filter((c): c is NonNullable<typeof c> => Boolean(c));
+      return { courses: ordered.map(summary), total: ranked.total };
+    }
+
+    const insensitive = { contains: query, mode: 'insensitive' as const };
+    const where: Prisma.CourseWhereInput = {
+      deletedAt: null,
+      OR: [
+        { title: insensitive },
+        { description: insensitive },
+        { tags: { some: { tag: insensitive } } },
+        { categories: { some: { category: { name: insensitive } } } },
+        { lecturers: { some: { lecturer: { name: insensitive } } } },
+      ],
+    };
+    const [courses, total] = await Promise.all([
+      this.prisma.course.findMany({
+        where,
+        orderBy: [{ ratingAvg: 'desc' }, { downloadCount: 'desc' }],
+        take: limit,
+        skip: offset,
+        include: courseInclude,
+      }),
+      this.prisma.course.count({ where }),
+    ]);
+    return { courses: courses.map(summary), total };
   }
 
   /** "Everyone searching" chips — before the user types anything. */
@@ -384,7 +491,55 @@ export class SearchService {
   // Empty query + fallback
   // ---------------------------------------------------------------
 
-  private async browse(limit: number, offset: number, trending: string[]) {
+  private async browse(limit: number, offset: number, trending: string[], type: SearchType = 'all') {
+    if (type !== 'all') {
+      const [courses, courseTotal, resources, lecturers, organizations] = await Promise.all([
+        type === 'courses'
+          ? this.prisma.course.findMany({
+              where: { deletedAt: null },
+              orderBy: [{ ratingAvg: 'desc' }, { downloadCount: 'desc' }],
+              take: limit,
+              skip: offset,
+              include: courseInclude,
+            })
+          : Promise.resolve([]),
+        type === 'courses'
+          ? this.prisma.course.count({ where: { deletedAt: null } })
+          : Promise.resolve(0),
+        type === 'resources'
+          ? this.resources.list({ limit, offset }).then((r) => r.results)
+          : Promise.resolve([]),
+        type === 'people'
+          ? this.prisma.lecturer.findMany({ take: limit, skip: offset, orderBy: { name: 'asc' } })
+          : Promise.resolve([]),
+        type === 'channels'
+          ? this.prisma.organization.findMany({ take: limit, skip: offset, orderBy: { name: 'asc' } })
+          : Promise.resolve([]),
+      ]);
+
+      const total =
+        type === 'courses'
+          ? courseTotal
+          : type === 'resources'
+            ? await this.prisma.resource.count({ where: { deletedAt: null } })
+            : type === 'people'
+              ? await this.prisma.lecturer.count()
+              : await this.prisma.organization.count();
+
+      return {
+        query: '',
+        type,
+        total,
+        limit,
+        offset,
+        courses: courses.map(summary),
+        lecturers: lecturers.map((l) => ({ id: l.id, name: l.name, slug: l.slug, photoUrl: l.photoUrl })),
+        organizations: organizations.map((o) => ({ id: o.id, name: o.name, slug: o.slug, logoUrl: o.logoUrl })),
+        resources,
+        trending,
+      };
+    }
+
     const [courses, total, lecturers, organizations] = await Promise.all([
       this.prisma.course.findMany({
         where: { deletedAt: null },
@@ -400,6 +555,7 @@ export class SearchService {
 
     return {
       query: '',
+      type,
       total,
       limit,
       offset,

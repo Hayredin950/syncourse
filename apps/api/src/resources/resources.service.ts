@@ -140,29 +140,47 @@ export class ResourcesService {
    * resource sat in the library. The same query now returns cards from both.
    */
   async search(q: string, limit = 8) {
+    return (await this.searchPage(q, limit, 0)).resources;
+  }
+
+  /**
+   * The same search, pageable.
+   *
+   * The global search page can now be filtered to resources alone, which means
+   * it needs a real count and a real offset rather than the fixed eight rows a
+   * mixed result page can afford.
+   */
+  async searchPage(q: string, limit = 8, offset = 0) {
     const query = q.trim();
-    if (query.length < 2) return [];
+    if (query.length < 2) return { resources: [], total: 0 };
     const insensitive = { contains: query, mode: 'insensitive' as const };
-    const rows = await this.prisma.resource.findMany({
-      where: {
-        deletedAt: null,
-        OR: [
-          { title: insensitive },
-          { summary: insensitive },
-          { bodyMd: insensitive },
-          { tags: { some: { tag: insensitive } } },
-          { category: { name: insensitive } },
-          { lecturer: { name: insensitive } },
-          { organization: { name: insensitive } },
-        ],
-      },
-      include: resourceInclude,
-      // Featured first, then the most read; a body-only match should not
-      // outrank the resource whose title says exactly what was typed.
-      orderBy: [{ isFeatured: 'desc' }, { viewCount: 'desc' }, { publishedAt: 'desc' }],
-      take: Math.min(Math.max(limit, 1), 20),
-    });
-    return rows.map((r) => this.summary(r));
+    const where: Prisma.ResourceWhereInput = {
+      deletedAt: null,
+      OR: [
+        { title: insensitive },
+        { summary: insensitive },
+        { bodyMd: insensitive },
+        { tags: { some: { tag: insensitive } } },
+        { category: { name: insensitive } },
+        { lecturer: { name: insensitive } },
+        { organization: { name: insensitive } },
+      ],
+    };
+    const take = Math.min(Math.max(limit, 1), 40);
+    const skip = Math.max(offset, 0);
+    const [rows, total] = await Promise.all([
+      this.prisma.resource.findMany({
+        where,
+        include: resourceInclude,
+        // Featured first, then the most read; a body-only match should not
+        // outrank the resource whose title says exactly what was typed.
+        orderBy: [{ isFeatured: 'desc' }, { viewCount: 'desc' }, { publishedAt: 'desc' }],
+        take,
+        skip,
+      }),
+      this.prisma.resource.count({ where }),
+    ]);
+    return { resources: rows.map((r) => this.summary(r)), total };
   }
 
   async list(filters: {

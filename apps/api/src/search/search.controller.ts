@@ -28,10 +28,12 @@ export class SearchController {
     @Query('q') q?: string,
     @Query('limit') limit?: string,
     @Query('offset') offset?: string,
+    @Query('type') type?: string,
   ) {
     return this.searchService.search(q ?? '', {
       limit: limit !== undefined ? Number(limit) : undefined,
       offset: offset !== undefined ? Number(offset) : undefined,
+      type,
     });
   }
 

@@ -1944,6 +1944,9 @@ input:focus-visible, textarea:focus-visible, select:focus-visible { outline-offs
 .s-field__btn.is-on { background: hsl(var(--primary)); color: #14100a; }
 /* Holds the line open so nothing below shifts when the microphone opens. */
 .s-note { min-height: 16px; margin: 9px 4px 0; font-size: 11px; color: hsl(var(--accent)); }
+/* Type tabs sit between the field and the results, so choosing "Courses" does
+   not push the first card halfway down the page. */
+.s-filter { margin-top: 14px; }
 
 .s-idle { padding-top: 22px; }
 .s-idle__hint { margin: 32px 0 0; font-size: 12px; color: hsl(var(--muted-foreground)); text-align: center; }
