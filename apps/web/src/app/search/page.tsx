@@ -209,7 +209,13 @@ function SearchInner() {
     const query = q.trim();
     if (!query) return;
     const offset =
-      kind === "resources" ? data.resources.length : data.courses.length;
+      kind === "resources"
+        ? data.resources.length
+        : kind === "people"
+          ? data.lecturers.length
+          : kind === "channels"
+            ? data.organizations.length
+            : data.courses.length;
     setMoreBusy(true);
     setMoreFailed(false);
     get<SearchData>(
@@ -227,6 +233,8 @@ function SearchInner() {
             total: d.total,
             courses: prev.courses.concat(d.courses),
             resources: prev.resources.concat(d.resources),
+            lecturers: prev.lecturers.concat(d.lecturers),
+            organizations: prev.organizations.concat(d.organizations),
           };
         });
       })
@@ -359,7 +367,10 @@ function SearchInner() {
           <div className={busy ? "s-results is-stale" : "s-results"}>
             {(kind === "all" || kind === "people" || kind === "channels") && entities > 0 && (
               <section className="s-group">
-                <h2 className="s-group__head">People &amp; channels</h2>
+                <h2 className="s-group__head">
+                  {kind === "people" ? "People" : kind === "channels" ? "Channels" : "People & channels"}
+                  {kind !== "all" && <span className="s-group__n mono">{data.total}</span>}
+                </h2>
                 <div className="dark-panel s-hits">
                   {(kind === "all" || kind === "people") &&
                     data.lecturers.map((l) => (
@@ -370,13 +381,40 @@ function SearchInner() {
                       <EntityHit key={o.id} href={`/organizations/${o.slug}`} name={o.name} imageUrl={o.logoUrl} kind="Channel" />
                     ))}
                 </div>
+                {kind !== "all" && (
+                  <div className="s-more">
+                    {moreFailed && (
+                      <span className="s-more__note">Couldn’t load the next page — check your connection.</span>
+                    )}
+                    {entities < data.total ? (
+                      <button
+                        type="button"
+                        className="btn"
+                        onClick={loadMore}
+                        disabled={moreBusy}
+                        style={{ minHeight: 40 }}
+                      >
+                        {moreBusy
+                          ? "Loading…"
+                          : `Load ${Math.min(SEARCH_PAGE, data.total - entities)} more · ${data.total - entities} left`}
+                      </button>
+                    ) : (
+                      <span className="s-more__note">
+                        {data.total === 1 ? "The only match." : `All ${data.total} matches shown.`}
+                      </span>
+                    )}
+                  </div>
+                )}
               </section>
             )}
 
             {(kind === "all" || kind === "resources") && data.resources.length > 0 && (
               <section className="s-group">
                 <h2 className="s-group__head">
-                  Resources <span className="s-group__n mono">{data.resources.length}</span>
+                  Resources{" "}
+                  <span className="s-group__n mono">
+                    {kind === "resources" ? data.total : data.resources.length}
+                  </span>
                 </h2>
                 <div className="dark-panel s-hits">
                   {data.resources.map((r) => (
