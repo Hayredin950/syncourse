@@ -55,7 +55,19 @@ async function bootstrap() {
   const app = await NestFactory.create(AppModule, { rawBody: true });
   // Images are uploaded as base64 data URLs — the default 100kb body limit
   // rejected them with "request entity too large". 15mb covers photos/banners.
-  app.use(json({ limit: '15mb' }));
+  //
+  // These parsers run before the one Nest registers for `rawBody`, and
+  // body-parser skips a request that is already parsed. Without the `verify`
+  // hook below, `req.rawBody` stayed undefined and every signed Tikur Pay
+  // webhook was rejected as invalid even though the HMAC was correct.
+  app.use(
+    json({
+      limit: '15mb',
+      verify: (req, _res, buf) => {
+        (req as { rawBody?: Buffer }).rawBody = Buffer.from(buf);
+      },
+    }),
+  );
   app.use(urlencoded({ extended: true, limit: '15mb' }));
   app.setGlobalPrefix('api');
   app.enableCors({
