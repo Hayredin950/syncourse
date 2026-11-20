@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../api.dart';
+import '../models.dart';
 import '../theme.dart';
 
 /// Premium, with the real checkout attached.
@@ -20,14 +21,30 @@ class PremiumScreen extends StatefulWidget {
 
 class _PremiumScreenState extends State<PremiumScreen> {
   String? _busy;
+  /// Prices come from `/payments/plans`; nothing on this screen is baked in.
+  List<Plan>? _plans;
+  bool _failed = false;
 
-  static const _plans = [
-    _Plan('1m', 1, '149 ETB', '~35 ETB/week', false),
-    _Plan('3m', 3, '349 ETB', '~27 ETB/week', false),
-    _Plan('6m', 6, '549 ETB', '~21 ETB/week', true),
-  ];
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
 
-  Future<void> _start(_Plan plan) async {
+  Future<void> _load() async {
+    setState(() {
+      _failed = false;
+      _plans = null;
+    });
+    try {
+      final plans = await Api.plans();
+      if (mounted) setState(() => _plans = plans);
+    } catch (_) {
+      if (mounted) setState(() => _failed = true);
+    }
+  }
+
+  Future<void> _start(Plan plan) async {
     final token = await Api.loadToken();
     if (token == null) {
       if (mounted) Navigator.pushNamed(context, '/auth');
@@ -76,12 +93,30 @@ class _PremiumScreenState extends State<PremiumScreen> {
           const _Benefit(icon: Icons.download_for_offline, title: 'Full-speed downloads', desc: 'Offline lessons with quality picker'),
           const _Benefit(icon: Icons.block, title: 'Zero ads', desc: 'An ad-free experience across web and app'),
           const SizedBox(height: 24),
-          for (final plan in _plans)
-            _PlanCard(
-              plan: plan,
-              busy: _busy == plan.id,
-              onTap: _busy == null ? () => _start(plan) : null,
-            ),
+          if (_failed)
+            Column(
+              children: [
+                const Text(
+                  "We couldn't load the plans. Nothing was charged — try again.",
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 13, color: AppColors.muted, height: 1.5),
+                ),
+                const SizedBox(height: 12),
+                OutlinedButton(onPressed: _load, child: const Text('Retry')),
+              ],
+            )
+          else if (_plans == null)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 28),
+              child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+            )
+          else
+            for (final plan in _plans!)
+              _PlanCard(
+                plan: plan,
+                busy: _busy == plan.id,
+                onTap: _busy == null ? () => _start(plan) : null,
+              ),
           const SizedBox(height: 12),
           const Text(
             'Pay with any Ethiopian bank or wallet through Tikur Pay. The transfer is '
@@ -93,15 +128,6 @@ class _PremiumScreenState extends State<PremiumScreen> {
       ),
     );
   }
-}
-
-class _Plan {
-  const _Plan(this.id, this.months, this.price, this.weekly, this.best);
-  final String id;
-  final int months;
-  final String price;
-  final String weekly;
-  final bool best;
 }
 
 class _PaySheet extends StatefulWidget {
@@ -318,12 +344,30 @@ class _Benefit extends StatelessWidget {
 class _PlanCard extends StatelessWidget {
   const _PlanCard({required this.plan, required this.busy, required this.onTap});
 
-  final _Plan plan;
+  final Plan plan;
   final bool busy;
   final VoidCallback? onTap;
 
+  static String _etb(double value) {
+    final whole = value == value.roundToDouble() ? value.toStringAsFixed(0) : value.toStringAsFixed(2);
+    final parts = whole.split('.');
+    final digits = parts[0];
+    final buf = StringBuffer();
+    for (var i = 0; i < digits.length; i++) {
+      if (i > 0 && (digits.length - i) % 3 == 0) buf.write(',');
+      buf.write(digits[i]);
+    }
+    return parts.length > 1 ? '${buf.toString()}.${parts[1]}' : buf.toString();
+  }
+
   @override
   Widget build(BuildContext context) {
+    final monthly = plan.durationDays > 0 && plan.durationDays % 30 == 0
+        ? plan.durationDays ~/ 30
+        : null;
+    final headline = monthly != null
+        ? '$monthly ${monthly == 1 ? 'Month' : 'Months'}'
+        : plan.name;
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(14),
@@ -333,7 +377,7 @@ class _PlanCard extends StatelessWidget {
         decoration: BoxDecoration(
           color: AppColors.surface,
           borderRadius: BorderRadius.circular(14),
-          border: plan.best ? Border.all(color: AppColors.accent, width: 2) : null,
+          border: plan.isBestValue ? Border.all(color: AppColors.accent, width: 2) : null,
         ),
         child: Row(
           children: [
@@ -343,9 +387,8 @@ class _PlanCard extends StatelessWidget {
                 children: [
                   Row(
                     children: [
-                      Text('${plan.months} ${plan.months == 1 ? 'Month' : 'Months'}',
-                          style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
-                      if (plan.best) ...[
+                      Text(headline, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16)),
+                      if (plan.isBestValue) ...[
                         const SizedBox(width: 8),
                         Container(
                           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
@@ -356,14 +399,20 @@ class _PlanCard extends StatelessWidget {
                       ],
                     ],
                   ),
-                  Text(plan.weekly, style: const TextStyle(fontSize: 12, color: AppColors.muted)),
+                  Text(
+                    '${plan.durationDays} days · access on every device · no renewal',
+                    style: const TextStyle(fontSize: 12, color: AppColors.muted),
+                  ),
+                  if (plan.weeklyEtb > 0)
+                    Text('≈ ${plan.weeklyEtb} ETB / week',
+                        style: const TextStyle(fontSize: 12, color: AppColors.muted)),
                 ],
               ),
             ),
             if (busy)
               const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
             else ...[
-              Text(plan.price, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
+              Text('${_etb(plan.priceEtb)} ETB', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
               const SizedBox(width: 6),
               const Icon(Icons.chevron_right, color: AppColors.dim, size: 18),
             ],

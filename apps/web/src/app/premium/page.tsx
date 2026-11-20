@@ -5,7 +5,7 @@ import { useToast } from "@/lib/useToast";
 import type React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowRight, Check, CreditCard, MessageCircle, ShieldCheck, Wallet, Zap } from "lucide-react";
+import { ArrowRight, Check, MessageCircle, ShieldCheck, Wallet, Zap } from "lucide-react";
 import { get, post } from "@/lib/api";
 import type { HomeData, Plan } from "@/lib/types";
 import { useAuth } from "@/lib/auth";
@@ -35,6 +35,8 @@ interface TikurConfig {
   enabled: boolean;
   businessName: string;
   timeoutMinutes: number;
+  /** Manual Telebirr is hidden unless the server has a real wallet on file. */
+  manualTelebirr?: { enabled: boolean; accountName?: string; accountNumber?: string };
   rails: Record<string, { accountNumber?: string; accountName?: string; phoneNumber?: string }>;
 }
 
@@ -46,9 +48,10 @@ const METHODS: { value: string; label: string; sub: string; icon: React.ReactNod
     icon: <ShieldCheck size={17} />,
     recommended: true,
   },
+  // Only the rails that can actually settle a payment are listed. Crypto and
+  // card used to appear here but had no processor behind them: picking them
+  // created a pending subscription that could never be paid.
   { value: "telebirr", label: "Telebirr (manual)", sub: "Ethiopia · we check the reference", icon: <Wallet size={17} /> },
-  { value: "crypto", label: "Crypto", sub: "USDT · BTC · ETH · SOL", icon: <Zap size={17} /> },
-  { value: "stripe", label: "Card & PayPal", sub: "Worldwide · Visa / Mastercard", icon: <CreditCard size={17} /> },
 ];
 
 type MethodValue = (typeof METHODS)[number]["value"];
@@ -100,10 +103,33 @@ export default function PremiumPage() {
         setTikur(c);
         if (c.enabled) setMethod("tikur");
       })
-      .catch(() => setTikur({ enabled: false, businessName: "Syncourse", timeoutMinutes: 15, rails: {} }));
+      .catch(() =>
+        setTikur({
+          enabled: false,
+          businessName: "Syncourse",
+          timeoutMinutes: 15,
+          manualTelebirr: { enabled: false },
+          rails: {},
+        }),
+      );
   }, []);
 
-  const methods = tikur?.enabled === false ? METHODS.filter((m) => m.value !== "tikur") : METHODS;
+  const methods = METHODS.filter((m) => {
+    if (m.value === "tikur") return tikur?.enabled !== false;
+    if (m.value === "telebirr") return tikur?.manualTelebirr?.enabled === true;
+    return true;
+  });
+
+  // A saved method can disappear when the server config changes; never leave
+  // the page pointed at a rail that is no longer offered.
+  useEffect(() => {
+    if (tikur === null) return;
+    if (!methods.some((m) => m.value === method)) {
+      setMethod(methods[0]?.value ?? "tikur");
+    }
+    // `methods` is derived from `tikur`, so the config is the only real input.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tikur]);
 
   const current = plans.find((p) => p.id === selected) ?? plans[0];
 
@@ -125,7 +151,7 @@ export default function PremiumPage() {
       setCheckout(r);
       setReference("");
       setPaid(false);
-      if (r.redirectUrl && method !== "crypto") {
+      if (r.redirectUrl) {
         window.location.href = r.redirectUrl;
       }
       // The hosted page is the fastest path: it shows the account, collects the
@@ -231,7 +257,7 @@ export default function PremiumPage() {
           <span className="eyebrow">Syncourse premium</span>
           <h1 className="display">Every lesson.<br />No friction.</h1>
           <p>
-            Unlock full-speed downloads, offline notes, and uninterrupted course previews. Choose a fixed pass or a recurring membership.
+            Unlock full-speed downloads, offline notes, and uninterrupted course previews. Choose a fixed pass — it never auto-renews.
           </p>
           <div className="premium-hero__features">
             {[
@@ -283,6 +309,16 @@ export default function PremiumPage() {
             </button>
           ))}
         </div>
+        {tikur !== null && methods.length === 0 && (
+          <div className="dark-panel dark-panel--pad-lg" style={{ marginTop: 12 }}>
+            <h3>Payments are briefly unavailable</h3>
+            <p className="muted" style={{ margin: 0 }}>
+              Nothing is broken on your side and nothing was charged. Please try again shortly, or{" "}
+              <a href="mailto:support@syncourse.app" style={{ textDecoration: "underline" }}>contact support</a>{" "}
+              and we will unlock Premium manually.
+            </p>
+          </div>
+        )}
 
         {/* plans: selectable rows + summary panel */}
         <div className="plans-layout">
@@ -341,7 +377,12 @@ export default function PremiumPage() {
               <p className="muted" style={{ fontSize: 12 }}>
                 Pay with {methodLabel} securely — {current.durationDays} days of Premium, no auto-renewal.
               </p>
-              <button className="btn primary" style={{ width: "100%" }} onClick={() => startCheckout(current.id)}>
+              <button
+                className="btn primary"
+                style={{ width: "100%" }}
+                onClick={() => startCheckout(current.id)}
+                disabled={methods.length === 0}
+              >
                 Continue with {methodLabel} <ArrowRight size={14} />
               </button>
               <a href="mailto:support@syncourse.app" className="plan-summary__support">
@@ -366,7 +407,27 @@ export default function PremiumPage() {
                     : `We will verify your ${method} payment and unlock Premium on this device.`}
                 </p>
               </div>
-            ) : method === "tikur" ? (
+            ) : method === "telebirr" && checkout.steps ? (
+              <div style={{ fontSize: 13 }}>
+                <h3>{checkout.steps.step1.title}</h3>
+                <p className="muted" style={{ margin: "4px 0 12px" }}>{checkout.steps.step1.text}</p>
+                <div className="dark-panel dark-panel--row" style={{ display: "flex", justifyContent: "space-between" }}>
+                  <span className="muted">{checkout.steps.step1.accountName}</span>
+                  <span className="mono" style={{ fontWeight: 700, color: "hsl(var(--foreground))" }}>{checkout.steps.step1.accountNumber}</span>
+                </div>
+                <h3 style={{ marginTop: 20 }}>{checkout.steps.step2.title}</h3>
+                <input
+                  className="form-input"
+                  placeholder="e.g. DGT2C7H1S2"
+                  value={reference}
+                  onChange={(e) => setReference(e.target.value)}
+                />
+                <p className="muted" style={{ fontSize: 11, margin: "2px 0 16px" }}>{checkout.steps.step2.hint}</p>
+                <button className="btn primary" onClick={submitReference} disabled={!reference.trim()}>
+                  I have paid · submit reference <ArrowRight size={14} />
+                </button>
+              </div>
+            ) : (
               <div style={{ fontSize: 13 }}>
                 <h3>Pay {checkout.amount?.toLocaleString()} ETB</h3>
                 <p className="muted" style={{ margin: "4px 0 12px", lineHeight: 1.65 }}>
@@ -420,46 +481,6 @@ export default function PremiumPage() {
                   This page also checks the gateway every few seconds, so paying on the hosted page unlocks
                   Premium here without reloading.
                 </p>
-              </div>
-            ) : method === "telebirr" && checkout.steps ? (
-              <div style={{ fontSize: 13 }}>
-                <h3>{checkout.steps.step1.title}</h3>
-                <p className="muted" style={{ margin: "4px 0 12px" }}>{checkout.steps.step1.text}</p>
-                <div className="dark-panel dark-panel--row" style={{ display: "flex", justifyContent: "space-between" }}>
-                  <span className="muted">{checkout.steps.step1.accountName}</span>
-                  <span className="mono" style={{ fontWeight: 700, color: "hsl(var(--foreground))" }}>{checkout.steps.step1.accountNumber}</span>
-                </div>
-                <h3 style={{ marginTop: 20 }}>{checkout.steps.step2.title}</h3>
-                <input
-                  className="form-input"
-                  placeholder="e.g. DGT2C7H1S2"
-                  value={reference}
-                  onChange={(e) => setReference(e.target.value)}
-                />
-                <p className="muted" style={{ fontSize: 11, margin: "2px 0 16px" }}>{checkout.steps.step2.hint}</p>
-                <button className="btn primary" onClick={submitReference} disabled={!reference.trim()}>
-                  I have paid · submit reference <ArrowRight size={14} />
-                </button>
-              </div>
-            ) : method === "crypto" ? (
-              <div>
-                <h3>Continue to a secure crypto invoice</h3>
-                <p className="muted">USDT, BTC, ETH and more. Premium activates once the network confirms.</p>
-                {checkout.redirectUrl && (
-                  <a href={checkout.redirectUrl} target="_blank" rel="noreferrer" className="btn primary" style={{ display: "inline-block" }}>
-                    Open crypto invoice <ArrowRight size={14} />
-                  </a>
-                )}
-              </div>
-            ) : (
-              <div>
-                <h3>Continue to secure checkout</h3>
-                <p className="muted">You&apos;ll be redirected to the payment page to finish.</p>
-                {checkout.redirectUrl && (
-                  <a href={checkout.redirectUrl} target="_blank" rel="noreferrer" className="btn primary" style={{ display: "inline-block" }}>
-                    Proceed to payment <ArrowRight size={14} />
-                  </a>
-                )}
               </div>
             )}
           </div>

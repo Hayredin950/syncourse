@@ -62,7 +62,22 @@ export class PaymentsService {
 
     const base = process.env.PUBLIC_APP_URL || 'http://localhost:3000';
     switch (method) {
-      case 'telebirr':
+      case 'telebirr': {
+        const accountNumber = (
+          process.env.TELEBIRR_ACCOUNT_NUMBER ||
+          process.env.TIKURPAY_TELEBIRR_PHONE ||
+          ''
+        ).trim();
+        if (!accountNumber) {
+          throw new ServiceUnavailableException(
+            'Manual Telebirr is not available right now. Use the verified bank checkout instead.',
+          );
+        }
+        const accountName = (
+          process.env.TELEBIRR_ACCOUNT_NAME ||
+          process.env.TIKURPAY_TELEBIRR_NAME ||
+          'Syncourse'
+        ).trim();
         return {
           subscriptionId: subscription.id,
           plan: { ...plan, amount, currency },
@@ -71,8 +86,8 @@ export class PaymentsService {
             step1: {
               title: 'Send money',
               text: `Send ${amount.toLocaleString()} ${currency} with Telebirr to the account below`,
-              accountName: process.env.TELEBIRR_ACCOUNT_NAME || 'Syncourse',
-              accountNumber: process.env.TELEBIRR_ACCOUNT_NUMBER || '0000000000',
+              accountName,
+              accountNumber,
             },
             step2: {
               title: 'Submit your transaction number',
@@ -80,6 +95,7 @@ export class PaymentsService {
             },
           },
         };
+      }
       case 'crypto':
         // Hosted processor invoice — configure OXAPAY/NOWPAYMENTS URL in env.
         return {
@@ -211,10 +227,27 @@ export class PaymentsService {
    * receiving account, never a secret.
    */
   tikurConfig() {
+    const manualNumber = (
+      process.env.TELEBIRR_ACCOUNT_NUMBER ||
+      process.env.TIKURPAY_TELEBIRR_PHONE ||
+      ''
+    ).trim();
     return {
       enabled: this.tikur.configured,
       businessName: (process.env.TIKURPAY_BUSINESS_NAME || 'Syncourse').trim(),
       timeoutMinutes: this.tikur.timeoutMinutes,
+      // The manual rail is only offered when a real wallet is on file. It used
+      // to fall back to `0000000000`, which is not an account anyone can pay.
+      manualTelebirr: {
+        enabled: Boolean(manualNumber),
+        accountNumber: manualNumber,
+        accountName: (
+          process.env.TELEBIRR_ACCOUNT_NAME ||
+          process.env.TIKURPAY_TELEBIRR_NAME ||
+          process.env.TIKURPAY_BUSINESS_NAME ||
+          'Syncourse'
+        ).trim(),
+      },
       rails: this.tikur.rails,
     };
   }

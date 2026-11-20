@@ -1,4 +1,4 @@
-import { BadGatewayException, Injectable, Logger } from '@nestjs/common';
+import { BadGatewayException, BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { createHmac, timingSafeEqual } from 'node:crypto';
 
 /**
@@ -102,18 +102,36 @@ export class TikurPayClient {
   /** The receiving rails the checkout page will show, for the in-app panel. */
   get rails(): Record<string, TikurPaymentMethod> {
     const rails: Record<string, TikurPaymentMethod> = {};
+    const business = (process.env.TIKURPAY_BUSINESS_NAME || 'Syncourse').trim();
     const cbeNumber = (process.env.TIKURPAY_CBE_ACCOUNT || '').trim();
     if (cbeNumber) {
       rails.cbe = {
         accountNumber: cbeNumber,
-        accountName: (process.env.TIKURPAY_CBE_NAME || process.env.TIKURPAY_BUSINESS_NAME || 'Syncourse').trim(),
+        accountName: (process.env.TIKURPAY_CBE_NAME || business).trim(),
+      };
+    }
+    // Wallets are part of the same merchant account, so they belong in the
+    // fallback panel too: a customer who never opens the hosted page still
+    // needs a number that matches the rail they actually use.
+    const telebirrPhone = (process.env.TIKURPAY_TELEBIRR_PHONE || '').trim();
+    if (telebirrPhone) {
+      rails.telebirr = {
+        phoneNumber: telebirrPhone,
+        accountName: (process.env.TIKURPAY_TELEBIRR_NAME || business).trim(),
+      };
+    }
+    const mpesaPhone = (process.env.TIKURPAY_MPESA_PHONE || '').trim();
+    if (mpesaPhone) {
+      rails.mpesa = {
+        phoneNumber: mpesaPhone,
+        accountName: (process.env.TIKURPAY_MPESA_NAME || business).trim(),
       };
     }
     const ebirrPhone = (process.env.TIKURPAY_EBIRR_PHONE || '').trim();
     if (ebirrPhone) {
       rails.ebirr = {
         phoneNumber: ebirrPhone,
-        accountName: (process.env.TIKURPAY_CBE_NAME || process.env.TIKURPAY_BUSINESS_NAME || 'Syncourse').trim(),
+        accountName: (process.env.TIKURPAY_EBIRR_NAME || business).trim(),
       };
     }
     return rails;
@@ -249,10 +267,10 @@ export class TikurPayClient {
       const body = json as { message?: string; error?: string } | null;
       const detail = body?.message || body?.error || `gateway rejected the request (${res.status})`;
       // 400 from /checkout/verify is the normal shape of "this receipt does not
-      // prove a payment" — a rejected claim, not an outage. Pass it through so
-      // the UI can show the provider's own explanation.
+      // prove a payment" — a rejected claim, not an outage. It stays a client
+      // error so the app can show the provider's own explanation.
       if (res.status === 400 || res.status === 422) {
-        throw new BadGatewayException(detail);
+        throw new BadRequestException(detail);
       }
       // 5xx is the gateway's own problem (unfunded merchant balance, outage).
       // Its message is written for the account owner, not the customer, so it
