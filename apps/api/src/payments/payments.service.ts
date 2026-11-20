@@ -127,19 +127,117 @@ export class PaymentsService {
 
   /** Telebirr manual flow — submit the transaction reference from the SMS. */
   async submitReference(userId: string, subscriptionId: string, reference: string) {
-    if (!reference.trim()) throw new BadRequestException('Transaction reference is required');
+    const raw = reference.trim();
+    if (!raw) throw new BadRequestException('Transaction reference is required');
     const sub = await this.prisma.subscription.findUnique({ where: { id: subscriptionId } });
     if (!sub || sub.userId !== userId) throw new NotFoundException('Subscription not found');
+    if (sub.status === 'approved') {
+      return {
+        submitted: true,
+        status: 'approved',
+        verified: true,
+        message: 'This order is already paid — Premium is active.',
+      };
+    }
+    if (sub.status !== 'pending') throw new BadRequestException('That order is no longer open.');
 
-    await this.prisma.paymentReference.create({
-      data: { subscriptionId, reference },
+    const normalized = TikurPayClient.normalizeReference(raw);
+    // The same transfer must never buy a second account. Check both the
+    // automated rail's unique column and previously verified manual claims
+    // before spending a gateway credit on the lookup.
+    const [tikurUsed, manualUsed] = await Promise.all([
+      this.prisma.tikurPayment.findUnique({ where: { reference: normalized }, select: { id: true } }),
+      this.prisma.paymentReference.findFirst({
+        where: {
+          reference: { in: [raw, normalized], mode: 'insensitive' },
+          verified: true,
+          NOT: { subscriptionId },
+        },
+        select: { id: true },
+      }),
+    ]);
+    if (tikurUsed || manualUsed) {
+      throw new BadRequestException(
+        'That receipt has already been used to unlock another account. Each transfer can only be claimed once.',
+      );
+    }
+
+    const stored = await this.prisma.paymentReference.create({
+      data: { subscriptionId, reference: raw },
     });
+    const pendingReview = {
+      submitted: true,
+      status: sub.status,
+      verified: false,
+      message:
+        'Reference received. We could not confirm it automatically right now, so it is queued for review — you will not be charged twice.',
+    };
+    if (!this.tikur.configured) return pendingReview;
+
+    // Manual transfers were a dead end: the reference sat in the review queue
+    // until a person looked at it. The gateway can verify the same receipt
+    // against the bank ledger, so try that first and only fall back to review.
+    let result;
+    try {
+      result = await this.tikur.verifyReference(raw, sub.paymentMethod === 'telebirr' ? 'telebirr' : undefined);
+    } catch (err) {
+      if (err instanceof BadRequestException) {
+        // The bank's own explanation ("not found", "already claimed") is more
+        // useful than a generic queue message, but keep the submission.
+        return { ...pendingReview, message: err.message };
+      }
+      this.logger.warn(`Manual reference ${raw} could not be auto-verified: ${(err as Error).message}`);
+      return pendingReview;
+    }
+
+    if (result.verified !== true || result.success === false) {
+      return { ...pendingReview, message: result.message || pendingReview.message };
+    }
+    if (typeof result.amount === 'number' && Math.abs(result.amount - sub.amount) > 0.01) {
+      throw new BadRequestException(
+        `That transfer was ${result.amount.toLocaleString()} ETB but this plan costs ${sub.amount.toLocaleString()} ETB. Nothing was unlocked.`,
+      );
+    }
+    if (!this.receiverIsOurs(result.receiverName)) {
+      throw new BadRequestException(
+        'That transfer did not land in a Syncourse receiving account. Nothing was unlocked.',
+      );
+    }
+
+    const activated = await this.activate(sub.userId, sub);
+    await this.prisma.paymentReference.update({ where: { id: stored.id }, data: { verified: true } });
+    if (activated) {
+      await this.prisma.subscription.update({
+        where: { id: sub.id },
+        data: { txReference: normalized, periodStart: new Date() },
+      });
+    }
     return {
       submitted: true,
-      message:
-        'Reference received. Most payments verify automatically within seconds; some are checked by a person.',
-      status: sub.status,
+      status: activated ? 'approved' : sub.status,
+      verified: activated,
+      message: activated
+        ? 'Payment verified — Premium is unlocked.'
+        : 'That payment was already applied.',
     };
+  }
+
+  /**
+   * Did this transfer land in one of our configured receiving accounts?
+   *
+   * Wallet numbers come back masked (`2519****0736`), so the account field is
+   * not reliable on its own. The holder name is: the gateway reads it from the
+   * bank, and it must contain a token from one of our rails.
+   */
+  private receiverIsOurs(receiverName: string | null | undefined): boolean {
+    const name = (receiverName ?? '').toLowerCase();
+    if (!name) return false;
+    const tokens = Object.values(this.tikur.rails)
+      .map((rail) => rail.accountName?.toLowerCase() ?? '')
+      .join(' ')
+      .split(/\s+/)
+      .filter((token) => token.length >= 3);
+    return tokens.some((token) => name.includes(token));
   }
 
   /**

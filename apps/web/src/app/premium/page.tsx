@@ -43,15 +43,22 @@ interface TikurConfig {
 const METHODS: { value: string; label: string; sub: string; icon: React.ReactNode; recommended?: boolean }[] = [
   {
     value: "tikur",
-    label: "Bank · Telebirr · M-Pesa",
-    sub: "Ethiopia · verified automatically in seconds",
+    label: "Pay online — CBE · Telebirr · M-Pesa",
+    sub: "Automatic bank verification, usually in seconds",
     icon: <ShieldCheck size={17} />,
     recommended: true,
   },
   // Only the rails that can actually settle a payment are listed. Crypto and
   // card used to appear here but had no processor behind them: picking them
-  // created a pending subscription that could never be paid.
-  { value: "telebirr", label: "Telebirr (manual)", sub: "Ethiopia · we check the reference", icon: <Wallet size={17} /> },
+  // created a pending subscription that could never be paid. The manual row is
+  // deliberately second and clearly labelled: the automatic rail above is the
+  // faster path for the same wallets.
+  {
+    value: "telebirr",
+    label: "Telebirr — paid from your wallet",
+    sub: "Manual transfer · same receipt, verified after you submit it",
+    icon: <Wallet size={17} />,
+  },
 ];
 
 type MethodValue = (typeof METHODS)[number]["value"];
@@ -63,13 +70,15 @@ export default function PremiumPage() {
   /* `plans.length === 0` is the skeleton branch below, so a failed request left
      the purchase page shimmering with no prices and no way to retry. */
   const [plansFailed, setPlansFailed] = useState(false);
-  const [method, setMethod] = useState<MethodValue>("telebirr");
+  const [method, setMethod] = useState<MethodValue>("tikur");
   const [selected, setSelected] = useState("6m");
   const [home, setHome] = useState<HomeData | null>(null);
   const [checkout, setCheckout] = useState<CheckoutResult | null>(null);
   const [reference, setReference] = useState("");
   const { toast, setToast } = useToast();
   const [paid, setPaid] = useState(false);
+  /** True when the manual rail auto-verified, false when it is queued. */
+  const [verifiedNow, setVerifiedNow] = useState(false);
   /** The gateway's feature flag — false until TIKURPAY_API_KEY is set on the API. */
   const [tikur, setTikur] = useState<TikurConfig | null>(null);
   const { refresh } = useAuth();
@@ -151,6 +160,7 @@ export default function PremiumPage() {
       setCheckout(r);
       setReference("");
       setPaid(false);
+      setVerifiedNow(false);
       if (r.redirectUrl) {
         window.location.href = r.redirectUrl;
       }
@@ -179,13 +189,15 @@ export default function PremiumPage() {
         }
         return;
       }
-      const r = await post<{ submitted: boolean; message: string }>(
+      const r = await post<{ submitted: boolean; verified?: boolean; message: string }>(
         `/payments/subscriptions/${checkout.subscriptionId}/reference`,
         { reference },
       );
       setToast(r.message);
       setReference("");
+      setVerifiedNow(r.verified === true);
       setPaid(true);
+      if (r.verified) void refresh();
     } catch (e: any) {
       setToast(e.message);
     }
@@ -296,6 +308,7 @@ export default function PremiumPage() {
                 setMethod(m.value);
                 setCheckout(null);
                 setPaid(false);
+                setVerifiedNow(false);
               }}
             >
               <span className="method-card__icon icon-badge icon-badge--amber">{m.icon}</span>
@@ -399,12 +412,16 @@ export default function PremiumPage() {
               <div>
                 <Check className="rating" />
                 <h3>
-                  {method === "tikur" ? "Payment verified — Premium is unlocked." : "Payment reference submitted."}
+                  {method === "tikur" || verifiedNow
+                    ? "Payment verified — Premium is unlocked."
+                    : "Payment reference submitted for review."}
                 </h3>
                 <p className="muted">
                   {method === "tikur"
                     ? "The transfer matched the plan amount and landed in the receiving account. Every plan and course is open on this account now."
-                    : `We will verify your ${method} payment and unlock Premium on this device.`}
+                    : verifiedNow
+                      ? "The bank confirmed the transfer against the ledger. Every plan and course is open on this account now."
+                      : "The reference is saved. If it could not be confirmed instantly we will check it by hand — nothing is charged twice."}
                 </p>
               </div>
             ) : method === "telebirr" && checkout.steps ? (
@@ -431,8 +448,9 @@ export default function PremiumPage() {
               <div style={{ fontSize: 13 }}>
                 <h3>Pay {checkout.amount?.toLocaleString()} ETB</h3>
                 <p className="muted" style={{ margin: "4px 0 12px", lineHeight: 1.65 }}>
-                  Transfer the exact amount from your bank app or wallet. Tikur Pay checks the transfer
-                  against the bank ledger — no screenshot is trusted on its own.
+                  The secure page shows the same receiving accounts and takes the transfer from
+                  your bank app or wallet. Tikur Pay checks it against the bank ledger — a screenshot
+                  is never trusted on its own.
                 </p>
 
                 {Object.keys(rails).length > 0 && (
@@ -458,7 +476,7 @@ export default function PremiumPage() {
                     className="btn primary"
                     style={{ display: "inline-block", marginTop: 12 }}
                   >
-                    Open secure checkout <ArrowRight size={14} />
+                    Pay now on the secure checkout page <ArrowRight size={14} />
                   </a>
                 )}
 

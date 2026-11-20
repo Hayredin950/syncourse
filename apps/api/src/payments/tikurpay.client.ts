@@ -53,6 +53,31 @@ export interface TikurVerification {
   sourceUrl?: string;
 }
 
+/**
+ * The merchant-level receipt lookup (`POST /api/verify`).
+ *
+ * It is the only way to confirm a manual transfer: there is no checkout session
+ * to attach it to, so the gateway checks the bank ledger (and locks the receipt
+ * against reuse) and charges one verification credit.
+ */
+export interface TikurReferenceVerification {
+  success?: boolean;
+  verified?: boolean;
+  status?: string;
+  message?: string;
+  amount?: number;
+  currency?: string;
+  bank?: string;
+  bankCode?: string;
+  reference?: string;
+  senderName?: string;
+  senderAccount?: string;
+  receiverName?: string;
+  receiverAccount?: string;
+  verificationId?: string;
+  sourceUrl?: string;
+}
+
 export interface TikurStatus {
   success?: boolean;
   status: string;
@@ -173,6 +198,26 @@ export class TikurPayClient {
         ...(input.bank ? { bank: input.bank } : {}),
       },
       auth: false,
+    });
+  }
+
+  /**
+   * Verify a receipt without a checkout session (`POST /api/verify`).
+   *
+   * This is the merchant-level lookup used for manual transfers, where the
+   * shopper paid from their own banking app. It costs one credit and locks the
+   * receipt against reuse, so callers must run their duplicate checks first.
+   */
+  async verifyReference(
+    reference: string,
+    bank?: string,
+  ): Promise<TikurReferenceVerification> {
+    return this.call<TikurReferenceVerification>('/api/verify', {
+      method: 'POST',
+      body: {
+        reference,
+        ...(bank ? { bank } : {}),
+      },
     });
   }
 
