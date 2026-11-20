@@ -19,6 +19,17 @@ class CheckoutDto {
   currency?: 'ETB' | 'USD';
 }
 
+/**
+ * Tikur Pay picks the rail itself, so the client only sends the plan.
+ * Reusing CheckoutDto here required a `method` that neither the web page nor
+ * the Flutter app sends, and validation rejected every bank checkout with a
+ * 400 before it reached the gateway.
+ */
+class TikurCheckoutDto {
+  @IsString()
+  planId: string;
+}
+
 class ReferenceDto {
   @IsString()
   @MinLength(4)
@@ -93,7 +104,7 @@ export class PaymentsController {
   }
 
   @Post('tikur/checkout')
-  tikurCheckout(@CurrentUser() user: AuthUser, @Body() dto: CheckoutDto) {
+  tikurCheckout(@CurrentUser() user: AuthUser, @Body() dto: TikurCheckoutDto) {
     return this.payments.tikurCheckout(user.id, dto.planId);
   }
 
