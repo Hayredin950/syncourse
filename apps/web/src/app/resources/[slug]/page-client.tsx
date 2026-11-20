@@ -55,44 +55,70 @@ function hostOf(url: string | null): string {
  * load — a landscape diagram ends up in a landscape slot without being the
  * thing that decides whether the slot exists.
  */
-function Shot({ item, index, onOpen }: { item: ResourceMedia; index: number; onOpen: () => void }) {
+function Shot({
+  item,
+  index,
+  onOpen,
+  onDownload,
+}: {
+  item: ResourceMedia;
+  index: number;
+  onOpen: () => void;
+  onDownload: () => void;
+}) {
   const [failed, setFailed] = useState(false);
   const [ratio, setRatio] = useState<string | null>(null);
   const label = mediaTitle(item, `Sheet ${index + 1}`);
   return (
-    <button
-      type="button"
-      className="res-shot"
-      onClick={onOpen}
-      aria-label={`Enlarge ${label}`}
-      title={label}
-      style={ratio ? ({ "--shot-ratio": ratio } as React.CSSProperties) : undefined}
-    >
-      <span className="res-shot__frame">
-        {/* The failure panel and the picture are siblings, not branches of a
-            ternary on `item.url`: the panel shows only once `CoverImage` has
-            exhausted both the transformed URL and the original, so a screenshot
-            that is merely slow is not pre-emptively declared broken. */}
-        {failed && (
-          <span className="res-shot__fail">
-            <ImageOff size={17} />
-            <span className="res-shot__fail-name">{label}</span>
-            <small>Image did not load</small>
+    <div className="res-shot">
+      <button
+        type="button"
+        className="res-shot__open"
+        onClick={onOpen}
+        aria-label={`Enlarge ${label}`}
+        title={label}
+        style={ratio ? ({ "--shot-ratio": ratio } as React.CSSProperties) : undefined}
+      >
+        <span className="res-shot__frame">
+          {/* The failure panel and the picture are siblings, not branches of a
+              ternary on `item.url`: the panel shows only once `CoverImage` has
+              exhausted both the transformed URL and the original, so a screenshot
+              that is merely slow is not pre-emptively declared broken. */}
+          {failed && (
+            <span className="res-shot__fail">
+              <ImageOff size={17} />
+              <span className="res-shot__fail-name">{label}</span>
+              <small>Image did not load</small>
+            </span>
+          )}
+          <CoverImage
+            src={item.url}
+            transform={{ width: 1000 }}
+            alt={item.caption ?? label}
+            eager={index < 2}
+            onSettled={(ok) => setFailed(!ok)}
+            onNaturalSize={(w, h) => setRatio(`${w} / ${h}`)}
+          />
+          <span className="res-shot__zoom">
+            <Maximize2 size={13} />
           </span>
-        )}
-        <CoverImage
-          src={item.url}
-          transform={{ width: 1000 }}
-          alt={item.caption ?? label}
-          eager={index < 2}
-          onSettled={(ok) => setFailed(!ok)}
-          onNaturalSize={(w, h) => setRatio(`${w} / ${h}`)}
-        />
-        <span className="res-shot__zoom">
-          <Maximize2 size={13} />
         </span>
-      </span>
-    </button>
+      </button>
+      {/* The picture is the download: the button sits on it, not in a list at
+          the bottom of the page. A sibling of the button because an anchor may
+          not live inside one. */}
+      <a
+        className="res-shot__dl"
+        href={attachmentUrl(item.url) ?? item.telegramUrl ?? "#"}
+        target="_blank"
+        rel="noreferrer"
+        onClick={onDownload}
+        aria-label={`Download ${label}`}
+        title={`Download ${label}`}
+      >
+        <Download size={14} />
+      </a>
+    </div>
   );
 }
 
@@ -150,17 +176,14 @@ export function ResourceDetailView({ slug }: { slug: string }) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [shot, images.length]);
-  // Files with no viewer above come first: the panel is the only place they
-  // appear, where an image or a PDF has already been shown in full. Media the
-  // bot holds rather than Cloudinary stays in the list too — a missing URL is
-  // not a missing attachment.
-  const keepable = useMemo(() => {
-    const items = media.filter((m) => m.kind !== "link");
-    return [
-      ...items.filter((m) => PLAIN_KINDS.includes(m.kind)),
-      ...items.filter((m) => !PLAIN_KINDS.includes(m.kind)),
-    ];
-  }, [media]);
+  // Images, video, audio and PDFs carry their own download control next to the
+  // thing they download. Only kinds with no inline surface — a doc, a sheet, an
+  // archive — need the list, and a Telegram-held file stays in it: a missing
+  // mirror URL is not a missing attachment.
+  const extras = useMemo(
+    () => media.filter((m) => m.kind !== "link" && PLAIN_KINDS.includes(m.kind)),
+    [media],
+  );
   const toc = useMemo(
     () => markdownHeadings(r?.bodyMd).filter((h) => h.depth <= 2),
     [r?.bodyMd],
@@ -262,9 +285,9 @@ export function ResourceDetailView({ slug }: { slug: string }) {
             <span>{updated ? `Updated ${formatDate(r.updatedAt)}` : formatDate(r.publishedAt)}</span>
           </div>
           <div className="res-actions">
-            {keepable.length > 0 && (
+            {extras.length > 0 && (
               <a className="btn primary" href="#files">
-                <Download size={14} /> Get the files ({keepable.length})
+                <Download size={14} /> Files ({extras.length})
               </a>
             )}
             {r.sourceUrl && (
@@ -309,7 +332,7 @@ export function ResourceDetailView({ slug }: { slug: string }) {
               </div>
               <div className={`res-gallery ${images.length === 1 ? "res-gallery--one" : ""}`}>
                 {images.map((m, i) => (
-                  <Shot key={m.id} item={m} index={i} onOpen={() => setShot(i)} />
+                  <Shot key={m.id} item={m} index={i} onOpen={() => setShot(i)} onDownload={noteDownload} />
                 ))}
               </div>
             </section>
@@ -321,6 +344,17 @@ export function ResourceDetailView({ slug }: { slug: string }) {
               <section className="res-block" key={m.id}>
                 <div className="res-block__head">
                   <h2>{title}</h2>
+                  {m.url && (
+                    <a
+                      className="btn ghost file-btn"
+                      href={attachmentUrl(m.url) ?? m.url}
+                      target="_blank"
+                      rel="noreferrer"
+                      onClick={noteDownload}
+                    >
+                      <Download size={12} /> Download
+                    </a>
+                  )}
                 </div>
                 {m.url ? (
                   // Controls only — autoplay on a reference page is hostile.
@@ -344,7 +378,20 @@ export function ResourceDetailView({ slug }: { slug: string }) {
                   const title = mediaTitle(m, "Recording");
                   return (
                     <div className="res-audio" key={m.id}>
-                      <span className="res-audio__name">{title}</span>
+                      <div className="res-audio__head">
+                        <span className="res-audio__name">{title}</span>
+                        {m.url && (
+                          <a
+                            className="btn ghost file-btn"
+                            href={attachmentUrl(m.url) ?? m.url}
+                            target="_blank"
+                            rel="noreferrer"
+                            onClick={noteDownload}
+                          >
+                            <Download size={12} /> Download
+                          </a>
+                        )}
+                      </div>
                       {m.url ? (
                         <audio src={m.url} controls preload="none" />
                       ) : (
@@ -382,21 +429,21 @@ export function ResourceDetailView({ slug }: { slug: string }) {
             </section>
           )}
 
-          {keepable.length > 0 && (
+          {extras.length > 0 && (
             <section className="res-block" id="files">
               <div className="res-block__head">
-                <h2>Files</h2>
+                <h2>Also attached</h2>
                 <span className="muted mono res-block__hint">
-                  {plural(keepable.length, "item")}
+                  {plural(extras.length, "file")}
                 </span>
               </div>
               <div className="files-panel">
                 <p className="files-note">
-                  Everything attached to this {meta.label.toLowerCase()}. Mirrored files download straight from
-                  storage; the rest open in Telegram, where the bot sends you the original.
+                  Files with no viewer of their own. Mirrored files download straight from storage; the rest open
+                  in Telegram, where the bot sends you the original.
                 </p>
                 <div className="file-rows">
-                  {keepable.map((m) => (
+                  {extras.map((m) => (
                     <FileRow key={m.id} item={m} onDownload={noteDownload} />
                   ))}
                 </div>

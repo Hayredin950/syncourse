@@ -16,12 +16,13 @@ import { PrismaClient } from '@prisma/client';
 import { CatalogService } from '../src/catalog/catalog.service';
 import { RecommendationsService } from '../src/recommendations/recommendations.service';
 import { SearchService } from '../src/search/search.service';
+import { ResourcesService } from '../src/resources/resources.service';
 import { warmUp } from './lib/db-warmup';
 
 const prisma = new PrismaClient();
 const catalog = new CatalogService(prisma as never);
 const recommendations = new RecommendationsService(prisma as never, catalog);
-const search = new SearchService(prisma as never);
+const search = new SearchService(prisma as never, new ResourcesService(prisma as never));
 
 const STAMP = new Date().toISOString().replace(/[:.]/g, '-');
 const TEST_EMAIL = `recommend-check-${STAMP}@example.invalid`;

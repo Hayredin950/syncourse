@@ -295,6 +295,28 @@ export function cleanPostTitle(raw: string): string {
   return hasFire && !/🔥$/u.test(bare) ? `${bare} 🔥` : bare;
 }
 
+/** A link to one Telegram post: `t.me/chat/12`, `t.me/s/chat/12`, `t.me/c/1/12`. */
+const TELEGRAM_POST_LINK = /(?:https?:\/\/)?t\.me\/(?:s\/)?(?:[\w-]+|\+[\w-]+|c\/\d+)\/\d+/gi;
+
+/**
+ * Is this message only a list of Telegram post links?
+ *
+ * That is how the mirror is asked for a range: two source links plus a
+ * destination link, nothing else. The content itself arrives seconds later from
+ * the mirror bot, so treating the links as a post created a hollow draft ("note"
+ * whose body was a URL) that waited forever for fields no one was going to
+ * type. Links are a pointer, not a resource.
+ */
+export function isSourceLinkPost(text: string | null | undefined): boolean {
+  const raw = (text ?? '').trim();
+  if (!raw || !/(?:https?:\/\/)?t\.me\//i.test(raw)) return false;
+  const rest = raw
+    .replace(TELEGRAM_POST_LINK, ' ')
+    // Numbering (`1.`) and separators around a pasted range are not content.
+    .replace(/[\s\d.,;:()|•·\-–—]+/g, '');
+  return rest.length === 0;
+}
+
 /**
  * A heading that classifies the files below it: "⚡️The Ultimate Design
  * Patterns: Part 1", "Part 2 of 3", "Part III". It is a one-line label, not a

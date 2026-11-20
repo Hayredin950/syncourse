@@ -12,6 +12,7 @@ import { HttpException } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
 import { PrismaService } from '../src/prisma/prisma.service';
 import { SearchService } from '../src/search/search.service';
+import { ResourcesService } from '../src/resources/resources.service';
 import { RetrievalService, keywordsOf, snippetOf } from '../src/assistant/retrieval/retrieval.service';
 import { AssistantService, cleanHistory, retrievalQuery } from '../src/assistant/assistant.service';
 import { resolveLlm } from '../src/assistant/llm/llm.provider';
@@ -34,7 +35,7 @@ const prisma = new PrismaClient(
     : undefined,
 );
 const db = prisma as unknown as PrismaService;
-const search = new SearchService(db);
+const search = new SearchService(db, new ResourcesService(db));
 const retrieval = new RetrievalService(db, search);
 const assistant = new AssistantService(db, retrieval);
 

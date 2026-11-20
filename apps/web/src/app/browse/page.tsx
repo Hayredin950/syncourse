@@ -47,6 +47,16 @@ function BrowseInner() {
   const [showFilters, setShowFilters] = useState(false);
   const [pageBusy, setPageBusy] = useState(false);
   const [moreFailed, setMoreFailed] = useState(false);
+  // The search box filters the catalogue as you type, not only on Enter. The
+  // API already understands `q`, so this is the same filter panel with one
+  // more key — every page of results, not just the 24 on screen.
+  const [q, setQ] = useState(params.get("q") ?? "");
+  const [search, setSearch] = useState(q);
+
+  useEffect(() => {
+    const timer = setTimeout(() => setSearch(q.trim()), 260);
+    return () => clearTimeout(timer);
+  }, [q]);
 
   const category = params.get("category") ?? "";
   const level = params.get("level") ?? "";
@@ -58,7 +68,7 @@ function BrowseInner() {
 
   /** The filter combination the visible list belongs to. `loadMore` captures it
       and refuses to append a page that was requested under a different one. */
-  const filtersKey = [category, level, sort, minRating, type, organization, lecturer].join("|");
+  const filtersKey = [category, level, sort, minRating, type, organization, lecturer, search].join("|");
   const filtersKeyRef = useRef(filtersKey);
 
   useEffect(() => {
@@ -66,7 +76,7 @@ function BrowseInner() {
   }, []);
 
   useEffect(() => {
-    filtersKeyRef.current = [category, level, sort, minRating, type, organization, lecturer].join("|");
+    filtersKeyRef.current = [category, level, sort, minRating, type, organization, lecturer, search].join("|");
     setLoading(true);
     setFailed(false);
     setMoreFailed(false);
@@ -79,6 +89,7 @@ function BrowseInner() {
     if (type) qs.set("contentType", type);
     if (organization) qs.set("organization", organization);
     if (lecturer) qs.set("lecturer", lecturer);
+    if (search) qs.set("q", search);
     qs.set("limit", String(BROWSE_PAGE));
     qs.set("offset", "0");
     let cancelled = false;
@@ -101,7 +112,7 @@ function BrowseInner() {
     return () => {
       cancelled = true;
     };
-  }, [category, level, sort, minRating, type, organization, lecturer, retry]);
+  }, [category, level, sort, minRating, type, organization, lecturer, search, retry]);
 
   /**
    * The page used to request 60 and call that the catalogue. Anything past the
@@ -110,7 +121,7 @@ function BrowseInner() {
    */
   const loadMore = () => {
     if (loading || pageBusy || results.length >= total) return;
-    const key = [category, level, sort, minRating, type, organization, lecturer].join("|");
+    const key = [category, level, sort, minRating, type, organization, lecturer, search].join("|");
     const qs = new URLSearchParams();
     if (category) qs.set("category", category);
     if (level) qs.set("level", level);
@@ -119,6 +130,7 @@ function BrowseInner() {
     if (type) qs.set("contentType", type);
     if (organization) qs.set("organization", organization);
     if (lecturer) qs.set("lecturer", lecturer);
+    if (search) qs.set("q", search);
     qs.set("limit", String(BROWSE_PAGE));
     qs.set("offset", String(results.length));
     setPageBusy(true);
@@ -210,10 +222,16 @@ function BrowseInner() {
       <div className="filters">
         <input
           className="filter-search"
-          placeholder="Search this catalog"
+          value={q}
+          onChange={(e) => {
+            setQ(e.target.value);
+            setLoading(true);
+          }}
+          placeholder="Search courses as you type — or press Enter for ranked search"
+          aria-label="Search these courses"
           onKeyDown={(e) => {
-            if (e.key === "Enter" && e.currentTarget.value.trim()) {
-              router.push(`/search?q=${encodeURIComponent(e.currentTarget.value.trim())}`);
+            if (e.key === "Enter" && q.trim()) {
+              router.push(`/search?q=${encodeURIComponent(q.trim())}`);
             }
           }}
         />

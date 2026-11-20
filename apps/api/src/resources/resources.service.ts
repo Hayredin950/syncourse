@@ -108,6 +108,39 @@ export class ResourcesService {
     };
   }
 
+  /**
+   * Search hits for the global box: title, summary, body and tags.
+   *
+   * The main search box used to answer with courses only, so a reader looking
+   * for "MIT books" or "n8n roadmap" was told nothing matched while the
+   * resource sat in the library. The same query now returns cards from both.
+   */
+  async search(q: string, limit = 8) {
+    const query = q.trim();
+    if (query.length < 2) return [];
+    const insensitive = { contains: query, mode: 'insensitive' as const };
+    const rows = await this.prisma.resource.findMany({
+      where: {
+        deletedAt: null,
+        OR: [
+          { title: insensitive },
+          { summary: insensitive },
+          { bodyMd: insensitive },
+          { tags: { some: { tag: insensitive } } },
+          { category: { name: insensitive } },
+          { lecturer: { name: insensitive } },
+          { organization: { name: insensitive } },
+        ],
+      },
+      include: resourceInclude,
+      // Featured first, then the most read; a body-only match should not
+      // outrank the resource whose title says exactly what was typed.
+      orderBy: [{ isFeatured: 'desc' }, { viewCount: 'desc' }, { publishedAt: 'desc' }],
+      take: Math.min(Math.max(limit, 1), 20),
+    });
+    return rows.map((r) => this.summary(r));
+  }
+
   async list(filters: {
     type?: string;
     category?: string;

@@ -22,9 +22,10 @@ import { HomeResources } from "@/components/HomeResources";
 import { MobileHeader } from "@/components/Nav";
 import { Rail } from "@/components/Rail";
 import { Menu } from "@/components/Menu";
+import { SearchableMenu } from "@/components/SearchableMenu";
 import { Sk, SkCard } from "@/components/Skeleton";
 import { useAuth } from "@/lib/auth";
-import { formatDuration } from "@/lib/format";
+import { formatDuration, plural } from "@/lib/format";
 import { cloudinaryUrl } from "@/lib/cloudinary";
 
 export default function HomePage() {
@@ -36,6 +37,12 @@ export default function HomePage() {
 
   const [trendTab, setTrendTab] = useState<"popular" | "top" | "newest">("popular");
 
+  // The home payload carries the twelve lecturers whose names sort first — a
+  // useful rail, but not a complete picker. The instructor dropdown asks the
+  // catalogue for every lecturer instead, so a name that sorts late (Mosh
+  // Hamedani, say) is still selectable.
+  const [allLecturers, setAllLecturers] = useState<HomeData["lecturers"] | null>(null);
+
   // "Best of" — one row with a dropdown to switch organizations
   const [bestOfOrgId, setBestOfOrgId] = useState("");
 
@@ -43,10 +50,11 @@ export default function HomePage() {
     () => (home ? [...home.categories].sort((a, b) => b.courseCount - a.courseCount) : []),
     [home],
   );
-  const lecturersByCount = useMemo(
-    () => (home ? [...home.lecturers].sort((a, b) => b.courseCount - a.courseCount) : []),
-    [home],
-  );
+  const lecturersByCount = useMemo(() => {
+    const rows = allLecturers ?? home?.lecturers ?? [];
+    const withCourses = rows.filter((l) => l.courseCount > 0);
+    return [...(withCourses.length > 0 ? withCourses : rows)].sort((a, b) => b.courseCount - a.courseCount);
+  }, [home, allLecturers]);
   const bestOfByCount = useMemo(
     () =>
       home
@@ -85,6 +93,12 @@ export default function HomePage() {
     get<HomeData>("/home")
       .then(setHome)
       .catch(() => setError(true));
+  }, []);
+
+  useEffect(() => {
+    get<HomeData["lecturers"]>("/lecturers")
+      .then(setAllLecturers)
+      .catch(() => undefined);
   }, []);
 
   useEffect(() => {
@@ -401,12 +415,17 @@ export default function HomePage() {
           title="By instructor"
           href={`/lecturers/${instructorRow.slug}`}
           right={
-            <Menu
+            <SearchableMenu
               value={instructorRow.slug}
               onChange={setInstructorRowSlug}
               label="Instructor"
+              placeholder="Search instructors…"
               align="right"
-              options={lecturersByCount.map((l) => ({ value: l.slug, label: l.name }))}
+              options={lecturersByCount.map((l) => ({
+                value: l.slug,
+                label: l.name,
+                meta: plural(l.courseCount, "course"),
+              }))}
             />
           }
         >

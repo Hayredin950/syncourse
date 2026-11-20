@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { CoverImage } from "@/components/CoverImage";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useEffect, useState, useRef, useCallback, type FormEvent, type ReactNode } from "react";
+import { Suspense, useEffect, useMemo, useState, useRef, useCallback, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import {
   Bookmark,
   BookOpen,
@@ -15,10 +15,27 @@ import {
   MessageCircle,
   Search,
   Sparkles,
+  X,
   Zap,
 } from "lucide-react";
 import { useAuth } from "@/lib/auth";
+import { get } from "@/lib/api";
 import { Wordmark } from "@/components/Wordmark";
+
+/** The slice of /search the type-ahead needs; cards and bodies stay on the page. */
+interface QuickResults {
+  courses: { id: string; title: string; slug: string; thumbnailUrl: string | null }[];
+  resources: { id: string; title: string; slug: string; type: string }[];
+  lecturers: { id: string; name: string; slug: string; photoUrl: string | null }[];
+  organizations: { id: string; name: string; slug: string; logoUrl: string | null }[];
+}
+
+interface QuickHit {
+  href: string;
+  label: string;
+  kind: string;
+  imageUrl: string | null;
+}
 
 const CATS = [
   { key: "all", label: "All Courses", href: "/browse", icon: LayoutGrid },
@@ -73,7 +90,11 @@ export function TopNav() {
   const [value, setValue] = useState("");
   const [meOpen, setMeOpen] = useState(false);
   const [stuck, setStuck] = useState(false);
+  const [quick, setQuick] = useState<QuickResults | null>(null);
+  const [quickOpen, setQuickOpen] = useState(false);
+  const [hit, setHit] = useState(-1);
   const meRef = useRef<HTMLDivElement>(null);
+  const searchRef = useRef<HTMLFormElement>(null);
 
   const closeMe = useCallback(() => setMeOpen(false), []);
   useEffect(() => {
@@ -94,7 +115,102 @@ export function TopNav() {
 
   const submit = (event: FormEvent) => {
     event.preventDefault();
+    if (hit >= 0 && hits[hit]) {
+      setQuickOpen(false);
+      router.push(hits[hit].href);
+      return;
+    }
+    setQuickOpen(false);
     router.push(`/search${value.trim() ? `?q=${encodeURIComponent(value.trim())}` : ""}`);
+  };
+
+  /* Live suggestions for the main box. It used to submit only courses; every
+     result type is now one keystroke away. 170ms is long enough that typing a
+     word is one request and short enough that the list feels attached. */
+  useEffect(() => {
+    const query = value.trim();
+    setHit(-1);
+    if (query.length < 2) {
+      setQuick(null);
+      setQuickOpen(false);
+      return;
+    }
+    let cancelled = false;
+    const timer = setTimeout(() => {
+      get<QuickResults>(`/search?q=${encodeURIComponent(query)}&limit=5`)
+        .then((d) => {
+          if (cancelled) return;
+          setQuick(d);
+          setQuickOpen(true);
+        })
+        .catch(() => {
+          if (!cancelled) setQuick(null);
+        });
+    }, 170);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [value]);
+
+  useEffect(() => setQuickOpen(false), [pathname]);
+
+  useEffect(() => {
+    if (!quickOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (searchRef.current && !searchRef.current.contains(e.target as Node)) setQuickOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [quickOpen]);
+
+  const hits = useMemo<QuickHit[]>(() => {
+    if (!quick) return [];
+    return [
+      ...quick.courses.slice(0, 5).map((c) => ({
+        href: `/courses/${c.slug}`,
+        label: c.title,
+        kind: "Course",
+        imageUrl: c.thumbnailUrl ?? null,
+      })),
+      ...quick.resources.slice(0, 4).map((r) => ({
+        href: `/resources/${r.slug}`,
+        label: r.title,
+        kind: "Resource",
+        imageUrl: null,
+      })),
+      ...quick.lecturers.slice(0, 3).map((l) => ({
+        href: `/lecturers/${l.slug}`,
+        label: l.name,
+        kind: "Lecturer",
+        imageUrl: l.photoUrl,
+      })),
+      ...quick.organizations.slice(0, 3).map((o) => ({
+        href: `/organizations/${o.slug}`,
+        label: o.name,
+        kind: "Channel",
+        imageUrl: o.logoUrl,
+      })),
+    ];
+  }, [quick]);
+
+  const onSearchKey = (event: ReactKeyboardEvent<HTMLInputElement>) => {
+    if (event.key === "Escape") {
+      setQuickOpen(false);
+      return;
+    }
+    if (!quickOpen || hits.length === 0) return;
+    if (event.key === "ArrowDown") {
+      event.preventDefault();
+      setHit((i) => (i + 1) % hits.length);
+    } else if (event.key === "ArrowUp") {
+      event.preventDefault();
+      setHit((i) => (i <= 0 ? hits.length - 1 : i - 1));
+    } else if (event.key === "Enter" && hit >= 0) {
+      event.preventDefault();
+      setQuickOpen(false);
+      router.push(hits[hit].href);
+    }
   };
 
   const active = (href: string) => (href === "/" ? pathname === "/" : pathname.startsWith(href));
@@ -109,14 +225,73 @@ export function TopNav() {
         </Link>
 
         <div className="topbar-center">
-          <form className="top-search" onSubmit={submit} role="search">
+          <form className="top-search" onSubmit={submit} role="search" ref={searchRef}>
             <Search size={18} strokeWidth={1.8} />
             <input
-              aria-label="Search courses"
-              placeholder="Search courses"
+              aria-label="Search courses, resources, lecturers and channels"
+              placeholder="Search everything"
               value={value}
               onChange={(e) => setValue(e.target.value)}
+              onFocus={() => {
+                if (value.trim().length >= 2) setQuickOpen(true);
+              }}
+              onKeyDown={onSearchKey}
+              aria-expanded={quickOpen}
+              aria-controls="top-search-hits"
+              autoComplete="off"
             />
+            {value && (
+              <button
+                type="button"
+                className="top-search__clear"
+                aria-label="Clear search"
+                onClick={() => {
+                  setValue("");
+                  setQuick(null);
+                  setQuickOpen(false);
+                }}
+              >
+                <X size={14} />
+              </button>
+            )}
+            {quickOpen && value.trim().length >= 2 && (
+              <div className="top-search__panel" id="top-search-hits">
+                {hits.length === 0 ? (
+                  <p className="top-search__empty">
+                    Nothing matches “{value.trim()}”. Press Enter to search the whole catalogue.
+                  </p>
+                ) : (
+                  <>
+                    <div className="top-search__list" role="listbox" aria-label="Search suggestions">
+                      {hits.map((h, i) => (
+                        <Link
+                          key={h.href}
+                          href={h.href}
+                          role="option"
+                          aria-selected={i === hit}
+                          className={`top-search__hit ${i === hit ? "is-on" : ""}`}
+                          onMouseEnter={() => setHit(i)}
+                          onClick={() => setQuickOpen(false)}
+                        >
+                          <span className="top-search__art">
+                            {h.imageUrl ? (
+                              <CoverImage src={h.imageUrl} transform={{ width: 56, height: 56 }} />
+                            ) : (
+                              <FileText size={14} />
+                            )}
+                          </span>
+                          <span className="top-search__label">{h.label}</span>
+                          <span className="top-search__kind">{h.kind}</span>
+                        </Link>
+                      ))}
+                    </div>
+                    <button type="submit" className="top-search__all">
+                      See all results for “{value.trim()}”
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
           </form>
           <Suspense fallback={<CatLinks pathname={pathname} type="" />}>
             <NavCats pathname={pathname} />

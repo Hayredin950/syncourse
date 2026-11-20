@@ -258,6 +258,46 @@ a, button, [role="button"], label, summary { -webkit-tap-highlight-color: transp
 .top-search { flex: 1; max-width: 370px; height: 40px; display: flex; align-items: center; gap: 10px; border: 1px solid var(--hairline); color: hsl(var(--muted-foreground)); padding: 0 14px; border-radius: var(--r-full); background: rgba(255,255,255,.05); }
 .top-search input { border: 0; outline: 0; background: transparent; color: hsl(var(--foreground)); width: 100%; font-size: 13px; }
 .top-search input::placeholder { color: hsl(var(--muted-foreground)); }
+/* ── Live suggestions under the main search box ───────────────────────────
+   One keystroke should answer with anything in the catalogue, not just a
+   course — resources, lecturers and channels included. The panel is attached
+   to the input (not a modal) so it reads as autocomplete. */
+.top-search { position: relative; }
+.top-search__clear { display: grid; place-items: center; flex: none; padding: 2px; border: 0; background: none; color: hsl(var(--muted-foreground)); cursor: pointer; border-radius: var(--r-full); }
+.top-search__clear:hover { color: hsl(var(--foreground)); background: rgba(255,255,255,.09); }
+.top-search__panel {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  min-width: 360px;
+  z-index: 80;
+  padding: 6px;
+  border: 1px solid var(--hairline-strong);
+  border-radius: var(--r-lg);
+  background: linear-gradient(180deg, hsl(30 8% 13%), hsl(30 5% 10%));
+  box-shadow: var(--e-4);
+  color: hsl(var(--foreground));
+}
+.top-search__list { display: flex; flex-direction: column; gap: 1px; max-height: min(58vh, 440px); overflow-y: auto; }
+.top-search__hit {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 9px;
+  border-radius: var(--r-sm);
+  color: inherit;
+  text-decoration: none;
+  min-width: 0;
+}
+.top-search__hit.is-on, .top-search__hit:hover { background: rgba(255,255,255,.07); }
+.top-search__art { position: relative; display: grid; place-items: center; flex: none; width: 28px; height: 28px; border-radius: var(--r-xs); overflow: hidden; background: var(--s-2); color: hsl(var(--primary)); }
+.top-search__art img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.top-search__label { flex: 1; min-width: 0; font-size: 12.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.top-search__kind { flex: none; font-family: var(--app-font-mono); font-size: 9px; letter-spacing: .08em; text-transform: uppercase; color: hsl(var(--muted-foreground)); }
+.top-search__empty { margin: 0; padding: 13px 12px; font-size: 12px; line-height: 1.5; color: hsl(var(--muted-foreground)); }
+.top-search__all { display: block; width: 100%; margin-top: 5px; padding: 9px 11px; border: 0; border-top: 1px solid hsl(var(--border)); background: none; color: hsl(var(--primary)); text-align: left; font-size: 11.5px; font-weight: 700; cursor: pointer; }
+.top-search__all:hover { background: rgba(255,255,255,.05); }
 .nav-links { margin-left: auto; display: flex; align-items: center; gap: 10px; }
 /* ── The pill family ──────────────────────────────────────────────────────
    `.badge`, `.tab`, `.res-tab`, `.segmented__opt` and `.nav-pill` are one
@@ -1367,9 +1407,17 @@ select option { background: var(--s-3); color: var(--ink-1); }
 /* detail — gallery + lightbox */
 .res-gallery { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 14px; }
 .res-gallery--one { grid-template-columns: minmax(0, 1fr); }
-.res-shot { position: relative; display: block; padding: 0; border: 1px solid hsl(var(--border)); border-radius: var(--r-lg); overflow: hidden; background: var(--s-1); cursor: zoom-in; transition: border-color var(--t-fast) var(--ease), transform var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease); }
+.res-shot { position: relative; display: block; padding: 0; border: 1px solid hsl(var(--border)); border-radius: var(--r-lg); overflow: hidden; background: var(--s-1); transition: border-color var(--t-fast) var(--ease), transform var(--t-fast) var(--ease), box-shadow var(--t-fast) var(--ease); }
 .res-shot:hover { border-color: hsl(var(--primary) / .55); transform: translateY(-2px); box-shadow: var(--e-2); }
-.res-shot:focus-visible { outline: 2px solid hsl(var(--primary)); outline-offset: 2px; }
+.res-shot:focus-within { border-color: hsl(var(--primary) / .55); }
+.res-shot__open { display: block; width: 100%; padding: 0; border: 0; background: none; color: inherit; cursor: zoom-in; text-align: left; }
+.res-shot__open:focus-visible { outline: 2px solid hsl(var(--primary)); outline-offset: -2px; }
+/* Download lives on the picture itself. Hidden until hover/focus on a mouse,
+   always visible on touch, so it never covers the image for someone who only
+   wants to look. */
+.res-shot__dl { position: absolute; left: 9px; bottom: 9px; display: grid; place-items: center; width: 30px; height: 30px; border-radius: var(--r-xs); border: 1px solid var(--hairline-strong); background: rgba(8,7,6,.8); color: var(--ink-1); opacity: 0; transform: translateY(4px); transition: opacity var(--t-fast) var(--ease), transform var(--t-fast) var(--ease), background var(--t-fast) var(--ease); }
+.res-shot:hover .res-shot__dl, .res-shot:focus-within .res-shot__dl { opacity: 1; transform: none; }
+.res-shot__dl:hover { background: hsl(var(--primary)); color: hsl(var(--primary-foreground)); border-color: hsl(var(--primary)); }
 /* The picture fills a box the tile already has, rather than being the thing that
    gives the tile a height. `--shot-ratio` opens at the portrait shape a scanned
    sheet almost always has and is replaced by the real one on load; an image that
@@ -1380,7 +1428,7 @@ select option { background: var(--s-3); color: var(--ink-1); }
 .res-shot__fail-name { font-size: 11px; font-weight: 700; color: hsl(var(--foreground)); overflow-wrap: anywhere; }
 .res-shot__fail small { font-size: 10px; }
 .res-shot__zoom { position: absolute; top: 9px; right: 9px; display: grid; place-items: center; width: 27px; height: 27px; border-radius: var(--r-xs); background: rgba(8,7,6,.72); color: var(--ink-1); opacity: 0; transition: opacity var(--t-fast) var(--ease); }
-.res-shot:hover .res-shot__zoom, .res-shot:focus-visible .res-shot__zoom { opacity: 1; }
+.res-shot:hover .res-shot__zoom, .res-shot:focus-within .res-shot__zoom { opacity: 1; }
 .res-shot__caption { display: block; padding: 9px 12px; text-align: left; font-size: 11px; color: hsl(var(--muted-foreground)); border-top: 1px solid hsl(var(--border)); }
 .res-lightbox { position: fixed; inset: 0; z-index: 90; display: grid; place-items: center; padding: 5vh 6vw; background: rgba(6,5,4,.94); backdrop-filter: blur(4px); cursor: zoom-out; }
 .res-lightbox img { max-width: 100%; max-height: 82vh; border-radius: var(--r-md); cursor: default; }
@@ -1400,7 +1448,8 @@ select option { background: var(--s-3); color: var(--ink-1); }
 .res-player { display: block; width: 100%; max-height: 66vh; border-radius: var(--r-lg); border: 1px solid hsl(var(--border)); background: #000; }
 .res-audio-list { display: flex; flex-direction: column; gap: 10px; }
 .res-audio { display: flex; flex-direction: column; gap: 8px; padding: 13px 15px; border: 1px solid hsl(var(--border)); border-radius: var(--r-md); background: var(--s-1); }
-.res-audio__name { font-size: 12px; font-weight: 600; }
+.res-audio__head { display: flex; align-items: center; gap: 10px; }
+.res-audio__name { font-size: 12px; font-weight: 600; min-width: 0; flex: 1; }
 .res-audio audio { width: 100%; }
 /* A file the bot holds rather than Cloudinary: big enough that a serverless
    response cannot carry it, so the card is the attachment and the link is the
@@ -1703,6 +1752,7 @@ h1, h2, h3, .display, .card-title, .res-card__title, .home-res__leadtitle { over
   .quick-actions .quick-action + .quick-action { display: none; }
   .quick-action { width: 30px; height: 30px; }
   .res-shot__zoom { opacity: 1; }
+  .res-shot__dl { opacity: 1; transform: none; }
   /* Same reason: hidden until hover means an owner on a phone has no way to take
      a course off their own shelf. */
   .col-item__remove { opacity: 1; }
@@ -1882,6 +1932,7 @@ input:focus-visible, textarea:focus-visible, select:focus-visible { outline-offs
   background: var(--plate);
 }
 .s-hit__art--org { border-radius: var(--r-xs); background: hsl(30 7% 16%); color: hsl(var(--accent)); }
+.s-hit__art--res { border-radius: var(--r-xs); background: hsl(30 7% 16%); color: hsl(var(--primary)); }
 .s-hit__art img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
 .s-hit__name {
   min-width: 0; font-size: 13px; font-weight: 600;
@@ -1949,113 +2000,6 @@ input:focus-visible, textarea:focus-visible, select:focus-visible { outline-offs
 
 
 
-/* ---- markdown link shelf ----
-   A "free books" post is a title plus a bare domain, twelve times. As a
-   numbered list it looked like a wall of text and none of it was clickable.
-   A shelf keeps the list's order but gives each work its own surface: the
-   title leads, the host reads as a chip, and the cards deal themselves in
-   with a small stagger. The 3D tilt is the "card table" feel the flat dark
-   panels do not have — deliberately light, and removed for reduced motion. */
-.md-links {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
-  gap: 12px;
-  margin: 4px 0 22px;
-  perspective: 1000px;
-}
-.md-link-card {
-  --tilt: 0deg;
-  position: relative;
-  display: flex;
-  gap: 12px;
-  padding: 14px 14px 13px;
-  border: 1px solid hsl(var(--border));
-  border-radius: var(--r-lg);
-  background:
-    radial-gradient(120% 90% at 0% 0%, hsl(var(--primary) / .07), transparent 55%),
-    linear-gradient(160deg, hsl(30 9% 12%), hsl(30 6% 9%));
-  overflow: hidden;
-  opacity: 0;
-  animation: mdCardIn .5s var(--ease) forwards;
-  animation-delay: calc(var(--i, 0) * 45ms);
-  transition: transform .35s var(--ease), border-color .35s var(--ease), box-shadow .35s var(--ease);
-}
-/* A faint checker tint on alternate cards keeps a long shelf from reading as a
-   uniform table, without turning it into a rainbow. */
-.md-link-card:nth-child(2n) {
-  background:
-    radial-gradient(120% 90% at 100% 0%, hsl(var(--primary) / .09), transparent 55%),
-    linear-gradient(200deg, hsl(30 8% 13%), hsl(30 5% 9%));
-}
-.md-link-card::after {
-  content: "";
-  position: absolute;
-  inset: -40% -60%;
-  background: linear-gradient(115deg, transparent 42%, rgba(255,255,255,.055) 50%, transparent 58%);
-  transform: translateX(-55%);
-  transition: transform .6s var(--ease);
-  pointer-events: none;
-}
-.md-link-card:hover,
-.md-link-card:focus-within {
-  transform: translateY(-4px) rotateX(2deg) rotateZ(-.35deg);
-  border-color: hsl(var(--primary) / .55);
-  box-shadow: 0 16px 34px -20px rgba(0,0,0,.9), 0 0 0 1px hsl(var(--primary) / .12);
-}
-.md-link-card:hover::after,
-.md-link-card:focus-within::after { transform: translateX(55%); }
-.md-link-card__n {
-  flex: 0 0 auto;
-  font-family: var(--app-font-mono);
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: .06em;
-  color: hsl(var(--primary));
-  opacity: .85;
-  padding-top: 2px;
-}
-.md-link-card__body { display: grid; gap: 7px; min-width: 0; flex: 1 1 auto; }
-.md-link-card__title {
-  font-size: 13.5px;
-  font-weight: 750;
-  line-height: 1.35;
-  letter-spacing: -.005em;
-  color: #fff;
-  text-decoration: none;
-}
-.md-link-card__title:hover { color: hsl(var(--primary)); }
-/* The whole card is the click target of its title link. */
-.md-link-card__title::after { content: ""; position: absolute; inset: 0; }
-.md-link-card__links { position: relative; z-index: 1; display: flex; flex-wrap: wrap; gap: 6px; }
-.md-link-card__chip {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  max-width: 100%;
-  padding: 3px 8px;
-  border: 1px solid hsl(var(--border));
-  border-radius: var(--r-full);
-  background: rgba(255,255,255,.035);
-  color: hsl(var(--muted-foreground));
-  font-size: 10px;
-  font-family: var(--app-font-mono);
-  text-decoration: none;
-  transition: color var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease), background var(--t-fast) var(--ease);
-}
-.md-link-card__chip b { color: hsl(var(--foreground) / .8); font-family: var(--app-font-sans); font-weight: 700; }
-.md-link-card__chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.md-link-card__chip i { font-style: normal; color: hsl(var(--primary)); opacity: .8; }
-.md-link-card__chip:hover {
-  color: hsl(var(--foreground));
-  border-color: hsl(var(--primary) / .5);
-  background: hsl(var(--primary) / .1);
-}
-@keyframes mdCardIn {
-  from { opacity: 0; transform: translateY(10px) rotateX(-4deg); }
-  to { opacity: 1; transform: translateY(0) rotateX(0); }
-}
-
 /* Long-form resource prose: a touch larger and airier than legal copy, with
    links that read as links even inside a paragraph. */
 .res-body.md--doc { font-size: 14.5px; line-height: 1.8; max-width: 72ch; }
@@ -2065,12 +2009,6 @@ input:focus-visible, textarea:focus-visible, select:focus-visible { outline-offs
 .res-body .md-list li { padding-left: 3px; }
 .res-body .md a { text-decoration-thickness: 1px; text-decoration-color: hsl(var(--primary) / .45); transition: text-decoration-color var(--t-fast) var(--ease); }
 .res-body .md a:hover { text-decoration-color: currentColor; }
-
-@media (prefers-reduced-motion: reduce) {
-  .md-link-card { opacity: 1; animation: none; }
-  .md-link-card:hover, .md-link-card:focus-within { transform: none; }
-  .md-link-card::after { display: none; }
-}
 
 /* The reading pane: a page inside the page. A body that is a list of links or
    ten short paragraphs used to float directly on the dark background with no

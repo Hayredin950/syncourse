@@ -149,9 +149,12 @@ function inlineNodes(src: string, key: string): ReactNode[] {
     m = /^(https?:\/\/[^\s<>()[\]]+)/.exec(rest);
     if (m) {
       const { url, tail } = trimUrlTail(m[1]);
+      // The URL is its own label. Re-parsing it here would match the same
+      // `https://` branch again — every explicit URL in a resource body used to
+      // recurse until the stack blew and the page fell into the error boundary.
       push(
         <a key={k} href={url} target="_blank" rel="noreferrer">
-          {inlineNodes(url, k)}
+          {url}
         </a>,
       );
       i += url.length;
@@ -218,101 +221,6 @@ const cells = (row: string) =>
     .replace(/\|\s*$/, "")
     .split("|")
     .map((c) => c.trim());
-
-/* ---------- link shelves ---------- */
-
-interface LinkCard {
-  title: string;
-  links: Array<{ label: string; url: string }>;
-}
-
-const LIST_MARKER = /^\s*(?:\d{1,3}[.)]|[-*+•])\s+/;
-const cleanLinkTitle = (s: string) =>
-  s
-    .replace(LIST_MARKER, "")
-    .replace(/^[^\p{L}\p{N}]+/u, "")
-    .replace(/\s*[❯›>]\s*$/u, "")
-    .replace(/[\s:;,–—-]+$/u, "")
-    .replace(/\s+/g, " ")
-    .trim();
-
-/**
- * "3. Introduction to ML Systems ❯ Vol 1: mlsysbook.ai/vol1 …" → one card with
- * a title and the links it actually names. A title and a bare domain on one
- * line is how every Telegram "free books" post is written, and rendering it as
- * a numbered paragraph loses both the link and the shape of the list.
- */
-export function parseLinkRow(line: string): LinkCard | null {
-  const text = line.trim();
-  if (!text || text.length > 400) return null;
-  if (/^(?:#{1,6}\s|\||>|```)/.test(text)) return null;
-
-  const chunks = text
-    .split(/\s*[❯›]\s*/u)
-    .map((c) => c.trim())
-    .filter(Boolean);
-  const groups = chunks.length > 1 ? chunks : [text];
-
-  const links: Array<{ label: string; url: string }> = [];
-  const titleParts: string[] = [];
-  for (const group of groups) {
-    URL_ANYWHERE.lastIndex = 0;
-    const matches = [...group.matchAll(URL_ANYWHERE)]
-      .map((m) => ({ raw: m[0], index: m.index ?? 0 }))
-      .filter((m) => {
-        const { url } = trimUrlTail(m.raw);
-        return url.includes(".") && /\.[a-z]{2,}$/i.test(url.split("/")[0]);
-      });
-    if (matches.length === 0) {
-      if (titleParts.length === 0 && cleanLinkTitle(group)) titleParts.push(cleanLinkTitle(group));
-      continue;
-    }
-    for (const m of matches) {
-      const { url } = trimUrlTail(m.raw);
-      const before = cleanLinkTitle(group.slice(0, m.index));
-      links.push({ label: before, url });
-    }
-  }
-  if (links.length === 0) return null;
-
-  let title = titleParts.join(" · ") || cleanLinkTitle(text.slice(0, text.search(URL_ANYWHERE)));
-  title = title || prettyUrl(links[0].url);
-  if (title.replace(/[^a-z0-9]/gi, "").length < 3) return null;
-  return { title, links };
-}
-
-/** A run of three or more link rows is a shelf; one or two stay prose. */
-export function linkShelf(lines: string[], start: number): { cards: LinkCard[]; next: number } | null {
-  const cards: LinkCard[] = [];
-  let pendingTitle: string | null = null;
-  let i = start;
-  while (i < lines.length && lines[i].trim()) {
-    const card = parseLinkRow(lines[i]);
-    if (!card) {
-      // "Probabilistic Machine Learning" often sits on its own line and its two
-      // volumes follow on the next ones; keep it as the heading for them.
-      const plain = cleanLinkTitle(lines[i]);
-      if (pendingTitle || plain.replace(/[^a-z0-9]/gi, "").length < 3 || plain.length > 110) break;
-      pendingTitle = plain;
-      i += 1;
-      continue;
-    }
-    if (pendingTitle) {
-      card.title = pendingTitle;
-      pendingTitle = null;
-    }
-    const previous = cards[cards.length - 1];
-    // "❯ Part 1: …" / "❯ Vol 2: …" name another link under the same work, not
-    // a new card of their own.
-    if (previous && /^(?:part|vol(?:ume)?)\b/i.test(card.title)) {
-      previous.links.push(...card.links);
-    } else {
-      cards.push(card);
-    }
-    i += 1;
-  }
-  return cards.length >= 3 ? { cards, next: i } : null;
-}
 
 function blockNodes(src: string, key: string, anchors = false): ReactNode[] {
   const lines = src.replace(/\r\n?/g, "\n").split("\n");
@@ -390,56 +298,6 @@ function blockNodes(src: string, key: string, anchors = false): ReactNode[] {
           </table>
         </div>,
       );
-      continue;
-    }
-
-    const shelf = linkShelf(lines, i);
-    if (shelf) {
-      out.push(
-        <div key={k} className="md-links">
-          {shelf.cards.map((card, ci) => (
-            <div
-              key={`${k}-${ci}`}
-              className="md-link-card"
-              style={{ "--i": ci } as React.CSSProperties}
-            >
-              <span className="md-link-card__n">{String(ci + 1).padStart(2, "0")}</span>
-              <span className="md-link-card__body">
-                <a
-                  className="md-link-card__title"
-                  href={hrefOf(card.links[0].url)}
-                  target="_blank"
-                  rel="noreferrer"
-                >
-                  {card.title}
-                </a>
-                <span className="md-link-card__links">
-                  {card.links.map((link, li) => (
-                    <a
-                      key={li}
-                      className="md-link-card__chip"
-                      href={hrefOf(link.url)}
-                      target="_blank"
-                      rel="noreferrer"
-                    >
-                      {link.label && link.label.toLowerCase() !== card.title.toLowerCase() ? (
-                        <>
-                          <b>{link.label}</b>
-                          <span>{prettyUrl(link.url)}</span>
-                        </>
-                      ) : (
-                        prettyUrl(link.url)
-                      )}
-                      <i aria-hidden="true">↗</i>
-                    </a>
-                  ))}
-                </span>
-              </span>
-            </div>
-          ))}
-        </div>,
-      );
-      i = shelf.next;
       continue;
     }
 

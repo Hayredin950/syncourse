@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { ResourcesService } from '../resources/resources.service';
 
 /**
  * Global search.
@@ -31,7 +32,10 @@ export class SearchService {
    */
   private synonymCache: { at: number; rows: Array<{ term: string; expandsTo: string[] }> } | null = null;
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly resources: ResourcesService,
+  ) {}
 
   async search(q: string, opts: { limit?: number; offset?: number; recordTrending?: boolean } = {}) {
     const query = (q || '').trim();
@@ -66,7 +70,7 @@ export class SearchService {
       return this.legacySearch(query, limit, offset, trending.map((t) => t.query));
     }
 
-    const [courses, lecturers, organizations] = await Promise.all([
+    const [courses, lecturers, organizations, resources] = await Promise.all([
       this.prisma.course.findMany({
         where: { id: { in: ranked.ids } },
         include: courseInclude,
@@ -81,6 +85,7 @@ export class SearchService {
         take: 6,
         orderBy: { name: 'asc' },
       }),
+      this.resources.search(query, 8),
     ]);
 
     // `findMany` returns whatever order Postgres likes; the ranking is the
@@ -98,6 +103,7 @@ export class SearchService {
       courses: ordered.map(summary),
       lecturers: lecturers.map((l) => ({ id: l.id, name: l.name, slug: l.slug, photoUrl: l.photoUrl })),
       organizations: organizations.map((o) => ({ id: o.id, name: o.name, slug: o.slug, logoUrl: o.logoUrl })),
+      resources,
       trending: trending.map((t) => t.query),
     };
   }
@@ -400,6 +406,7 @@ export class SearchService {
       courses: courses.map(summary),
       lecturers: lecturers.map((l) => ({ id: l.id, name: l.name, slug: l.slug, photoUrl: l.photoUrl })),
       organizations: organizations.map((o) => ({ id: o.id, name: o.name, slug: o.slug, logoUrl: o.logoUrl })),
+      resources: [],
       trending,
     };
   }
@@ -418,7 +425,7 @@ export class SearchService {
       ],
     };
 
-    const [courses, total, lecturers, organizations] = await Promise.all([
+    const [courses, total, lecturers, organizations, resources] = await Promise.all([
       this.prisma.course.findMany({
         where: courseWhere,
         orderBy: [{ ratingAvg: 'desc' }, { downloadCount: 'desc' }],
@@ -429,6 +436,7 @@ export class SearchService {
       this.prisma.course.count({ where: courseWhere }),
       this.prisma.lecturer.findMany({ where: { name: insensitive }, take: 6 }),
       this.prisma.organization.findMany({ where: { name: insensitive }, take: 6 }),
+      this.resources.search(query, 8),
     ]);
 
     return {
@@ -439,6 +447,7 @@ export class SearchService {
       courses: courses.map(summary),
       lecturers: lecturers.map((l) => ({ id: l.id, name: l.name, slug: l.slug, photoUrl: l.photoUrl })),
       organizations: organizations.map((o) => ({ id: o.id, name: o.name, slug: o.slug, logoUrl: o.logoUrl })),
+      resources,
       trending,
     };
   }

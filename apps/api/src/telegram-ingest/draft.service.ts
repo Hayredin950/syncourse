@@ -46,6 +46,7 @@ import {
   externalLink,
   extractFields,
   hasMeaningfulProse,
+  isSourceLinkPost,
   mediaName,
   mediaRole,
   parseResourcePost,
@@ -158,6 +159,13 @@ export class IngestDraftService {
     if (!this.chatAllowed(input.chat)) return { action: 'ignored', reason: 'chat not in allowlist' };
 
     const text = (input.text ?? '').trim();
+
+    // A range of post links is the mirror's instruction, not a post. Its media
+    // follows from the mirror bot moments later and opens the real draft; a
+    // draft made from the links would sit empty and never publish.
+    if (!input.file && !input.image && isSourceLinkPost(text)) {
+      return { action: 'ignored', reason: 'source post links, not content' };
+    }
 
     // A document, video or audio file. A long caption makes the message its
     // own post (a video explainer, an audiobook, a book), while a short or

@@ -3,14 +3,15 @@
 import { Suspense, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { Building2, Mic, Search, Square, X } from "lucide-react";
+import { Building2, FileText, Mic, Search, Square, X } from "lucide-react";
 import { get, post } from "@/lib/api";
-import type { CourseSummary } from "@/lib/types";
+import type { CourseSummary, ResourceSummary } from "@/lib/types";
 import { CourseRow } from "@/components/CourseCard";
 import { MobileHeader } from "@/components/Nav";
 import { SkRows } from "@/components/Skeleton";
 import { LoadError } from "@/components/LoadError";
 import { CoverImage } from "@/components/CoverImage";
+import { typeMeta } from "@/components/ResourceCard";
 
 interface SearchData {
   query?: string;
@@ -18,6 +19,7 @@ interface SearchData {
   courses: CourseSummary[];
   lecturers: { id: string; name: string; slug: string; photoUrl: string | null }[];
   organizations: { id: string; name: string; slug: string; logoUrl: string | null }[];
+  resources: ResourceSummary[];
   trending: string[];
 }
 
@@ -65,6 +67,23 @@ function EntityHit({
       </span>
       <span className="s-hit__name">{name}</span>
       <span className="s-hit__kind">{kind}</span>
+    </Link>
+  );
+}
+
+/** A resource in the results — cover plate, title, type, reading time. */
+function ResourceHit({ r }: { r: ResourceSummary }) {
+  const meta = typeMeta(r.type);
+  return (
+    <Link href={`/resources/${r.slug}`} className="s-hit">
+      <span className="s-hit__art s-hit__art--res">
+        <FileText size={15} />
+        <CoverImage src={r.coverUrl} transform={{ width: 72, height: 72 }} />
+      </span>
+      <span className="s-hit__name">{r.title}</span>
+      <span className="s-hit__kind">
+        {meta.label} · {r.readMinutes} min
+      </span>
     </Link>
   );
 }
@@ -196,14 +215,18 @@ function SearchInner() {
   };
 
   const empty =
-    !!data && data.courses.length === 0 && data.lecturers.length === 0 && data.organizations.length === 0;
+    !!data &&
+    data.courses.length === 0 &&
+    data.resources.length === 0 &&
+    data.lecturers.length === 0 &&
+    data.organizations.length === 0;
   const entities = data ? data.lecturers.length + data.organizations.length : 0;
 
   return (
     <main className="page">
       <MobileHeader title="Search" />
 
-      <span className="eyebrow">Course search</span>
+      <span className="eyebrow">Search everything</span>
       <h1 className="display s-title">Find your next course.</h1>
 
       <div className="s-field">
@@ -212,7 +235,7 @@ function SearchInner() {
           autoFocus
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="Search by course, lecturer, or topic"
+          placeholder="Search courses, resources, lecturers, channels"
           aria-label="Search the catalogue"
           enterKeyHint="search"
         />
@@ -261,7 +284,7 @@ function SearchInner() {
               </div>
             </>
           )}
-          <p className="s-idle__hint">Search the whole catalogue — courses, lecturers and channels.</p>
+          <p className="s-idle__hint">Search the whole catalogue — courses, resources, lecturers and channels.</p>
         </section>
       ) : busy && !data ? (
         <SkRows n={5} label="Searching" />
@@ -293,6 +316,19 @@ function SearchInner() {
                   ))}
                   {data.organizations.map((o) => (
                     <EntityHit key={o.id} href={`/organizations/${o.slug}`} name={o.name} imageUrl={o.logoUrl} kind="Channel" />
+                  ))}
+                </div>
+              </section>
+            )}
+
+            {data.resources.length > 0 && (
+              <section className="s-group">
+                <h2 className="s-group__head">
+                  Resources <span className="s-group__n mono">{data.resources.length}</span>
+                </h2>
+                <div className="dark-panel s-hits">
+                  {data.resources.map((r) => (
+                    <ResourceHit key={r.id} r={r} />
                   ))}
                 </div>
               </section>

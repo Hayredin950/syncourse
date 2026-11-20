@@ -3028,14 +3028,40 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
         await this.deleteMessage(scratch, m.message_id);
 
         const origin = this.forwardOrigin(m);
-        const mine = Boolean(origin && origin.userId === botId);
+        const own = Boolean(origin && origin.userId === botId);
+        // The mirror reposts a source channel's content as its own bot account,
+        // so most content in the group is authored by that bot, not by us.
+        // Telegram never delivers a bot the messages of another bot either, so
+        // the same borrow-and-read path has to carry both.
+        const otherBot = Boolean(
+          (origin && origin.isBot && origin.userId !== botId) ||
+            (m.forward_from?.is_bot && m.forward_from.id !== botId),
+        );
+        // A forwarded channel post is content too; it may be the mirror falling
+        // back to a server-side forward. The message-id check below keeps the
+        // webhook's copy from being ingested twice.
+        const fromChannel = Boolean(origin && (origin.type === 'channel' || origin.type === 'chat'));
         const media = Boolean(m.document ?? m.video ?? m.audio ?? (m.photo && m.photo.length > 0));
-        // Only the bot's own messages need this path, and only media posts are
-        // content. Bot chatter (replies, receipts, stats) is not a course.
-        if (!mine || !media) {
+        const body = (m.caption ?? m.text ?? '').trim();
+        const card = this.isWatcherText(body);
+        // Own posts are only interesting when they carry media (course posts and
+        // their ZIPs). Another bot's text post can be the whole announcement.
+        const readable = media || (!own && body.length > 0);
+        if ((!own && !otherBot && !fromChannel) || !readable || card) {
           cursor = id;
-          const card = this.isWatcherText(m.caption ?? m.text ?? null);
-          messages.push({ id, action: mine ? (card ? 'card' : 'no-media') : 'not-mine' });
+          messages.push({ id, action: own ? (card ? 'card' : 'no-media') : 'not-mine' });
+          continue;
+        }
+
+        // A human already fed the webhook this message (for example a forwarded
+        // channel post); the scan exists for what the webhook cannot see.
+        const already = await this.prisma.ingestDraft.findFirst({
+          where: { chatId: BigInt(chat.id), messageIds: { has: BigInt(id) } },
+          select: { id: true },
+        });
+        if (already) {
+          cursor = id;
+          messages.push({ id, action: 'known' });
           continue;
         }
 
@@ -3049,10 +3075,10 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
           },
           message_thread_id: topicId ?? undefined,
           from: {
-            id: botId,
+            id: origin?.userId ?? botId,
             is_bot: true,
-            username: BOT_USERNAME,
-            first_name: 'Syncourse',
+            username: origin?.username ?? (own ? BOT_USERNAME : undefined),
+            first_name: own ? 'Syncourse' : 'Mirror',
           },
           text: m.text,
           caption: m.caption,
@@ -3135,19 +3161,36 @@ export class TelegramService implements OnModuleInit, OnModuleDestroy {
   }
 
   /** Who wrote the original message a forward points back to. */
-  private forwardOrigin(m: TelegramForwardFields): { userId: number | null; date: number | null } | null {
+  private forwardOrigin(m: TelegramForwardFields): {
+    userId: number | null;
+    date: number | null;
+    isBot: boolean;
+    username?: string;
+    type: 'user' | 'chat' | 'channel' | 'hidden_user' | null;
+  } | null {
     const origin = m.forward_origin;
     if (origin) {
       const date = typeof origin.date === 'number' ? origin.date : null;
-      if (origin.type === 'user') return { userId: origin.sender_user?.id ?? null, date };
-      if (origin.type === 'chat') return { userId: origin.sender_chat?.id ?? null, date };
-      if (origin.type === 'channel') return { userId: origin.chat?.id ?? null, date };
-      return { userId: null, date };
+      if (origin.type === 'user') {
+        return {
+          userId: origin.sender_user?.id ?? null,
+          date,
+          isBot: origin.sender_user?.is_bot ?? false,
+          username: origin.sender_user?.username,
+          type: 'user',
+        };
+      }
+      if (origin.type === 'chat') return { userId: origin.sender_chat?.id ?? null, date, isBot: false, type: 'chat' };
+      if (origin.type === 'channel') return { userId: origin.chat?.id ?? null, date, isBot: false, type: 'channel' };
+      return { userId: null, date, isBot: false, type: 'hidden_user' };
     }
     if (m.forward_from) {
       return {
         userId: m.forward_from.id,
         date: typeof m.forward_date === 'number' ? m.forward_date : null,
+        isBot: m.forward_from.is_bot ?? false,
+        username: m.forward_from.username,
+        type: 'user',
       };
     }
     return null;

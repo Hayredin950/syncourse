@@ -17,6 +17,7 @@ import {
   describeAnnouncement,
   extractFields,
   hasMeaningfulProse,
+  isSourceLinkPost,
   mediaName,
   mediaRole,
   parseResourcePost,
@@ -493,6 +494,20 @@ ok(
   ),
   'a course with no title waits',
 );
+
+console.log('\nmirror request links');
+
+ok(
+  isSourceLinkPost(
+    'https://t.me/machine_learning_courses/1345\nhttps://t.me/machine_learning_courses/1347\nhttps://t.me/syncourse/1',
+  ),
+  'a range of post links plus a destination is an instruction, not a post',
+);
+ok(isSourceLinkPost('1. t.me/Mosh4Learning/560 2. t.me/syncourse/1'), 'a numbered range is still links');
+ok(!isSourceLinkPost('https://t.me/syncourse/42 A full course on Git'), 'a link with a real title is a post');
+ok(!isSourceLinkPost('The full course is at https://t.me/syncourse/42'), 'prose around a link is a post');
+ok(!isSourceLinkPost('https://youtu.be/abc'), 'a non-Telegram link is not a mirror instruction');
+ok(!isSourceLinkPost('hello'), 'plain text is not links');
 
 console.log('\nresource vs course');
 

@@ -12,10 +12,11 @@
  */
 import { PrismaClient } from '@prisma/client';
 import { SearchService } from '../src/search/search.service';
+import { ResourcesService } from '../src/resources/resources.service';
 import { warmUp } from './lib/db-warmup';
 
 const prisma = new PrismaClient();
-const search = new SearchService(prisma as never);
+const search = new SearchService(prisma as never, new ResourcesService(prisma as never));
 
 interface Case {
   q: string;
