@@ -254,8 +254,13 @@ export class TikurPayClient {
       if (res.status === 400 || res.status === 422) {
         throw new BadGatewayException(detail);
       }
-      this.logger.warn(`Tikur Pay ${path} failed (${res.status}): ${detail}`);
-      throw new BadGatewayException(detail);
+      // 5xx is the gateway's own problem (unfunded merchant balance, outage).
+      // Its message is written for the account owner, not the customer, so it
+      // goes to the log and the shopper gets a sentence they can act on.
+      this.logger.error(`Tikur Pay ${path} failed (${res.status}): ${detail}`);
+      throw new BadGatewayException(
+        'Bank checkout is unavailable right now. Your card and account were not charged — try again shortly or pay by transfer.',
+      );
     }
 
     return json as T;
