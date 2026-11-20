@@ -11,6 +11,7 @@ import {
   BookOpen,
   CircleUserRound,
   Crown,
+  Download,
   FileText,
   Home,
   LayoutGrid,
@@ -297,9 +298,24 @@ export function TopNav() {
               </div>
             )}
           </form>
-          <Suspense fallback={<CatLinks pathname={pathname} type="" />}>
-            <NavCats pathname={pathname} />
-          </Suspense>
+          <div className="topbar-shelves">
+            <span aria-hidden />
+            <Suspense fallback={<CatLinks pathname={pathname} type="" />}>
+              <NavCats pathname={pathname} />
+            </Suspense>
+            {/* A single quiet entry point for the installable builds. It rides
+                the category row instead of a banner above the catalogue, so the
+                page starts at the hero and nothing shouts "download". */}
+            <Link
+              href="/download"
+              className="shelf-app"
+              aria-label="Download the Syncourse app"
+              title="Download the Syncourse app"
+            >
+              <Download size={15} strokeWidth={1.9} />
+              <span>Download app</span>
+            </Link>
+          </div>
         </div>
 
         <nav className="nav-links" aria-label="Primary">

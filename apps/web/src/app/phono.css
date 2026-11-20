@@ -265,6 +265,49 @@ h3 { font-size: 16px; }
 .nav-cat.active { background: #e8a13a; border-color: #e8a13a; color: #0e0e0d; box-shadow: 0 1px 2px rgba(0,0,0,.4); }
 .nav-cat.active svg { color: #0e0e0d; }
 
+/* --- download app pill, at the right end of the chip row ------------------ */
+/* The row is a 1fr · auto · 1fr grid: the chips stay optically centred under
+   the search field, and the download pill sits at the row's right edge. It
+   borrows the chip shape and the accent colour instead of a filled banner, so
+   it reads as one more quiet control in the header. */
+.topbar-shelves {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+}
+.topbar-shelves > .nav-cats { justify-self: center; }
+.shelf-app {
+  justify-self: end;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 7px 13px 7px 11px;
+  border: 1px solid rgba(232,161,58,.32);
+  border-radius: 999px;
+  background: rgba(232,161,58,.07);
+  color: #e8a13a;
+  font-size: 12.5px;
+  font-weight: 600;
+  letter-spacing: -.01em;
+  line-height: 1;
+  white-space: nowrap;
+  transition: background .15s ease, border-color .15s ease, color .15s ease;
+}
+.shelf-app svg { flex: none; }
+.shelf-app:hover {
+  background: rgba(232,161,58,.15);
+  border-color: rgba(232,161,58,.58);
+  color: #f5f2ea;
+}
+/* Narrow desktops have no room for the label; the icon stays, and the title
+   attribute still explains it on hover. */
+@media (max-width: 1180px) {
+  .shelf-app { padding: 8px; }
+  .shelf-app span { display: none; }
+}
+
 /* desktop-only / mobile-only helpers keep their meaning */
 @media (max-width: 899px) {
   .topbar { display: none; }

@@ -9,12 +9,10 @@ import {
   ChevronRight,
   Download,
   Play,
-  Smartphone,
   Star,
   Zap,
 } from "lucide-react";
 import { get } from "@/lib/api";
-import { releaseAsset } from "@/lib/apps";
 import type { CourseSummary, HomeData, LibraryData } from "@/lib/types";
 import { CourseCard } from "@/components/CourseCard";
 import { CoverImage } from "@/components/CoverImage";
@@ -215,28 +213,6 @@ export default function HomePage() {
           Collections
         </Link>
       </div>
-
-      {/* App promo — the footer that used to be the only download entry point
-          is desktop-only, and a phone visitor never saw it. This sits above the
-          catalogue, links straight to the APK, and stays out of the hero so it
-          cannot be mistaken for a course download. */}
-      <aside className="app-promo">
-        <span className="app-promo__icon">
-          <Smartphone size={21} strokeWidth={1.8} />
-        </span>
-        <div className="app-promo__copy">
-          <strong>Take Syncourse with you</strong>
-          <span>Android, Windows, Linux and macOS — same catalogue, same progress.</span>
-        </div>
-        <div className="app-promo__actions">
-          <a className="btn primary" href={releaseAsset("syncourse-android.apk")}>
-            <Download size={14} /> Android APK
-          </a>
-          <Link className="btn" href="/download">
-            All platforms <ArrowRight size={13} />
-          </Link>
-        </div>
-      </aside>
 
       {/* Featured hero carousel */}
       {featured && (
