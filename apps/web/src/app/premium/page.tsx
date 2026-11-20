@@ -396,7 +396,7 @@ export default function PremiumPage() {
                 )}
 
                 <p className="muted" style={{ fontSize: 11, marginTop: 12 }}>
-                  Paste the receipt on the secure page and this tab unlocks automatically — it checks the
+                  Submit the receipt on the secure page and this tab unlocks automatically — it checks the
                   gateway every few seconds, so there is nothing to reload. Each transfer unlocks one
                   account only; a receipt that was already used is refused.
                 </p>
