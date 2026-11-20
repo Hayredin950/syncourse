@@ -14,7 +14,7 @@ export function RightRail() {
         <div className="text-[11px] font-semibold uppercase tracking-wide text-dim">Current Plan</div>
         <div className="mt-1 text-lg font-bold text-text">{isPremium ? "Premium" : "Free"}</div>
         <p className="mt-1 text-xs leading-relaxed text-muted">
-          Browsing, lists and tracking are yours. Streaming and full-speed downloads are Premium.
+          Browsing, lists and tracking are yours. Premium courses and resources need a pass.
         </p>
         {!isPremium && (
           <Link
@@ -25,9 +25,9 @@ export function RightRail() {
           </Link>
         )}
         <ul className="mt-3 space-y-1.5 text-xs text-muted">
-          <li>⚡ Stream instantly</li>
-          <li>⬇️ Full-speed downloads</li>
-          <li>🚫 Zero ads</li>
+          <li>🎓 Every premium course</li>
+          <li>📚 Full resources and files</li>
+          <li>✈️ Telegram delivery</li>
         </ul>
       </div>
 

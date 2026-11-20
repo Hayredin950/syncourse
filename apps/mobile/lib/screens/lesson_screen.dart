@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../api.dart';
 import '../models.dart';
@@ -120,11 +121,29 @@ class _LessonScreenState extends State<LessonScreen> {
                   const SizedBox(width: 10),
                   Expanded(
                     child: OutlinedButton.icon(
-                      onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Download queued (quality picker + signed URL)')),
-                      ),
-                      icon: const Icon(Icons.download_outlined),
-                      label: const Text('Download'),
+                      onPressed: () async {
+                        try {
+                          final r = await Api.downloadToTelegram(widget.lessonId);
+                          final botUrl = r['botUrl'];
+                          if (botUrl is String && mounted) {
+                            final uri = Uri.tryParse(botUrl);
+                            if (uri != null) {
+                              await launchUrl(uri, mode: LaunchMode.externalApplication);
+                            }
+                          }
+                          if (!mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text((r['message'] as String?) ?? 'Request sent')),
+                          );
+                        } catch (e) {
+                          if (!mounted) return;
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('$e')),
+                          );
+                        }
+                      },
+                      icon: const Icon(Icons.send_outlined),
+                      label: const Text('Get files'),
                     ),
                   ),
                 ],

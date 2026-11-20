@@ -5,7 +5,7 @@ import { useToast } from "@/lib/useToast";
 import type React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowRight, Check, MessageCircle, ShieldCheck, Wallet, Zap } from "lucide-react";
+import { ArrowRight, Check, MessageCircle, ShieldCheck, Zap } from "lucide-react";
 import { get, post } from "@/lib/api";
 import type { HomeData, Plan } from "@/lib/types";
 import { useAuth } from "@/lib/auth";
@@ -18,10 +18,6 @@ import { Toast } from "@/components/Toast";
 interface CheckoutResult {
   subscriptionId: string;
   status: string;
-  steps?: {
-    step1: { title: string; text: string; accountName: string; accountNumber: string };
-    step2: { title: string; hint: string };
-  };
   redirectUrl?: string;
   /** Tikur Pay session — the gateway's own id and hosted page. */
   paymentNumber?: string;
@@ -35,31 +31,27 @@ interface TikurConfig {
   enabled: boolean;
   businessName: string;
   timeoutMinutes: number;
-  /** Manual Telebirr is hidden unless the server has a real wallet on file. */
-  manualTelebirr?: { enabled: boolean; accountName?: string; accountNumber?: string };
   rails: Record<string, { accountNumber?: string; accountName?: string; phoneNumber?: string }>;
 }
 
-const METHODS: { value: string; label: string; sub: string; icon: React.ReactNode; recommended?: boolean }[] = [
+/**
+ * One rail, one flow.
+ *
+ * Tikur Pay already opens a hosted page for CBE, Telebirr and M-Pesa, checks
+ * the transfer against the bank ledger and collects the receipt there. A second
+ * "manual Telebirr" card only created a slower path to the same wallets and a
+ * queue of orders nobody could settle. Crypto and card were worse: no processor
+ * at all, so choosing them created a pending subscription that could never be
+ * paid.
+ */
+const METHODS = [
   {
     value: "tikur",
-    label: "Pay online — CBE · Telebirr · M-Pesa",
-    sub: "Automatic bank verification, usually in seconds",
+    label: "CBE · Telebirr · M-Pesa",
+    sub: "Secure checkout, verified automatically in seconds",
     icon: <ShieldCheck size={17} />,
-    recommended: true,
   },
-  // Only the rails that can actually settle a payment are listed. Crypto and
-  // card used to appear here but had no processor behind them: picking them
-  // created a pending subscription that could never be paid. The manual row is
-  // deliberately second and clearly labelled: the automatic rail above is the
-  // faster path for the same wallets.
-  {
-    value: "telebirr",
-    label: "Telebirr — paid from your wallet",
-    sub: "Manual transfer · same receipt, verified after you submit it",
-    icon: <Wallet size={17} />,
-  },
-];
+] as const;
 
 type MethodValue = (typeof METHODS)[number]["value"];
 
@@ -74,11 +66,8 @@ export default function PremiumPage() {
   const [selected, setSelected] = useState("6m");
   const [home, setHome] = useState<HomeData | null>(null);
   const [checkout, setCheckout] = useState<CheckoutResult | null>(null);
-  const [reference, setReference] = useState("");
   const { toast, setToast } = useToast();
   const [paid, setPaid] = useState(false);
-  /** True when the manual rail auto-verified, false when it is queued. */
-  const [verifiedNow, setVerifiedNow] = useState(false);
   /** The gateway's feature flag — false until TIKURPAY_API_KEY is set on the API. */
   const [tikur, setTikur] = useState<TikurConfig | null>(null);
   const { refresh } = useAuth();
@@ -117,17 +106,12 @@ export default function PremiumPage() {
           enabled: false,
           businessName: "Syncourse",
           timeoutMinutes: 15,
-          manualTelebirr: { enabled: false },
           rails: {},
         }),
       );
   }, []);
 
-  const methods = METHODS.filter((m) => {
-    if (m.value === "tikur") return tikur?.enabled !== false;
-    if (m.value === "telebirr") return tikur?.manualTelebirr?.enabled === true;
-    return true;
-  });
+  const methods = METHODS.filter(() => tikur?.enabled !== false);
 
   // A saved method can disappear when the server config changes; never leave
   // the page pointed at a rail that is no longer offered.
@@ -148,56 +132,17 @@ export default function PremiumPage() {
       return;
     }
     try {
-      const r =
-        method === "tikur"
-          ? await post<CheckoutResult>("/payments/tikur/checkout", { planId })
-          : await post<CheckoutResult>("/payments/checkout", {
-              planId,
-              method,
-              currency: method === "telebirr" ? "ETB" : "USD",
-            });
+      const r = await post<CheckoutResult>("/payments/tikur/checkout", { planId });
       setSelected(planId);
       setCheckout(r);
-      setReference("");
       setPaid(false);
-      setVerifiedNow(false);
       if (r.redirectUrl) {
         window.location.href = r.redirectUrl;
       }
-      // The hosted page is the fastest path: it shows the account, collects the
-      // receipt and asks the gateway to verify. The panel below also allows the
-      // same receipt to be pasted here, for anyone who transfers from their own
-      // banking app and never opens the hosted page.
-    } catch (e: any) {
-      setToast(e.message);
-    }
-  };
-
-  const submitReference = async () => {
-    if (!checkout || !reference.trim()) return;
-    try {
-      if (method === "tikur") {
-        const r = await post<{ status: string; message: string; payerName?: string | null }>(
-          "/payments/tikur/verify",
-          { subscriptionId: checkout.subscriptionId, transactionLink: reference.trim() },
-        );
-        setToast(r.message);
-        setReference("");
-        if (r.status === "completed") {
-          setPaid(true);
-          void refresh();
-        }
-        return;
-      }
-      const r = await post<{ submitted: boolean; verified?: boolean; message: string }>(
-        `/payments/subscriptions/${checkout.subscriptionId}/reference`,
-        { reference },
-      );
-      setToast(r.message);
-      setReference("");
-      setVerifiedNow(r.verified === true);
-      setPaid(true);
-      if (r.verified) void refresh();
+      // The hosted page shows the receiving accounts, collects the receipt and
+      // asks the gateway to verify it. There is deliberately no second paste
+      // box here: two places to submit the same receipt was two ways to leave
+      // an order stuck.
     } catch (e: any) {
       setToast(e.message);
     }
@@ -230,7 +175,7 @@ export default function PremiumPage() {
     };
   }, [method, checkout?.paymentNumber, paid, refresh]);
 
-  const price = (p: Plan) => (method === "telebirr" || method === "tikur" ? `${p.priceEtb} ETB` : `$${p.priceUsd}`);
+  const price = (p: Plan) => `${p.priceEtb} ETB`;
   const methodLabel = methods.find((m) => m.value === method)?.label ?? method;
   /** Receiving accounts: the session's own copy first, then the server's config. */
   const rails = checkout?.methods ?? tikur?.rails ?? {};
@@ -269,13 +214,14 @@ export default function PremiumPage() {
           <span className="eyebrow">Syncourse premium</span>
           <h1 className="display">Every lesson.<br />No friction.</h1>
           <p>
-            Unlock full-speed downloads, offline notes, and uninterrupted course previews. Choose a fixed pass — it never auto-renews.
+            Open every premium course and resource, download the lesson files, and get course
+            deliveries in Telegram. One fixed pass — it never auto-renews.
           </p>
           <div className="premium-hero__features">
             {[
-              ["Preview instantly", "See the right lesson before you commit."],
-              ["Full-speed downloads", "Keep course files and notes ready offline."],
-              ["Zero interruptions", "Learn without ad gates or detours."],
+              ["Premium courses", "Every lesson, note and attachment — not just the preview."],
+              ["Premium resources", "The full guide and every attached file."],
+              ["Telegram delivery", "Send course files straight to your chat."],
             ].map(([title, text]) => (
               <div key={title}>
                 <Zap size={15} className="rating" />
@@ -290,12 +236,11 @@ export default function PremiumPage() {
       {/* payment method + fixed-duration plan header */}
       <section className="rail" style={{ marginTop: 40 }}>
         <div className="section-head">
-          <h2>Choose your payment method</h2>
+          <h2>Choose a fixed-duration plan</h2>
           <span className="muted mono" style={{ fontSize: 10 }}>Fixed passes do not auto-renew</span>
         </div>
-        <h3 style={{ fontSize: 21, margin: "0 0 4px" }}>Choose a fixed-duration plan</h3>
         <p className="muted" style={{ fontSize: 12, margin: "0 0 18px", lineHeight: 1.6 }}>
-          Direct plans do not auto-renew. Switch methods without losing your plan choice.
+          Pay from CBE, Telebirr or M-Pesa. One secure checkout, verified against the bank ledger.
         </p>
 
         {/* payment methods — cards, not pills */}
@@ -308,14 +253,11 @@ export default function PremiumPage() {
                 setMethod(m.value);
                 setCheckout(null);
                 setPaid(false);
-                setVerifiedNow(false);
               }}
             >
               <span className="method-card__icon icon-badge icon-badge--amber">{m.icon}</span>
               <span className="method-card__body">
-                <strong>
-                  {m.label} {m.recommended && <span className="badge badge--solid" style={{ fontSize: 9, marginLeft: 6 }}>Recommended</span>}
-                </strong>
+                <strong>{m.label}</strong>
                 <small>{m.sub}</small>
               </span>
               <span className="method-card__radio">{method === m.value && <Check size={12} />}</span>
@@ -411,38 +353,11 @@ export default function PremiumPage() {
             {paid ? (
               <div>
                 <Check className="rating" />
-                <h3>
-                  {method === "tikur" || verifiedNow
-                    ? "Payment verified — Premium is unlocked."
-                    : "Payment reference submitted for review."}
-                </h3>
+                <h3>Payment verified — Premium is unlocked.</h3>
                 <p className="muted">
-                  {method === "tikur"
-                    ? "The transfer matched the plan amount and landed in the receiving account. Every plan and course is open on this account now."
-                    : verifiedNow
-                      ? "The bank confirmed the transfer against the ledger. Every plan and course is open on this account now."
-                      : "The reference is saved. If it could not be confirmed instantly we will check it by hand — nothing is charged twice."}
+                  The transfer matched the plan amount and landed in the receiving account. Every plan
+                  and course is open on this account now.
                 </p>
-              </div>
-            ) : method === "telebirr" && checkout.steps ? (
-              <div style={{ fontSize: 13 }}>
-                <h3>{checkout.steps.step1.title}</h3>
-                <p className="muted" style={{ margin: "4px 0 12px" }}>{checkout.steps.step1.text}</p>
-                <div className="dark-panel dark-panel--row" style={{ display: "flex", justifyContent: "space-between" }}>
-                  <span className="muted">{checkout.steps.step1.accountName}</span>
-                  <span className="mono" style={{ fontWeight: 700, color: "hsl(var(--foreground))" }}>{checkout.steps.step1.accountNumber}</span>
-                </div>
-                <h3 style={{ marginTop: 20 }}>{checkout.steps.step2.title}</h3>
-                <input
-                  className="form-input"
-                  placeholder="e.g. DGT2C7H1S2"
-                  value={reference}
-                  onChange={(e) => setReference(e.target.value)}
-                />
-                <p className="muted" style={{ fontSize: 11, margin: "2px 0 16px" }}>{checkout.steps.step2.hint}</p>
-                <button className="btn primary" onClick={submitReference} disabled={!reference.trim()}>
-                  I have paid · submit reference <ArrowRight size={14} />
-                </button>
               </div>
             ) : (
               <div style={{ fontSize: 13 }}>
@@ -480,24 +395,10 @@ export default function PremiumPage() {
                   </a>
                 )}
 
-                <h3 style={{ marginTop: 22 }}>Already transferred? Paste the receipt</h3>
-                <input
-                  className="form-input"
-                  placeholder="https://mbreciept.cbe.com.et/… or FT26…"
-                  value={reference}
-                  onChange={(e) => setReference(e.target.value)}
-                  autoComplete="off"
-                />
-                <p className="muted" style={{ fontSize: 11, margin: "2px 0 16px" }}>
-                  The receipt link or the FT transaction number. Each transfer unlocks one account only —
-                  a number that has already been used is rejected.
-                </p>
-                <button className="btn primary" onClick={submitReference} disabled={!reference.trim()}>
-                  Verify payment <ShieldCheck size={14} />
-                </button>
                 <p className="muted" style={{ fontSize: 11, marginTop: 12 }}>
-                  This page also checks the gateway every few seconds, so paying on the hosted page unlocks
-                  Premium here without reloading.
+                  Paste the receipt on the secure page and this tab unlocks automatically — it checks the
+                  gateway every few seconds, so there is nothing to reload. Each transfer unlocks one
+                  account only; a receipt that was already used is refused.
                 </p>
               </div>
             )}

@@ -849,7 +849,7 @@ export function CourseDetailView({ slug }: { slug: string }) {
           subtitle={
             <>
               Lesson files are served through short-lived signed links.{" "}
-              <span className="rating">Premium members get full-speed delivery.</span>
+              <span className="rating">Lesson files and downloads are included with Premium.</span>
             </>
           }
           width={560}
@@ -931,8 +931,8 @@ export function CourseDetailView({ slug }: { slug: string }) {
                       Open module
                     </Link>
                   )}
-                  <span className="badge" title="Fast, full-speed delivery requires Premium">
-                    <ZapInline /> Fast
+                  <span className="badge" title="Lesson files and downloads require Premium">
+                    <ZapInline /> Premium
                   </span>
                 </div>
                 {/* individual lessons */}
@@ -947,7 +947,7 @@ export function CourseDetailView({ slug }: { slug: string }) {
                     <span style={{ flex: 1 }}>{l.title}</span>
                     <span className="muted mono" style={{ fontSize: 10 }}>{formatSec(l.durationSec)}</span>
                     {/* speed-tier hint surfaced at course level (phonofilm: Premium fork visible here) */}
-                    {course.isPremium && <span className="badge" style={{ fontSize: 9 }}><ZapInline /> Fast</span>}
+                    {course.isPremium && <span className="badge" style={{ fontSize: 9 }}><ZapInline /> Premium</span>}
                     <ChevronRight size={14} className="muted" />
                   </Link>
                 ))}

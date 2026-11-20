@@ -194,6 +194,19 @@ class FakeDb {
   };
 
   paymentReference = {
+    findFirst: async ({ where }: { where: { reference: { in: string[] }; NOT?: { subscriptionId: string } } }) => {
+      const wanted = where.reference.in.map((r) => r.toLowerCase());
+      const row = [...this.refs.values()].find(
+        (r) => wanted.includes(r.reference.toLowerCase()) && r.subscriptionId !== where.NOT?.subscriptionId,
+      );
+      return row ?? null;
+    },
+    update: async ({ where, data }: { where: { id: string }; data: { verified?: boolean } }) => {
+      const row = [...this.refs.values()].find((r) => r.id === where.id);
+      if (!row) throw new Error('missing reference');
+      Object.assign(row, data);
+      return row;
+    },
     create: async ({ data }: { data: { reference: string } }) => {
       // The real table has a unique index on `reference`.
       if (this.refs.has(data.reference)) {
@@ -232,10 +245,22 @@ class FakeTikur {
     payerName: 'Test Payer',
   };
   verifyCalls = 0;
+  referenceResult: Record<string, unknown> = {
+    success: true,
+    verified: true,
+    amount: PRICE,
+    verificationId: 'FT26OK0001',
+    receiverName: 'Hayredin Mohammed',
+  };
 
   async verifyReceipt() {
     this.verifyCalls += 1;
     return this.verifyResult;
+  }
+
+  async verifyReference() {
+    this.verifyCalls += 1;
+    return this.referenceResult;
   }
 }
 
@@ -346,6 +371,19 @@ test('a gateway that says "not paid" grants nothing', async () => {
   tikur.verifyResult = { success: false, status: 'pending', message: 'No matching transfer yet' };
 
   await assert.rejects(() => service.tikurVerify('reader', 'sub1', 'FT26WAIT'), /No matching transfer/);
+  assert.equal(db.users.get('reader')?.planType, 'free');
+});
+
+test('a receipt the bank cannot find rejects the order instead of parking it', async () => {
+  const { db, tikur, service } = setup();
+  tikur.referenceResult = { success: false, message: 'No data found in the receipt.' };
+
+  const result = await service.submitReference('reader', 'sub1', 'FAKE123');
+
+  assert.equal(result.status, 'rejected');
+  assert.equal(result.verified, false);
+  assert.match(result.message, /No data found/);
+  assert.equal(db.subs.get('sub1')?.status, 'rejected');
   assert.equal(db.users.get('reader')?.planType, 'free');
 });
 

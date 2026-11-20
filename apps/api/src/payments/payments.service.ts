@@ -42,87 +42,15 @@ export class PaymentsService {
    * - crypto/stripe: redirect to the hosted processor page (never handle
    *   payment credentials in-house — pattern from the reference web audit)
    */
-  async checkout(userId: string, planId: string, method: string, currency = 'ETB') {
-    const plan = PLANS.find((p) => p.id === planId);
-    if (!plan) throw new BadRequestException('Unknown plan');
-    const validMethods = ['telebirr', 'crypto', 'stripe', 'patreon'];
-    if (!validMethods.includes(method)) throw new BadRequestException('Unknown payment method');
-
-    const amount = currency === 'USD' ? plan.priceUsd : plan.priceEtb;
-    const subscription = await this.prisma.subscription.create({
-      data: {
-        userId,
-        planName: planId,
-        paymentMethod: method,
-        amount,
-        currency,
-        status: 'pending',
-      },
-    });
-
-    const base = process.env.PUBLIC_APP_URL || 'http://localhost:3000';
-    switch (method) {
-      case 'telebirr': {
-        const accountNumber = (
-          process.env.TELEBIRR_ACCOUNT_NUMBER ||
-          process.env.TIKURPAY_TELEBIRR_PHONE ||
-          ''
-        ).trim();
-        if (!accountNumber) {
-          throw new ServiceUnavailableException(
-            'Manual Telebirr is not available right now. Use the verified bank checkout instead.',
-          );
-        }
-        const accountName = (
-          process.env.TELEBIRR_ACCOUNT_NAME ||
-          process.env.TIKURPAY_TELEBIRR_NAME ||
-          'Syncourse'
-        ).trim();
-        return {
-          subscriptionId: subscription.id,
-          plan: { ...plan, amount, currency },
-          status: 'pending',
-          steps: {
-            step1: {
-              title: 'Send money',
-              text: `Send ${amount.toLocaleString()} ${currency} with Telebirr to the account below`,
-              accountName,
-              accountNumber,
-            },
-            step2: {
-              title: 'Submit your transaction number',
-              hint: "It's on your Telebirr receipt, next to 'Transaction Number'",
-            },
-          },
-        };
-      }
-      case 'crypto':
-        // Hosted processor invoice — configure OXAPAY/NOWPAYMENTS URL in env.
-        return {
-          subscriptionId: subscription.id,
-          plan: { ...plan, amount, currency: 'USD' },
-          status: 'pending',
-          redirectUrl:
-            process.env.CRYPTO_CHECKOUT_URL ||
-            `${base}/premium?checkout=pending&subscription=${subscription.id}`,
-          note: 'Premium activates automatically once the network confirms your payment.',
-        };
-      case 'stripe':
-        return {
-          subscriptionId: subscription.id,
-          plan: { ...plan, amount, currency: 'USD' },
-          status: 'pending',
-          redirectUrl:
-            process.env.STRIPE_CHECKOUT_URL || `${base}/premium?checkout=pending&subscription=${subscription.id}`,
-        };
-      default:
-        return {
-          subscriptionId: subscription.id,
-          plan: { ...plan, amount, currency },
-          status: 'pending',
-          redirectUrl: process.env.PATREON_URL || 'https://patreon.com',
-        };
-    }
+  async checkout(_userId: string, _planId: string, _method: string, _currency = 'ETB') {
+    // Every path now goes through the gateway's hosted checkout. The old manual
+    // / crypto / Stripe branches created a pending row and then sent the shopper
+    // somewhere that could not confirm it, which is how the review queue filled
+    // with orders nobody could settle. Failing before anything is written also
+    // means an abandoned attempt leaves no row behind.
+    throw new BadRequestException(
+      'Payments now open the secure CBE / Telebirr / M-Pesa checkout. Use /payments/tikur/checkout.',
+    );
   }
 
   /** Telebirr manual flow — submit the transaction reference from the SMS. */
@@ -170,38 +98,51 @@ export class PaymentsService {
       status: sub.status,
       verified: false,
       message:
-        'Reference received. We could not confirm it automatically right now, so it is queued for review — you will not be charged twice.',
+        'Reference received. We could not reach the bank right now, so it is queued for a person to check — you will not be charged twice.',
     };
     if (!this.tikur.configured) return pendingReview;
 
-    // Manual transfers were a dead end: the reference sat in the review queue
-    // until a person looked at it. The gateway can verify the same receipt
-    // against the bank ledger, so try that first and only fall back to review.
+    /**
+     * A receipt the gateway can read and reject is not a maybe. Leaving that
+     * order pending was the bug: the fake reference sat in the admin queue
+     * forever, the shopper saw "submitted", and nobody was told anything.
+     * This closes the order with the bank's own reason so both sides see a
+     * decision. An unreachable gateway still falls back to review above.
+     */
+    const reject = async (message: string) => {
+      await this.prisma.subscription.updateMany({
+        where: { id: sub.id, status: 'pending' },
+        data: { status: 'rejected', txReference: normalized },
+      });
+      return { submitted: false, status: 'rejected', verified: false, message };
+    };
+
+    // The gateway can verify the same receipt against the bank ledger, so try
+    // that first and only fall back to human review when the lookup itself
+    // failed (timeout, outage, missing key).
     let result;
     try {
       result = await this.tikur.verifyReference(raw, sub.paymentMethod === 'telebirr' ? 'telebirr' : undefined);
     } catch (err) {
       if (err instanceof BadRequestException) {
-        // The bank's own explanation ("not found", "already claimed") is more
-        // useful than a generic queue message, but keep the submission.
-        return { ...pendingReview, message: err.message };
+        // 400/422 means the provider read the receipt and refused it: "no data
+        // found", "already claimed". That is a final answer, not a queue item.
+        return reject(err.message);
       }
       this.logger.warn(`Manual reference ${raw} could not be auto-verified: ${(err as Error).message}`);
       return pendingReview;
     }
 
     if (result.verified !== true || result.success === false) {
-      return { ...pendingReview, message: result.message || pendingReview.message };
+      return reject(result.message || 'The bank could not find a completed transfer for that receipt.');
     }
     if (typeof result.amount === 'number' && Math.abs(result.amount - sub.amount) > 0.01) {
-      throw new BadRequestException(
+      return reject(
         `That transfer was ${result.amount.toLocaleString()} ETB but this plan costs ${sub.amount.toLocaleString()} ETB. Nothing was unlocked.`,
       );
     }
     if (!this.receiverIsOurs(result.receiverName)) {
-      throw new BadRequestException(
-        'That transfer did not land in a Syncourse receiving account. Nothing was unlocked.',
-      );
+      return reject('That transfer did not land in a Syncourse receiving account. Nothing was unlocked.');
     }
 
     const activated = await this.activate(sub.userId, sub);
@@ -319,33 +260,16 @@ export class PaymentsService {
    * What the web app is allowed to know about the gateway.
    *
    * `enabled` is the feature flag: false means no key is configured on the
-   * server, so the checkout UI must fall back to the manual rails instead of
-   * offering a button that can only fail. The account details returned are the
-   * same ones the hosted checkout would display — they are the merchant's
+   * server, so the checkout UI shows "payments are briefly unavailable" rather
+   * than offering a button that can only fail. The account details returned are
+   * the same ones the hosted checkout would display — they are the merchant's
    * receiving account, never a secret.
    */
   tikurConfig() {
-    const manualNumber = (
-      process.env.TELEBIRR_ACCOUNT_NUMBER ||
-      process.env.TIKURPAY_TELEBIRR_PHONE ||
-      ''
-    ).trim();
     return {
       enabled: this.tikur.configured,
       businessName: (process.env.TIKURPAY_BUSINESS_NAME || 'Syncourse').trim(),
       timeoutMinutes: this.tikur.timeoutMinutes,
-      // The manual rail is only offered when a real wallet is on file. It used
-      // to fall back to `0000000000`, which is not an account anyone can pay.
-      manualTelebirr: {
-        enabled: Boolean(manualNumber),
-        accountNumber: manualNumber,
-        accountName: (
-          process.env.TELEBIRR_ACCOUNT_NAME ||
-          process.env.TIKURPAY_TELEBIRR_NAME ||
-          process.env.TIKURPAY_BUSINESS_NAME ||
-          'Syncourse'
-        ).trim(),
-      },
       rails: this.tikur.rails,
     };
   }
@@ -363,7 +287,7 @@ export class PaymentsService {
     if (!plan) throw new BadRequestException('Unknown plan');
     if (!this.tikur.configured) {
       throw new ServiceUnavailableException(
-        'Bank checkout is not switched on yet. Use the manual transfer option below.',
+        'Card and wallet checkout is not switched on yet. Please try again shortly.',
       );
     }
 

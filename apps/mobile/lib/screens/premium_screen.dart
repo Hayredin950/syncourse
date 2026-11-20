@@ -85,13 +85,13 @@ class _PremiumScreenState extends State<PremiumScreen> {
         padding: const EdgeInsets.all(24),
         children: [
           const Text(
-            'Every course.\nFull speed. No ads.',
+            'Every course.\nEvery file.',
             style: TextStyle(fontSize: 28, fontWeight: FontWeight.w800, height: 1.15, letterSpacing: -0.5),
           ),
           const SizedBox(height: 20),
-          const _Benefit(icon: Icons.bolt, title: 'Stream instantly', desc: 'No queues, no limits on playback quality'),
-          const _Benefit(icon: Icons.download_for_offline, title: 'Full-speed downloads', desc: 'Offline lessons with quality picker'),
-          const _Benefit(icon: Icons.block, title: 'Zero ads', desc: 'An ad-free experience across web and app'),
+          const _Benefit(icon: Icons.play_circle_outline, title: 'Premium courses', desc: 'Every lesson, note and attachment'),
+          const _Benefit(icon: Icons.menu_book_outlined, title: 'Premium resources', desc: 'Full guides and files, not a preview'),
+          const _Benefit(icon: Icons.send_outlined, title: 'Telegram delivery', desc: 'Send course files straight to your chat'),
           const SizedBox(height: 24),
           if (_failed)
             Column(
@@ -139,16 +139,9 @@ class _PaySheet extends StatefulWidget {
 }
 
 class _PaySheetState extends State<_PaySheet> {
-  final _receipt = TextEditingController();
   bool _verifying = false;
   bool _done = false;
   String? _error;
-
-  @override
-  void dispose() {
-    _receipt.dispose();
-    super.dispose();
-  }
 
   Map<String, dynamic> get _rails {
     final methods = widget.session['methods'];
@@ -165,10 +158,13 @@ class _PaySheetState extends State<_PaySheet> {
     }
   }
 
-  Future<void> _verify() async {
-    final text = _receipt.text.trim();
-    if (text.length < 4) {
-      setState(() => _error = 'Paste the receipt link or the FT transaction number.');
+  /// The receipt is pasted on Tikur's hosted page, where the session lives.
+  /// This screen only asks the gateway for the authoritative state, so there is
+  /// no second place to submit the same receipt.
+  Future<void> _checkStatus() async {
+    final paymentNumber = widget.session['paymentNumber'];
+    if (paymentNumber is! String || paymentNumber.isEmpty) {
+      setState(() => _error = 'Start a checkout first.');
       return;
     }
     setState(() {
@@ -176,16 +172,15 @@ class _PaySheetState extends State<_PaySheet> {
       _error = null;
     });
     try {
-      final res = await Api.post('/payments/tikur/verify', {
-        'subscriptionId': widget.session['subscriptionId'],
-        'transactionLink': text,
-      });
+      final res = await Api.get('/payments/tikur/status/$paymentNumber');
       final map = Map<String, dynamic>.from(res as Map);
       if (!mounted) return;
       if (map['status'] == 'completed') {
         setState(() => _done = true);
+      } else if (map['status'] == 'review') {
+        setState(() => _error = 'The amount needs a person to check it. Nothing is charged twice.');
       } else {
-        setState(() => _error = (map['message'] as String?) ?? 'The payment could not be confirmed yet.');
+        setState(() => _error = 'Not confirmed yet. Finish the transfer on the secure page, then check again.');
       }
     } on ApiException catch (e) {
       if (mounted) setState(() => _error = e.message);
@@ -232,8 +227,8 @@ class _PaySheetState extends State<_PaySheet> {
                       style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
                   const SizedBox(height: 4),
                   const Text(
-                    'Transfer the exact amount, then paste the bank receipt. Tikur Pay checks it '
-                    'against the bank ledger — reused or fake references are rejected.',
+                    'Open the secure page, transfer the exact amount and paste the receipt there. '
+                    'Tikur Pay checks it against the bank ledger — reused or fake references are refused.',
                     style: TextStyle(fontSize: 12.5, color: AppColors.muted, height: 1.5),
                   ),
                   if (_rails.isNotEmpty) ...[
@@ -279,13 +274,6 @@ class _PaySheetState extends State<_PaySheet> {
                     label: const Text('Open the secure checkout page'),
                   ),
                   const SizedBox(height: 18),
-                  const Text('Receipt link or FT number', style: TextStyle(fontSize: 12, fontWeight: FontWeight.w700)),
-                  const SizedBox(height: 6),
-                  TextField(
-                    controller: _receipt,
-                    autocorrect: false,
-                    decoration: const InputDecoration(hintText: 'https://mbreciept.cbe.com.et/… or FT26…'),
-                  ),
                   if (_error != null) ...[
                     const SizedBox(height: 10),
                     Text(_error!, style: const TextStyle(color: AppColors.danger, fontSize: 12.5)),
@@ -294,10 +282,10 @@ class _PaySheetState extends State<_PaySheet> {
                   SizedBox(
                     width: double.infinity,
                     child: FilledButton(
-                      onPressed: _verifying ? null : _verify,
+                      onPressed: _verifying ? null : _checkStatus,
                       child: _verifying
                           ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
-                          : const Text('Verify payment'),
+                          : const Text('I have paid — check now'),
                     ),
                   ),
                 ],

@@ -13,7 +13,6 @@ import {
   ChevronRight,
   CreditCard,
   Download,
-  Eye,
   Heart,
   Layers,
   Library,
@@ -419,7 +418,7 @@ export default function MePage() {
                 <span className="icon-badge icon-badge--purple"><CreditCard size={15} /></span>
                 <span className="lesson__main">
                   <span className="lesson__title">Premium plans</span>
-                  <span className="lesson__sub">{isPremium ? "Active — manage your plan" : "Unlock every course and full-speed downloads"}</span>
+                  <span className="lesson__sub">{isPremium ? "Active — manage your plan" : "Unlock every premium course and resource"}</span>
                 </span>
                 <ChevronRight size={16} className="row-chevron" />
               </Link>
@@ -640,8 +639,8 @@ export default function MePage() {
             <div className="dark-panel dark-panel--pad">
               <p style={{ margin: 0, fontSize: 13 }}>
                 {isPremium
-                  ? <>You're on <strong className="rating">Premium</strong>{user.planExpiresAt ? ` until ${formatDate(user.planExpiresAt)}.` : "."} Browsing, lists, tracking, full-speed downloads and ad-free learning are all yours.</> 
-                  : <>Browsing, lists and tracking are yours. <strong>Streaming, full-speed downloads and ad-free learning are Premium.</strong></>}
+                  ? <>You're on <strong className="rating">Premium</strong>{user.planExpiresAt ? ` until ${formatDate(user.planExpiresAt)}.` : "."} Every premium course, resource and download is open on this account.</> 
+                  : <>Browsing, lists and tracking are yours. <strong>Premium courses, resources and their files need a pass.</strong></>}
               </p>
             </div>
           </div>
@@ -666,22 +665,22 @@ export default function MePage() {
               <div className="activity-card">
                 <span className="activity-icon"><Play size={16} /></span>
                 <span>
-                  <strong>Stream instantly</strong>
-                  <span className="muted">No waits, no queues</span>
+                  <strong>Premium courses</strong>
+                  <span className="muted">Lessons, notes and attachments</span>
                 </span>
               </div>
               <div className="activity-card">
                 <span className="activity-icon"><Zap size={16} /></span>
                 <span>
-                  <strong>Full-speed downloads</strong>
-                  <span className="muted">Offline notes &amp; materials</span>
+                  <strong>Premium resources</strong>
+                  <span className="muted">Full guides and files</span>
                 </span>
               </div>
               <div className="activity-card">
-                <span className="activity-icon"><Eye size={16} /></span>
+                <span className="activity-icon"><Download size={16} /></span>
                 <span>
-                  <strong>Zero ads</strong>
-                  <span className="muted">Uninterrupted previews</span>
+                  <strong>Files &amp; Telegram</strong>
+                  <span className="muted">Downloads sent to your chat</span>
                 </span>
               </div>
             </div>

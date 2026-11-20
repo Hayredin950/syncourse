@@ -133,7 +133,7 @@ export default function DownloadPage() {
         <ul>
           {[
             "The same catalogue, search and filters as the website",
-            "Offline-first lists and saved courses",
+            "Saved courses and lists that follow your account",
             "Premium checkout inside the app, verified by the same payment API",
             "Sign in once — the session is stored securely on the device",
           ].map((line) => (

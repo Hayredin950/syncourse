@@ -187,12 +187,10 @@ class Api {
     return (d as List).map((e) => Plan.fromJson(e as Map<String, dynamic>)).toList();
   }
 
-  static Future<Map<String, dynamic>> checkout(String planId, String method) async {
-    final d = await post('/payments/checkout', {
-      'planId': planId,
-      'method': method,
-      'currency': method == 'telebirr' ? 'ETB' : 'USD',
-    });
+  /// Ask the bot to send this lesson's file link to the linked Telegram chat.
+  /// This is the real delivery path; the app does not keep a local media cache.
+  static Future<Map<String, dynamic>> downloadToTelegram(String lessonId) async {
+    final d = await post('/lessons/$lessonId/download-to-telegram', {});
     return d as Map<String, dynamic>;
   }
 

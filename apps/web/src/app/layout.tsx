@@ -17,7 +17,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: "Syncourse — Learn anything, stay in sync.",
     description:
-      "Watch anywhere, learn offline, track progress. Courses, mini-courses, cheat-sheets and roadmaps.",
+      "Watch anywhere, keep your progress in sync. Courses, mini-courses, cheat-sheets and roadmaps.",
     images: [{ url: "/social-preview.png", width: 1731, height: 909, alt: "Syncourse — Learn anything, stay in sync." }],
     siteName: "Syncourse",
     type: "website",
@@ -25,7 +25,7 @@ export const metadata: Metadata = {
   twitter: {
     card: "summary_large_image",
     title: "Syncourse — Learn anything, stay in sync.",
-    description: "Watch anywhere, learn offline, track progress.",
+    description: "Watch anywhere, keep your progress in sync.",
     images: ["/social-preview.png"],
   },
 };

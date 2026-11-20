@@ -917,7 +917,7 @@ export class AdminService {
             userId: sub.userId,
             type: 'system',
             title: 'Premium activated 🎉',
-            body: `Your ${plan?.name ?? sub.planName} plan is active. Enjoy full-speed downloads and an ad-free experience.`,
+            body: `Your ${plan?.name ?? sub.planName} plan is active. Every premium course, resource and download is open now.`,
           },
         });
       }

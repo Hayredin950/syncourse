@@ -1,9 +1,9 @@
 import type { Metadata } from "next";
 
 export const metadata: Metadata = {
-  title: "Syncourse Premium — every course, offline and on Telegram",
+  title: "Syncourse Premium — every premium course, resource and download",
   description:
-    "Syncourse Premium unlocks every course and download, offline viewing in the mobile app, and file delivery through the Telegram bot. Plans from one month.",
+    "Syncourse Premium unlocks every premium course and resource, lesson files and downloads, and file delivery through the Telegram bot. Plans from one month.",
   alternates: { canonical: "/premium" },
 };
 
