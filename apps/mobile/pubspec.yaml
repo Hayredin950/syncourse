@@ -1,7 +1,7 @@
 name: syncourse
 description: Syncourse — course delivery & learning app (Flutter client)
 publish_to: "none"
-version: 0.1.0+1
+version: 0.2.0+2
 
 environment:
   sdk: ">=3.3.0 <4.0.0"
@@ -15,6 +15,24 @@ dependencies:
 
 dev_dependencies:
   flutter_lints: ^4.0.0
+  flutter_launcher_icons: ^0.14.1
 
 flutter:
   uses-material-design: true
+
+# Launcher icons are generated on CI after `flutter create`; the source art is
+# the same mark the web app uses, so the installed app is recognisable instead
+# of carrying Flutter's default logo.
+flutter_launcher_icons:
+  android: true
+  ios: false
+  image_path: "assets/icon.png"
+  adaptive_icon_background: "#0E0E10"
+  adaptive_icon_foreground: "assets/icon-foreground.png"
+  windows:
+    generate: true
+    image_path: "assets/icon.png"
+    icon_size: 256
+  macos:
+    generate: true
+    image_path: "assets/icon.png"

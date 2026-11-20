@@ -38,13 +38,44 @@ jobs:
           channel: stable
           cache: true
       - name: Scaffold platform folders
-        run: flutter create --platforms=android --org et.syncourse --project-name syncourse .
+        run: flutter create --org et.syncourse --project-name syncourse .
+      - name: Release manifest fixes
+        run: dart tool/prepare_platforms.dart
       - run: flutter pub get
-      - run: flutter build apk --release
-      - name: Collect asset
+      - name: Generate launcher icons
+        run: dart run flutter_launcher_icons
+      - name: Set up release signing
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
         run: |
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$RUNNER_TEMP/syncourse-release.jks"
+          echo "SYNCOURSE_KEYSTORE=$RUNNER_TEMP/syncourse-release.jks" >> "$GITHUB_ENV"
+      - run: flutter build apk --release
+      - name: Collect and sign asset
+        env:
+          KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
           mkdir -p "$GITHUB_WORKSPACE/dist"
-          cp build/app/outputs/flutter-apk/app-release.apk "$GITHUB_WORKSPACE/dist/syncourse-android.apk"
+          SDK="${ANDROID_HOME:-${ANDROID_SDK_ROOT:-$HOME/Android/Sdk}}"
+          BUILD_TOOLS=$(ls "$SDK/build-tools" | sort -V | tail -1)
+          ZIPALIGN="$SDK/build-tools/$BUILD_TOOLS/zipalign"
+          APKSIGNER="$SDK/build-tools/$BUILD_TOOLS/apksigner"
+          # Flutter signs release APKs with a debug key generated per runner, so
+          # the signature changed on every build and an update could not install
+          # over the previous one. Re-align and sign with the project key kept in
+          # repository secrets.
+          "$ZIPALIGN" -f 4 build/app/outputs/flutter-apk/app-release.apk "$RUNNER_TEMP/syncourse-aligned.apk"
+          "$APKSIGNER" sign \
+            --ks "$SYNCOURSE_KEYSTORE" \
+            --ks-key-alias "$KEY_ALIAS" \
+            --ks-pass "pass:$KEYSTORE_PASSWORD" \
+            --key-pass "pass:$KEY_PASSWORD" \
+            --out "$GITHUB_WORKSPACE/dist/syncourse-android.apk" \
+            "$RUNNER_TEMP/syncourse-aligned.apk"
+          "$APKSIGNER" verify --verbose "$GITHUB_WORKSPACE/dist/syncourse-android.apk" | head -5
       - uses: actions/upload-artifact@v4
         with:
           name: android
@@ -68,8 +99,12 @@ jobs:
           channel: stable
           cache: true
       - name: Scaffold platform folders
-        run: flutter create --platforms=linux --org et.syncourse --project-name syncourse .
+        run: flutter create --org et.syncourse --project-name syncourse .
+      - name: Release manifest fixes
+        run: dart tool/prepare_platforms.dart
       - run: flutter pub get
+      - name: Generate launcher icons
+        run: dart run flutter_launcher_icons
       - run: flutter build linux --release
       - name: Collect asset
         run: |
@@ -95,8 +130,12 @@ jobs:
           channel: stable
           cache: true
       - name: Scaffold platform folders
-        run: flutter create --platforms=windows --org et.syncourse --project-name syncourse .
+        run: flutter create --org et.syncourse --project-name syncourse .
+      - name: Release manifest fixes
+        run: dart tool/prepare_platforms.dart
       - run: flutter pub get
+      - name: Generate launcher icons
+        run: dart run flutter_launcher_icons
       - run: flutter build windows --release
       - name: Collect asset
         run: |
@@ -121,8 +160,12 @@ jobs:
           channel: stable
           cache: true
       - name: Scaffold platform folders
-        run: flutter create --platforms=macos --org et.syncourse --project-name syncourse .
+        run: flutter create --org et.syncourse --project-name syncourse .
+      - name: Release manifest fixes
+        run: dart tool/prepare_platforms.dart
       - run: flutter pub get
+      - name: Generate launcher icons
+        run: dart run flutter_launcher_icons
       - run: flutter build macos --release
       - name: Package disk image
         run: |
