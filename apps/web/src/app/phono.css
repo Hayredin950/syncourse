@@ -266,13 +266,25 @@ h3 { font-size: 16px; }
 .nav-cat.active svg { color: #0e0e0d; }
 
 /* --- download app pill, at the right end of the chip row ------------------ */
-/* Same line as the chips, but anchored to the header's right margin so it
-   sits under Admin / Me instead of trailing the centred chip group. The row
-   is the last thing in the header, hence bottom-anchored. */
-.shelf-app {
+/* The slot copies the header row's geometry (max 1520px, 32px gutter) so the
+   pill's right edge lands on the same pixel as Admin / Me above. It is a
+   positioned layer above `.topbar-row` (which is z-index:1 and spans the full
+   header height), otherwise that row swallows the clicks. */
+.topbar-app-slot {
   position: absolute;
-  right: 4.2vw;
-  bottom: 13px;
+  left: 0;
+  right: 0;
+  bottom: 8px;
+  z-index: 2;
+  display: flex;
+  justify-content: flex-end;
+  max-width: 1520px;
+  margin: 0 auto;
+  padding: 0 32px;
+  pointer-events: none;
+}
+.shelf-app {
+  pointer-events: auto;
   display: inline-flex;
   align-items: center;
   gap: 7px;
@@ -286,6 +298,7 @@ h3 { font-size: 16px; }
   letter-spacing: -.01em;
   line-height: 1;
   white-space: nowrap;
+  cursor: pointer;
   transition: background .15s ease, border-color .15s ease, color .15s ease;
 }
 .shelf-app svg { flex: none; }

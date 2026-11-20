@@ -419,18 +419,20 @@ export function TopNav() {
         </nav>
       </div>
 
-      {/* Right end of the category row: the header's own margin is the anchor,
-          so the pill lines up under Admin / Me rather than inside the centred
-          chip column. */}
-      <Link
-        href="/download"
-        className="shelf-app"
-        aria-label="Download the Syncourse app"
-        title="Download the Syncourse app"
-      >
-        <Download size={15} strokeWidth={1.9} />
-        <span>Download app</span>
-      </Link>
+      {/* Right end of the category row. The slot mirrors the header row's own
+          max-width and 32px gutter, so the pill ends on the same pixel as the
+          Admin / Me buttons above it at every viewport width. */}
+      <div className="topbar-app-slot">
+        <Link
+          href="/download"
+          className="shelf-app"
+          aria-label="Download the Syncourse app"
+          title="Download the Syncourse app"
+        >
+          <Download size={15} strokeWidth={1.9} />
+          <span>Download app</span>
+        </Link>
+      </div>
 
     </header>
   );
