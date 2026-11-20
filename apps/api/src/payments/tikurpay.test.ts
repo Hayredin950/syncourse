@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { Prisma } from '@prisma/client';
 import { PaymentsService } from './payments.service';
+import { PLANS } from './plans';
 import { TikurPayClient } from './tikurpay.client';
 import type { PrismaService } from '../prisma/prisma.service';
 import type { EmailService } from '../email/email.service';
@@ -16,6 +17,12 @@ import type { EmailService } from '../email/email.service';
  * decisions that actually unlock Premium (amount, duplicate receipt, exactly
  * one activation) are the production code, not a re-implementation.
  */
+
+/**
+ * The price under test comes from the plan table, not a copied literal: a
+ * pricing change must not silently turn the amount check into a no-op.
+ */
+const PRICE = PLANS.find((p) => p.id === '1m')!.priceEtb;
 
 // --- client: normalisation and signatures ------------------------------------
 
@@ -220,7 +227,7 @@ class FakeTikur {
   verifyResult: Record<string, unknown> = {
     success: true,
     status: 'completed',
-    amount: 149,
+    amount: PRICE,
     verificationId: 'FT26OK0001',
     payerName: 'Test Payer',
   };
@@ -246,7 +253,7 @@ function setup() {
     userId: 'reader',
     planName: '1m',
     status: 'pending',
-    amount: 149,
+    amount: PRICE,
     currency: 'ETB',
     periodStart: null,
     periodEnd: null,
@@ -255,7 +262,7 @@ function setup() {
     id: 'tp_1',
     subscriptionId: 'sub1',
     paymentNumber: 'pay_1',
-    amount: 149,
+    amount: PRICE,
     currency: 'ETB',
     status: 'pending',
     reference: null,
@@ -292,10 +299,13 @@ test('a verified receipt for the right amount unlocks Premium exactly once', asy
 
 test('a transfer for the wrong amount is refused and unlocks nothing', async () => {
   const { db, tikur, service } = setup();
-  // Someone pays 10 ETB into a 149 ETB order.
-  tikur.verifyResult = { success: true, status: 'completed', amount: 10, verificationId: 'FT26CHEAP' };
+  // Someone pays one birr less than the order asked for.
+  tikur.verifyResult = { success: true, status: 'completed', amount: PRICE - 1, verificationId: 'FT26CHEAP' };
 
-  await assert.rejects(() => service.tikurVerify('reader', 'sub1', 'FT26CHEAP'), /149/);
+  await assert.rejects(
+    () => service.tikurVerify('reader', 'sub1', 'FT26CHEAP'),
+    new RegExp(String(PRICE)),
+  );
   assert.equal(db.users.get('reader')?.planType, 'free');
   assert.equal(db.subs.get('sub1')?.status, 'pending');
   assert.equal(db.payments.get('tp_1')?.status, 'pending');
@@ -308,7 +318,7 @@ test('a receipt already claimed by another account cannot be reused', async () =
     id: 'tp_other',
     subscriptionId: 'sub_other',
     paymentNumber: 'pay_other',
-    amount: 149,
+    amount: PRICE,
     currency: 'ETB',
     status: 'completed',
     reference: 'ft26stolen',
