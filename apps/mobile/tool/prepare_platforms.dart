@@ -8,36 +8,95 @@ import 'dart:io';
 /// permission is inert in debug, so adding it to the main manifest is safe for
 /// every build type.
 ///
+/// The generated projects also name themselves `syncourse` everywhere, which is
+/// what the launcher, window title and task switcher show. These patches only
+/// touch user-visible labels; product/bundle names stay lowercase so the
+/// packaging paths in the workflow keep working.
+///
 /// Run after `flutter create` and before `flutter build`:
 ///   dart tool/prepare_platforms.dart
 void main() {
+  _patchAndroidManifest();
+  _patchWindowsTitle();
+  _patchLinuxTitles();
+  _patchMacosDisplayName();
+}
+
+void _patchAndroidManifest() {
   const permission = '<uses-permission android:name="android.permission.INTERNET"/>';
   final manifest = File('android/app/src/main/AndroidManifest.xml');
-
   if (!manifest.existsSync()) {
-    stdout.writeln('No Android manifest here — nothing to patch.');
+    stdout.writeln('No Android manifest here — skipping Android.');
     return;
   }
 
-  final xml = manifest.readAsStringSync();
-  if (xml.contains('android.permission.INTERNET')) {
-    stdout.writeln('INTERNET permission already present.');
-    return;
+  var xml = manifest.readAsStringSync();
+  final before = xml;
+
+  if (!xml.contains('android.permission.INTERNET')) {
+    // The manifest is <manifest …> <application …> … </manifest>. Inserting the
+    // permission as a sibling of <application> is the documented placement; a
+    // permission inside <application> is ignored by the installer.
+    xml = xml.replaceFirst(
+      '<application',
+      '$permission\n\n    <application',
+    );
+    stdout.writeln(xml == before
+        ? 'Could not find <application> in the Android manifest.'
+        : 'Added INTERNET permission to AndroidManifest.xml');
   }
 
-  // The manifest is <manifest …> <application …> … </manifest>. Inserting the
-  // permission as a sibling of <application> is the documented placement; a
-  // permission inside <application> is ignored by the installer.
+  // `flutter create --project-name syncourse` writes android:label="syncourse".
+  // The launcher shows that string verbatim, so brand it.
+  xml = xml.replaceAll('android:label="syncourse"', 'android:label="Syncourse"');
+
+  if (xml != before) manifest.writeAsStringSync(xml);
+}
+
+void _patchWindowsTitle() {
+  final main = File('windows/runner/main.cpp');
+  if (!main.existsSync()) return;
+  final code = main.readAsStringSync();
+  // `window.Create(L"syncourse", origin, size)` is the title bar / taskbar text.
+  final patched = code.replaceAll('L"syncourse"', 'L"Syncourse"');
+  if (patched != code) {
+    main.writeAsStringSync(patched);
+    stdout.writeln('Renamed the Windows window title.');
+  }
+}
+
+void _patchLinuxTitles() {
+  final app = File('linux/my_application.cc');
+  if (!app.existsSync()) return;
+  final code = app.readAsStringSync();
+  final patched = code
+      .replaceAll(
+        'gtk_header_bar_set_title(header_bar, "syncourse")',
+        'gtk_header_bar_set_title(header_bar, "Syncourse")',
+      )
+      .replaceAll(
+        'gtk_window_set_title(window, "syncourse")',
+        'gtk_window_set_title(window, "Syncourse")',
+      );
+  if (patched != code) {
+    app.writeAsStringSync(patched);
+    stdout.writeln('Renamed the Linux window titles.');
+  }
+}
+
+void _patchMacosDisplayName() {
+  final plist = File('macos/Runner/Info.plist');
+  if (!plist.existsSync()) return;
+  var xml = plist.readAsStringSync();
+  if (xml.contains('CFBundleDisplayName')) return;
+  // PRODUCT_NAME stays `syncourse` (the .app path the packaging step uses),
+  // but the menu bar and Finder show the display name.
   final patched = xml.replaceFirst(
-    '<application',
-    '$permission\n\n    <application',
+    '<key>CFBundleName</key>',
+    '<key>CFBundleDisplayName</key>\n\t<string>Syncourse</string>\n\t<key>CFBundleName</key>',
   );
-  if (patched == xml) {
-    stderr.writeln('Could not find <application> in the Android manifest.');
-    exitCode = 1;
-    return;
+  if (patched != xml) {
+    plist.writeAsStringSync(patched);
+    stdout.writeln('Set the macOS display name.');
   }
-
-  manifest.writeAsStringSync(patched);
-  stdout.writeln('Added INTERNET permission to AndroidManifest.xml');
 }

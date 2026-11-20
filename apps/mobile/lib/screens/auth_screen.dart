@@ -64,7 +64,7 @@ class _AuthScreenState extends State<AuthScreen> {
               const Icon(Icons.school, size: 64, color: AppColors.accent),
               const SizedBox(height: 8),
               const Text(
-                'SynCourse',
+                'Syncourse',
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 26, fontWeight: FontWeight.w800, letterSpacing: -0.5),
               ),

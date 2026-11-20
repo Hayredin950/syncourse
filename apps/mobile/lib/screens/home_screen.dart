@@ -31,7 +31,7 @@ class _HomeScreenState extends State<HomeScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text(
-          'SynCourse',
+          'Syncourse',
           style: TextStyle(fontWeight: FontWeight.w800, letterSpacing: -0.5),
         ),
         actions: [
