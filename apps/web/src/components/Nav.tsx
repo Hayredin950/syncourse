@@ -16,6 +16,7 @@ import {
   LayoutGrid,
   MessageCircle,
   Search,
+  Smartphone,
   Sparkles,
   X,
   Zap,
@@ -434,6 +435,16 @@ export function MobileHeader({ title }: { title?: string }) {
         </Link>
         <Link href="/search" className="icon-btn" aria-label="Search">
           <Search size={19} strokeWidth={1.8} />
+        </Link>
+        {/* The footer and right rail are desktop-only, so this is the one app
+            download control a phone can actually see. */}
+        <Link
+          href="/download"
+          className="icon-btn"
+          aria-label="Download the Syncourse app"
+          title="Download the app"
+        >
+          <Smartphone size={19} strokeWidth={1.8} />
         </Link>
         <Link href="/me" className="icon-btn" aria-label="Your profile">
           <CircleUserRound size={19} strokeWidth={1.8} />

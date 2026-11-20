@@ -24,6 +24,7 @@ import {
   Save,
   Settings,
   Share2,
+  Smartphone,
   Wrench,
   Zap,
 } from "lucide-react";
@@ -467,6 +468,21 @@ export default function MePage() {
                 <span className="lesson__main">
                   <span className="lesson__title">My Lists</span>
                   <span className="lesson__sub">{user.stats.lists} {user.stats.lists === 1 ? "list" : "lists"} built</span>
+                </span>
+                <ChevronRight size={16} className="row-chevron" />
+              </Link>
+            </div>
+          </div>
+
+          {/* native app builds — the footer that links here is desktop-only */}
+          <div className="rail">
+            <div className="section-head"><h2>Get the app</h2></div>
+            <div className="dark-panel dark-panel--rows">
+              <Link href="/download" className="lesson">
+                <span className="icon-badge icon-badge--amber"><Smartphone size={15} /></span>
+                <span className="lesson__main">
+                  <span className="lesson__title">Syncourse for your device</span>
+                  <span className="lesson__sub">Android APK · Windows · Linux · macOS</span>
                 </span>
                 <ChevronRight size={16} className="row-chevron" />
               </Link>
