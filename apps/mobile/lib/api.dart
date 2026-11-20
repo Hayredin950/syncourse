@@ -7,7 +7,10 @@ import 'models.dart';
 
 const apiBase = String.fromEnvironment(
   'API_URL',
-  defaultValue: 'http://localhost:4000',
+  // A release build talks to production unless the build passes
+  // --dart-define=API_URL=… ; the old localhost default made every installed
+  // app look broken because it pointed at the phone itself.
+  defaultValue: 'https://syncourse-api.vercel.app',
 );
 
 class ApiException implements Exception {

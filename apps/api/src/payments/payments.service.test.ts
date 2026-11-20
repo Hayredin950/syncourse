@@ -94,6 +94,7 @@ function setup() {
   const service = new PaymentsService(
     db as unknown as PrismaService,
     email as unknown as EmailService,
+    { configured: false } as never,
   );
   return { db, service };
 }

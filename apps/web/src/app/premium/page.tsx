@@ -5,7 +5,7 @@ import { useToast } from "@/lib/useToast";
 import type React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowRight, Check, CreditCard, MessageCircle, Wallet, Zap } from "lucide-react";
+import { ArrowRight, Check, CreditCard, MessageCircle, ShieldCheck, Wallet, Zap } from "lucide-react";
 import { get, post } from "@/lib/api";
 import type { HomeData, Plan } from "@/lib/types";
 import { useAuth } from "@/lib/auth";
@@ -23,12 +23,32 @@ interface CheckoutResult {
     step2: { title: string; hint: string };
   };
   redirectUrl?: string;
+  /** Tikur Pay session — the gateway's own id and hosted page. */
+  paymentNumber?: string;
+  checkoutUrl?: string;
+  expiresAt?: string;
+  amount?: number;
+  methods?: Record<string, { accountNumber?: string; accountName?: string; phoneNumber?: string }>;
+}
+
+interface TikurConfig {
+  enabled: boolean;
+  businessName: string;
+  timeoutMinutes: number;
+  rails: Record<string, { accountNumber?: string; accountName?: string; phoneNumber?: string }>;
 }
 
 const METHODS: { value: string; label: string; sub: string; icon: React.ReactNode; recommended?: boolean }[] = [
-  { value: "telebirr", label: "Telebirr", sub: "Ethiopia · mobile money", icon: <Wallet size={17} /> },
+  {
+    value: "tikur",
+    label: "Bank · Telebirr · M-Pesa",
+    sub: "Ethiopia · verified automatically in seconds",
+    icon: <ShieldCheck size={17} />,
+    recommended: true,
+  },
+  { value: "telebirr", label: "Telebirr (manual)", sub: "Ethiopia · we check the reference", icon: <Wallet size={17} /> },
   { value: "crypto", label: "Crypto", sub: "USDT · BTC · ETH · SOL", icon: <Zap size={17} /> },
-  { value: "stripe", label: "Card & PayPal", sub: "Worldwide · Visa / Mastercard", icon: <CreditCard size={17} />, recommended: true },
+  { value: "stripe", label: "Card & PayPal", sub: "Worldwide · Visa / Mastercard", icon: <CreditCard size={17} /> },
 ];
 
 type MethodValue = (typeof METHODS)[number]["value"];
@@ -47,6 +67,9 @@ export default function PremiumPage() {
   const [reference, setReference] = useState("");
   const { toast, setToast } = useToast();
   const [paid, setPaid] = useState(false);
+  /** The gateway's feature flag — false until TIKURPAY_API_KEY is set on the API. */
+  const [tikur, setTikur] = useState<TikurConfig | null>(null);
+  const { refresh } = useAuth();
 
   const loadPlans = useCallback(() => {
     setPlansFailed(false);
@@ -69,6 +92,19 @@ export default function PremiumPage() {
     get<HomeData>("/home").then(setHome).catch(() => undefined);
   }, [loadPlans, token]);
 
+  useEffect(() => {
+    // Public on purpose: the checkout page needs to know whether the bank rail
+    // exists before it asks anyone to sign in and pick a plan.
+    get<TikurConfig>("/payments/tikur/config")
+      .then((c) => {
+        setTikur(c);
+        if (c.enabled) setMethod("tikur");
+      })
+      .catch(() => setTikur({ enabled: false, businessName: "Syncourse", timeoutMinutes: 15, rails: {} }));
+  }, []);
+
+  const methods = tikur?.enabled === false ? METHODS.filter((m) => m.value !== "tikur") : METHODS;
+
   const current = plans.find((p) => p.id === selected) ?? plans[0];
 
   const startCheckout = async (planId: string) => {
@@ -77,8 +113,14 @@ export default function PremiumPage() {
       return;
     }
     try {
-      const currency = method === "telebirr" ? "ETB" : "USD";
-      const r = await post<CheckoutResult>("/payments/checkout", { planId, method, currency });
+      const r =
+        method === "tikur"
+          ? await post<CheckoutResult>("/payments/tikur/checkout", { planId })
+          : await post<CheckoutResult>("/payments/checkout", {
+              planId,
+              method,
+              currency: method === "telebirr" ? "ETB" : "USD",
+            });
       setSelected(planId);
       setCheckout(r);
       setReference("");
@@ -86,6 +128,10 @@ export default function PremiumPage() {
       if (r.redirectUrl && method !== "crypto") {
         window.location.href = r.redirectUrl;
       }
+      // The hosted page is the fastest path: it shows the account, collects the
+      // receipt and asks the gateway to verify. The panel below also allows the
+      // same receipt to be pasted here, for anyone who transfers from their own
+      // banking app and never opens the hosted page.
     } catch (e: any) {
       setToast(e.message);
     }
@@ -94,6 +140,19 @@ export default function PremiumPage() {
   const submitReference = async () => {
     if (!checkout || !reference.trim()) return;
     try {
+      if (method === "tikur") {
+        const r = await post<{ status: string; message: string; payerName?: string | null }>(
+          "/payments/tikur/verify",
+          { subscriptionId: checkout.subscriptionId, transactionLink: reference.trim() },
+        );
+        setToast(r.message);
+        setReference("");
+        if (r.status === "completed") {
+          setPaid(true);
+          void refresh();
+        }
+        return;
+      }
       const r = await post<{ submitted: boolean; message: string }>(
         `/payments/subscriptions/${checkout.subscriptionId}/reference`,
         { reference },
@@ -106,8 +165,37 @@ export default function PremiumPage() {
     }
   };
 
-  const price = (p: Plan) => (method === "telebirr" ? `${p.priceEtb} ETB` : `$${p.priceUsd}`);
-  const methodLabel = METHODS.find((m) => m.value === method)!.label;
+  /* Someone who pays on the hosted page comes back to this tab still open. The
+     webhook normally lands first, but a late or blocked callback must not leave
+     them staring at "pending" forever: ask the gateway for the authoritative
+     state and let the server settle it. */
+  useEffect(() => {
+    if (method !== "tikur" || !checkout?.paymentNumber || paid) return;
+    let cancelled = false;
+    const tick = async () => {
+      try {
+        const s = await get<{ status: string }>(`/payments/tikur/status/${checkout.paymentNumber}`);
+        if (cancelled) return;
+        if (s.status === "completed") {
+          setPaid(true);
+          void refresh();
+        }
+      } catch {
+        // A network blip is not a failed payment; the next tick retries.
+      }
+    };
+    const id = setInterval(tick, 6000);
+    void tick();
+    return () => {
+      cancelled = true;
+      clearInterval(id);
+    };
+  }, [method, checkout?.paymentNumber, paid, refresh]);
+
+  const price = (p: Plan) => (method === "telebirr" || method === "tikur" ? `${p.priceEtb} ETB` : `$${p.priceUsd}`);
+  const methodLabel = methods.find((m) => m.value === method)?.label ?? method;
+  /** Receiving accounts: the session's own copy first, then the server's config. */
+  const rails = checkout?.methods ?? tikur?.rails ?? {};
   const heroImages = (home?.trending ?? []).slice(0, 6).map((c) => c.thumbnailUrl).filter(Boolean) as string[];
 
   // Also covers the prerendered HTML: at build time there is no session, so the
@@ -174,7 +262,7 @@ export default function PremiumPage() {
 
         {/* payment methods — cards, not pills */}
         <div className="method-grid">
-          {METHODS.map((m) => (
+          {methods.map((m) => (
             <button
               key={m.value}
               className={`method-card ${method === m.value ? "selected" : ""}`}
@@ -269,8 +357,69 @@ export default function PremiumPage() {
             {paid ? (
               <div>
                 <Check className="rating" />
-                <h3>Payment reference submitted.</h3>
-                <p className="muted">We will verify your {method} payment and unlock Premium on this device.</p>
+                <h3>
+                  {method === "tikur" ? "Payment verified — Premium is unlocked." : "Payment reference submitted."}
+                </h3>
+                <p className="muted">
+                  {method === "tikur"
+                    ? "The transfer matched the plan amount and landed in the receiving account. Every plan and course is open on this account now."
+                    : `We will verify your ${method} payment and unlock Premium on this device.`}
+                </p>
+              </div>
+            ) : method === "tikur" ? (
+              <div style={{ fontSize: 13 }}>
+                <h3>Pay {checkout.amount?.toLocaleString()} ETB</h3>
+                <p className="muted" style={{ margin: "4px 0 12px", lineHeight: 1.65 }}>
+                  Transfer the exact amount from your bank app or wallet. Tikur Pay checks the transfer
+                  against the bank ledger — no screenshot is trusted on its own.
+                </p>
+
+                {Object.keys(rails).length > 0 && (
+                  <div className="dark-panel dark-panel--row" style={{ display: "grid", gap: 6 }}>
+                    {Object.entries(rails).map(([key, rail]) => (
+                      <div key={key} style={{ display: "flex", justifyContent: "space-between", gap: 12 }}>
+                        <span className="muted">
+                          {key.toUpperCase()} · {rail.accountName ?? tikur?.businessName}
+                        </span>
+                        <span className="mono" style={{ fontWeight: 700 }}>
+                          {rail.accountNumber ?? rail.phoneNumber ?? ""}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {checkout.checkoutUrl && (
+                  <a
+                    href={checkout.checkoutUrl}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="btn primary"
+                    style={{ display: "inline-block", marginTop: 12 }}
+                  >
+                    Open secure checkout <ArrowRight size={14} />
+                  </a>
+                )}
+
+                <h3 style={{ marginTop: 22 }}>Already transferred? Paste the receipt</h3>
+                <input
+                  className="form-input"
+                  placeholder="https://mbreciept.cbe.com.et/… or FT26…"
+                  value={reference}
+                  onChange={(e) => setReference(e.target.value)}
+                  autoComplete="off"
+                />
+                <p className="muted" style={{ fontSize: 11, margin: "2px 0 16px" }}>
+                  The receipt link or the FT transaction number. Each transfer unlocks one account only —
+                  a number that has already been used is rejected.
+                </p>
+                <button className="btn primary" onClick={submitReference} disabled={!reference.trim()}>
+                  Verify payment <ShieldCheck size={14} />
+                </button>
+                <p className="muted" style={{ fontSize: 11, marginTop: 12 }}>
+                  This page also checks the gateway every few seconds, so paying on the hosted page unlocks
+                  Premium here without reloading.
+                </p>
               </div>
             ) : method === "telebirr" && checkout.steps ? (
               <div style={{ fontSize: 13 }}>

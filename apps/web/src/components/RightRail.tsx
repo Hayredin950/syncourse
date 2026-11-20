@@ -2,8 +2,7 @@
 
 import Link from "next/link";
 import { useAuth } from "@/lib/auth";
-
-const appPlatforms = ["Android TV", "Windows", "Android", "macOS", "Phone", "APK", "Installer"];
+import { APP_BUILDS, APP_WEB_URL } from "@/lib/apps";
 
 export function RightRail() {
   const { isPremium } = useAuth();
@@ -36,12 +35,27 @@ export function RightRail() {
       <div className="rounded-xl border border-border bg-surface p-4">
         <div className="text-[11px] font-semibold uppercase tracking-wide text-dim">Get the App</div>
         <div className="mt-2 flex flex-wrap gap-1.5">
-          {appPlatforms.map((p) => (
-            <span key={p} className="rounded-md bg-surface-raised px-2 py-1 text-[11px] text-muted">
-              {p}
-            </span>
+          {APP_BUILDS.map((build) => (
+            <Link
+              key={build.id}
+              href="/download"
+              className="rounded-md bg-surface-raised px-2 py-1 text-[11px] text-muted transition-colors hover:text-text"
+            >
+              {build.os}
+            </Link>
           ))}
+          <a
+            href={APP_WEB_URL}
+            target="_blank"
+            rel="noreferrer"
+            className="rounded-md bg-surface-raised px-2 py-1 text-[11px] text-muted transition-colors hover:text-text"
+          >
+            Web
+          </a>
         </div>
+        <Link href="/download" className="mt-3 block text-xs text-accent hover:underline">
+          Download the app →
+        </Link>
       </div>
 
       <a href="mailto:support@syncourse.app" className="text-xs text-muted transition-colors hover:text-text">

@@ -618,6 +618,35 @@ model Subscription {
   createdAt     DateTime           @default(now())
   user          User               @relation(fields: [userId], references: [id], onDelete: Cascade)
   paymentRefs   PaymentReference[]
+  tikur         TikurPayment?
+}
+
+// One Tikur Pay checkout session, bound to exactly one subscription.
+//
+// `paymentNumber` is the gateway's identifier, and `reference` is the bank
+// receipt it accepted. Both are unique: the first stops a session being reused
+// for a different order, and the second is the global duplicate lock — the same
+// bank transfer can never unlock two accounts, even if two sessions submit it
+// at the same moment. `subscriptionId` is unique too, so a retry asks the same
+// session again instead of opening a second one and spending another credit.
+model TikurPayment {
+  id             String      @id @default(cuid())
+  subscriptionId String      @unique
+  paymentNumber  String      @unique
+  checkoutUrl    String?
+  amount         Float
+  currency       String      @default("ETB")
+  status         String      @default("pending") // pending | completed | expired | failed
+  reference      String?     @unique
+  payerName      String?
+  bankCode       String?
+  verificationId String?
+  expiresAt      DateTime?
+  verifiedAt     DateTime?
+  raw            Json?
+  createdAt      DateTime    @default(now())
+  updatedAt      DateTime    @updatedAt
+  subscription   Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
 }
 
 model PaymentReference {

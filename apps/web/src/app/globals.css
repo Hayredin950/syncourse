@@ -1150,6 +1150,49 @@ select option { background: var(--s-3); color: var(--ink-1); }
 .footer .brand { color: hsl(var(--foreground)); }
 .footer a:hover { color: hsl(var(--foreground)); }
 .footer .mono { margin-bottom: 11px; color: hsl(var(--muted-foreground)); }
+.footer__apps { display: grid; gap: 4px; }
+.footer__apps a { display: inline-flex; align-items: center; gap: 5px; }
+.footer__apps a:hover { color: hsl(var(--foreground)); }
+
+/* ---------- download page ---------- */
+.dl-page { max-width: 1080px; }
+.dl-hero { position: relative; padding: 38px 0 10px; }
+.dl-hero h1 { font-size: clamp(30px, 4.6vw, 52px); line-height: 1.02; letter-spacing: -.03em; margin: 10px 0 0; }
+.dl-hero p { max-width: 58ch; margin: 16px 0 0; color: hsl(var(--ink-2)); font-size: 14px; line-height: 1.7; }
+.dl-hero__actions { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 22px; }
+.dl-hero__actions .btn { display: inline-flex; align-items: center; gap: 7px; }
+.dl-hero__note { margin-top: 18px; font-size: 10.5px; color: hsl(var(--ink-4)); }
+.dl-hero__note a { color: hsl(var(--primary)); }
+.dl-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(238px, 1fr)); gap: 14px; margin-top: 34px; }
+.dl-card {
+  display: flex; flex-direction: column; gap: 10px;
+  padding: 18px; border: 1px solid hsl(var(--border)); border-radius: var(--r-lg);
+  background: radial-gradient(120% 90% at 0% 0%, hsl(var(--primary) / .06), transparent 55%), linear-gradient(160deg, hsl(30 9% 12%), hsl(30 6% 9%));
+}
+.dl-card__head { display: flex; align-items: center; gap: 11px; }
+.dl-card__head strong { display: block; font-size: 15px; }
+.dl-card__head small { display: block; font-size: 11px; color: hsl(var(--ink-4)); margin-top: 2px; }
+.dl-card__icon { display: grid; place-items: center; width: 38px; height: 38px; flex: none; border-radius: 12px; color: hsl(var(--primary)); background: hsl(var(--primary) / .1); border: 1px solid hsl(var(--primary) / .22); }
+.dl-card__format { margin-left: auto; font-size: 9px; padding: 4px 7px; }
+.dl-card p { margin: 0; font-size: 12.5px; line-height: 1.6; color: hsl(var(--ink-2)); flex: 1; }
+.dl-card__cta { display: inline-flex; align-items: center; justify-content: center; gap: 7px; width: 100%; margin-top: 4px; }
+.dl-card__alt { align-self: center; font-size: 11px; color: hsl(var(--ink-3)); display: inline-flex; align-items: center; gap: 3px; }
+.dl-card__alt:hover { color: hsl(var(--foreground)); }
+.dl-notes { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 14px; margin-top: 30px; }
+.dl-note { padding: 16px 17px; }
+.dl-note h3 { display: flex; align-items: center; gap: 7px; margin: 0 0 8px; font-size: 13px; }
+.dl-note h3 svg { color: hsl(var(--primary)); }
+.dl-note p { margin: 0; font-size: 12.5px; line-height: 1.65; color: hsl(var(--ink-2)); }
+.dl-note a { color: hsl(var(--primary)); }
+.dl-faq { margin: 38px 0 0; border-top: 1px solid hsl(var(--border)); padding-top: 26px; }
+.dl-faq h2 { font-size: 19px; margin: 0 0 14px; }
+.dl-faq ul { list-style: none; padding: 0; margin: 0 0 16px; display: grid; gap: 9px; }
+.dl-faq li { display: flex; align-items: flex-start; gap: 8px; font-size: 13px; color: hsl(var(--ink-2)); }
+.dl-faq li svg { flex: none; margin-top: 3px; color: hsl(var(--primary)); }
+@media (max-width: 760px) {
+  .dl-hero { padding-top: 12px; }
+  .dl-grid { grid-template-columns: 1fr; }
+}
 
 /* ---------- mobile nav ---------- */
 .mobile-nav { display: none; }
@@ -1381,6 +1424,9 @@ select option { background: var(--s-3); color: var(--ink-1); }
 .res-back:hover { color: hsl(var(--primary)); }
 .res-hero { position: relative; overflow: hidden; border: 1px solid hsl(var(--border)); border-radius: var(--r-2xl); padding: 32px 34px 30px; }
 .res-hero__wash { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; opacity: .17; filter: saturate(.8); }
+/* A video standing in for a cover is decoration only: it must not eat clicks
+   meant for the links inside the hero. */
+.res-hero__wash--video { pointer-events: none; }
 .res-hero__inner { position: relative; max-width: 74ch; }
 .res-kicker { display: inline-flex; align-items: center; gap: 7px; flex-wrap: wrap; font-size: 10px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: hsl(var(--primary)); }
 .res-kicker i { opacity: .65; font-style: normal; }

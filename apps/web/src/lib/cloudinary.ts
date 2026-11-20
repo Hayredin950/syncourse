@@ -69,6 +69,37 @@ export function cloudinaryUrl(
   return `https://res.cloudinary.com/${CLOUD}/image/fetch/${t}/${encodeURIComponent(url)}`;
 }
 
+/** `https://res.cloudinary.com/<cloud>/video/upload/` + the rest. */
+const VIDEO_UPLOAD = /^(https:\/\/res\.cloudinary\.com\/[^/]+\/video\/upload\/)(.*)$/;
+
+/**
+ * A still frame from a Cloudinary video.
+ *
+ * A resource that is only a video used to open with an empty hero: there is no
+ * cover image in the post, so the banner was pure tint and the page looked
+ * broken above the player. Cloudinary can lift a frame out of the video itself
+ * (`so_auto` lets it pick a representative one instead of a black first frame)
+ * and deliver it as a JPEG, which costs no extra upload and cannot drift from
+ * the video it belongs to.
+ *
+ * Returns null for anything not on our own Cloudinary video path — a Telegram
+ * file id has no frame we can address, and proxying a remote video just to get a
+ * screenshot would be slower than showing the player with its poster attribute.
+ */
+export function videoPoster(
+  url: string | null | undefined,
+  opts: { width?: number; at?: number } = {},
+): string | null {
+  if (!url) return null;
+  const m = VIDEO_UPLOAD.exec(url);
+  if (!m) return null;
+  const rest = m[2];
+  if (!rest || rest.startsWith("so_")) return null;
+  const frame = opts.at !== undefined ? `so_${opts.at}` : "so_auto";
+  const shape = `w_${opts.width ?? 1200},c_limit,q_auto,f_auto`;
+  return `${m[1]}${frame},${shape}/${rest.replace(/\.[a-z0-9]{2,5}$/i, "")}.jpg`;
+}
+
 /**
  * The same asset, but delivered as a download.
  *

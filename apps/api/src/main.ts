@@ -52,7 +52,7 @@ function assertProductionSecrets() {
 
 async function bootstrap() {
   assertProductionSecrets();
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, { rawBody: true });
   // Images are uploaded as base64 data URLs — the default 100kb body limit
   // rejected them with "request entity too large". 15mb covers photos/banners.
   app.use(json({ limit: '15mb' }));

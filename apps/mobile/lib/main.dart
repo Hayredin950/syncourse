@@ -24,7 +24,7 @@ class SynCourseApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'SynCourse',
+      title: 'Syncourse',
       debugShowCheckedModeBanner: false,
       theme: AppTheme.dark,
       initialRoute: '/',
@@ -40,17 +40,20 @@ class SynCourseApp extends StatelessWidget {
       },
       onGenerateRoute: (settings) {
         final name = settings.name ?? '';
+        // `/courses/<slug>` splits to ['', 'courses', '<slug>'] — three parts,
+        // not four. The old check never matched, so tapping a course fell
+        // through to a blank route.
         if (name.startsWith('/courses/')) {
           final parts = name.split('/');
-          if (parts.length == 4) {
+          if (parts.length == 3) {
             return MaterialPageRoute(
               builder: (_) => CourseDetailScreen(slug: parts[2]),
               settings: settings,
             );
           }
-          if (parts.length == 6 && parts[4] == 'lessons') {
+          if (parts.length == 5 && parts[3] == 'lessons') {
             return MaterialPageRoute(
-              builder: (_) => LessonScreen(lessonId: parts[5]),
+              builder: (_) => LessonScreen(lessonId: parts[4]),
               settings: settings,
             );
           }

@@ -5,6 +5,8 @@ import { CoverImage } from "@/components/CoverImage";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useState, useRef, useCallback, type FormEvent, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import {
+  ArrowRight,
+  ArrowUpRight,
   Bookmark,
   BookOpen,
   CircleUserRound,
@@ -21,6 +23,7 @@ import {
 import { useAuth } from "@/lib/auth";
 import { get } from "@/lib/api";
 import { Wordmark } from "@/components/Wordmark";
+import { APP_WEB_URL } from "@/lib/apps";
 
 /** The slice of /search the type-ahead needs; cards and bodies stay on the page. */
 interface QuickResults {
@@ -487,7 +490,14 @@ export function Footer() {
       </div>
       <div>
         <div className="mono">GET THE APP</div>
-        <div>Android · Windows · macOS</div>
+        <div className="footer__apps">
+          <Link href="/download">
+            Android · Windows · macOS · Linux <ArrowRight size={11} />
+          </Link>
+          <a href={APP_WEB_URL} target="_blank" rel="noreferrer">
+            Web app <ArrowUpRight size={11} />
+          </a>
+        </div>
       </div>
       <div>
         <div className="mono">SUPPORT</div>

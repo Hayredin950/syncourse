@@ -28,6 +28,30 @@ type ResourceWith = Prisma.ResourceGetPayload<{ include: typeof resourceInclude 
 const WPM = 180;
 
 /**
+ * The one frame a video-only resource gets to show.
+ *
+ * A post that is just a video has no cover image, so its card and its banner
+ * were blank. Cloudinary can hand back a representative still from a video it
+ * already hosts (`so_auto`), as a JPEG, with no extra upload: the poster is a
+ * URL transformation of the file that is already there. Anything not on our
+ * Cloudinary video path returns null and the client falls back to the player.
+ */
+export function posterForVideo(url: string | null | undefined, width = 640): string | null {
+  if (!url) return null;
+  const m = /^(https:\/\/res\.cloudinary\.com\/[^/]+\/video\/upload\/)(.*)$/.exec(url);
+  if (!m) return null;
+  if (!m[2] || m[2].startsWith('so_')) return null;
+  return `${m[1]}so_auto,w_${width},c_limit,q_auto,f_auto/${m[2].replace(/\.[a-z0-9]{2,5}$/i, '')}.jpg`;
+}
+
+/** The cover to show: the author's own, or a video still, or nothing. */
+function coverOf(r: ResourceWith): string | null {
+  if (r.coverUrl) return r.coverUrl;
+  const video = r.media.find((m) => m.kind === 'video' && m.url);
+  return posterForVideo(video?.url);
+}
+
+/**
  * Media that could not be mirrored (a 149 MB podcast, for instance) is handed
  * to the bot by row id rather than raw `file_id`: a start payload is capped at
  * 64 characters and a Telegram file id is often longer than that.
@@ -59,7 +83,7 @@ export class ResourcesService {
       title: r.title,
       slug: r.slug,
       summary: r.summary,
-      coverUrl: r.coverUrl,
+      coverUrl: coverOf(r),
       isPremium: r.isPremium,
       isFeatured: r.isFeatured,
       readMinutes: r.readMinutes || estimateReadMinutes(r.bodyMd),

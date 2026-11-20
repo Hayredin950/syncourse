@@ -23,7 +23,7 @@ import type { ResourceDetail, ResourceMedia } from "@/lib/types";
 import { Markdown, markdownHeadings } from "@/components/Markdown";
 import { MobileHeader } from "@/components/Nav";
 import { SkHero } from "@/components/Skeleton";
-import { attachmentUrl } from "@/lib/cloudinary";
+import { attachmentUrl, videoPoster } from "@/lib/cloudinary";
 import { CoverImage } from "@/components/CoverImage";
 import { compact, formatDate, mediaTitle, plural } from "@/lib/format";
 import { ResourceCard, mediaMeta, resourceTint, typeMeta } from "@/components/ResourceCard";
@@ -164,6 +164,13 @@ export function ResourceDetailView({ slug }: { slug: string }) {
   const pdfs = useMemo(() => media.filter((m) => m.kind === "pdf"), [media]);
   const links = useMemo(() => media.filter((m) => m.kind === "link" && m.url), [media]);
 
+  /* A video-only resource has no cover in the post, so the banner used to be a
+     flat tint. Use the video's own frame instead: a Cloudinary still where one
+     can be addressed, otherwise the video element itself paused on its first
+     frame by the fragment in its `src`. */
+  const heroVideo = useMemo(() => videos.find((m) => m.url) ?? null, [videos]);
+  const heroPoster = r?.coverUrl ?? videoPoster(heroVideo?.url, { width: 1600 });
+
   /* The lightbox is a `role="dialog" aria-modal` overlay, and Escape is how one
      of those closes. Arrows too, since it already has prev/next buttons. */
   useEffect(() => {
@@ -247,8 +254,22 @@ export function ResourceDetailView({ slug }: { slug: string }) {
 
       <header className="res-hero" style={resourceTint(r.slug)}>
         {/* The tint above is the hero; the cover is a wash laid over it at 17%.
-            Nothing to fall back to, so it simply removes itself. */}
-        <CoverImage className="res-hero__wash" src={r.coverUrl} transform={{ width: 1200, height: 600 }} eager />
+            A video-only resource borrows its own first frame here so the banner
+            still shows what the thing is; with neither, the wash removes
+            itself. */}
+        {heroPoster ? (
+          <CoverImage className="res-hero__wash" src={heroPoster} transform={{ width: 1200, height: 600 }} eager />
+        ) : heroVideo?.url ? (
+          <video
+            className="res-hero__wash res-hero__wash--video"
+            src={`${heroVideo.url}#t=0.5`}
+            muted
+            playsInline
+            preload="metadata"
+            aria-hidden="true"
+            tabIndex={-1}
+          />
+        ) : null}
         <div className="res-hero__inner">
           <span className="res-kicker">
             <Glyph size={12} /> {meta.label}
@@ -358,7 +379,15 @@ export function ResourceDetailView({ slug }: { slug: string }) {
                 </div>
                 {m.url ? (
                   // Controls only — autoplay on a reference page is hostile.
-                  <video className="res-player" src={m.url} controls preload="metadata" />
+                  // The poster is the same frame the hero uses, so the player
+                  // has a picture before metadata arrives.
+                  <video
+                    className="res-player"
+                    src={m.url}
+                    poster={videoPoster(m.url) ?? undefined}
+                    controls
+                    preload="metadata"
+                  />
                 ) : (
                   <TelegramFile item={m} action="Watch on Telegram" fallback="Video" />
                 )}
