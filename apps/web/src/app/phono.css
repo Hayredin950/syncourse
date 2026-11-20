@@ -266,20 +266,13 @@ h3 { font-size: 16px; }
 .nav-cat.active svg { color: #0e0e0d; }
 
 /* --- download app pill, at the right end of the chip row ------------------ */
-/* The row is a 1fr · auto · 1fr grid: the chips stay optically centred under
-   the search field, and the download pill sits at the row's right edge. It
-   borrows the chip shape and the accent colour instead of a filled banner, so
-   it reads as one more quiet control in the header. */
-.topbar-shelves {
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
-  align-items: center;
-  gap: 12px;
-  width: 100%;
-}
-.topbar-shelves > .nav-cats { justify-self: center; }
+/* Same line as the chips, but anchored to the header's right margin so it
+   sits under Admin / Me instead of trailing the centred chip group. The row
+   is the last thing in the header, hence bottom-anchored. */
 .shelf-app {
-  justify-self: end;
+  position: absolute;
+  right: 4.2vw;
+  bottom: 13px;
   display: inline-flex;
   align-items: center;
   gap: 7px;
