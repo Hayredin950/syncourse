@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { get } from "@/lib/api";
 import type { LecturerDetail } from "@/lib/types";
+import BackButton from "@/components/BackButton";
 import { CourseCard } from "@/components/CourseCard";
 import { CoverImage } from "@/components/CoverImage";
 import { MobileHeader } from "@/components/Nav";
@@ -73,6 +74,7 @@ export default function LecturerPage({ slug: slugProp }: { slug?: string } = {})
     return (
       <main className="page">
         <MobileHeader title="Lecturer" />
+        <BackButton fallback="/lecturers" />
         <SkEntityPage label="Loading the lecturer" />
       </main>
     );
@@ -81,6 +83,10 @@ export default function LecturerPage({ slug: slugProp }: { slug?: string } = {})
   return (
     <main className="page">
       <MobileHeader title="Lecturer" />
+
+      <div style={{ marginBottom: 18 }}>
+        <BackButton fallback="/lecturers" />
+      </div>
 
       <div className="profile-head">
         <div className="profile-row">

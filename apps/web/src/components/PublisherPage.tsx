@@ -3,10 +3,10 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
-import { ArrowLeft } from "lucide-react";
 import { get } from "@/lib/api";
 import type { OrganizationDetail } from "@/lib/types";
 import { compact } from "@/lib/format";
+import BackButton from "@/components/BackButton";
 import { CourseCard } from "@/components/CourseCard";
 import { CoverImage } from "@/components/CoverImage";
 import { MobileHeader } from "@/components/Nav";
@@ -83,9 +83,7 @@ export default function PublisherPage({
     <main className="page">
       <MobileHeader title={o.name} />
 
-      <Link href={backHref} className="back-btn">
-        <ArrowLeft size={14} /> Back
-      </Link>
+      <BackButton fallback={backHref} />
 
       <div className="profile-head" style={{ paddingTop: 18 }}>
         <div className="profile-row">

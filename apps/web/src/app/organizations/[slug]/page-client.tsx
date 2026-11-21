@@ -3,5 +3,5 @@
 import PublisherPage from "@/components/PublisherPage";
 
 export default function OrganizationPage() {
-  return <PublisherPage />;
+  return <PublisherPage backHref="/organizations" />;
 }
