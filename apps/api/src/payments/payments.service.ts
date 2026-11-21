@@ -11,6 +11,7 @@ import {
 import { Prisma } from '@prisma/client';
 import { timingSafeEqual } from 'node:crypto';
 import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
+import { pdfText } from '../common/pdf-text';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
 import { PLANS, premiumExpiresAt } from './plans';
@@ -782,23 +783,25 @@ export class PaymentsService {
     };
 
     label('BILLED TO');
-    value(sub.user.name);
-    page.drawText(sub.user.email, { x: 48, y: y + 0, size: 10, font: regular, color: muted });
+    value(pdfText(sub.user.name));
+    page.drawText(pdfText(sub.user.email), { x: 48, y: y + 0, size: 10, font: regular, color: muted });
     y -= 38;
 
     label('PLAN');
-    value(plan?.name ?? sub.planName);
+    value(pdfText(plan?.name ?? sub.planName));
     label('AMOUNT PAID');
     value(`${sub.amount.toLocaleString()} ${sub.currency}`);
     label('PAYMENT METHOD');
-    value('Tikur Pay (CBE · Telebirr · M-Pesa)');
+    value(pdfText('Tikur Pay (CBE · Telebirr · M-Pesa)'));
     label('REFERENCE');
-    value(sub.txReference ?? '—');
+    value(pdfText(sub.txReference ?? '—'));
     label('PREMIUM PERIOD');
     value(
-      `${sub.periodStart ? new Date(sub.periodStart).toLocaleDateString('en-GB') : '—'} → ${
-        sub.periodEnd ? new Date(sub.periodEnd).toLocaleDateString('en-GB') : '—'
-      }`,
+      pdfText(
+        `${sub.periodStart ? new Date(sub.periodStart).toLocaleDateString('en-GB') : '—'} → ${
+          sub.periodEnd ? new Date(sub.periodEnd).toLocaleDateString('en-GB') : '—'
+        }`,
+      ),
     );
 
     page.drawLine({ start: { x: 48, y: 112 }, end: { x: width - 48, y: 112 }, thickness: 0.8, color: accent });

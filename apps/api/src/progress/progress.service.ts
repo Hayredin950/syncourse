@@ -3,6 +3,7 @@ import { randomBytes } from 'node:crypto';
 import { PDFDocument, PDFFont, StandardFonts, rgb } from 'pdf-lib';
 import { PrismaService } from '../prisma/prisma.service';
 import { earlyAccessUntil, isEarlyAccess } from '../common/early-access';
+import { pdfText } from '../common/pdf-text';
 
 const APP_URL = () => (process.env.PUBLIC_APP_URL || 'https://syncourse-web.vercel.app').replace(/\/+$/, '');
 
@@ -401,8 +402,9 @@ export class ProgressService {
     page.drawRectangle({ x: 32, y: 32, width: width - 64, height: height - 64, borderColor: rgb(0.85, 0.82, 0.75), borderWidth: 0.7 });
 
     const center = (text: string, y: number, size: number, font: PDFFont, color = ink) => {
-      const w = font.widthOfTextAtSize(text, size);
-      page.drawText(text, { x: (width - w) / 2, y, size, font, color });
+      const clean = pdfText(text);
+      const w = font.widthOfTextAtSize(clean, size);
+      page.drawText(clean, { x: (width - w) / 2, y, size, font, color });
     };
 
     center('SYNCOURSE', 500, 13, bold, accent);
@@ -411,7 +413,7 @@ export class ProgressService {
     center(row.user.name, 370, row.user.name.length > 34 ? 26 : 36, bold);
 
     const title = row.course.title;
-    const titleLines = wrap(title, bold, 19, 600);
+    const titleLines = wrap(pdfText(title), bold, 19, 600);
     titleLines.slice(0, 2).forEach((line, i) => center(line, 326 - i * 24, 19, bold));
     const unitLabel = row.course._count.lessons > 0 ? 'lesson' : 'module';
     center(`completed every ${unitLabel} in this course on Syncourse.`, 270, 12, regular, muted);
