@@ -123,6 +123,7 @@ model Course {
   likedBy         LikedCourse[]
   downloadEvents  DownloadEvent[]
   telegramFiles   TelegramCourseLink[]
+  fileProgress    CourseFileProgress[]
   circlePosts     CirclePost[]
   contentChunks   ContentChunk[]
   searchClicks    SearchClick[]
@@ -392,6 +393,7 @@ model User {
   legalAcceptances LegalAcceptance[]
   legalEdits       LegalDocument[]    @relation("legalEditor")
   lessonProgress   LessonProgress[]
+  fileProgress     CourseFileProgress[]
   certificates     Certificate[]
   redemptions      RedeemRedemption[]
 }
@@ -686,6 +688,24 @@ model Certificate {
   @@index([courseId])
 }
 
+/// Completion for archive courses that have no Lesson rows. Every Telegram file
+/// in the course is one unit; the certificate requires all of them to be marked.
+/// Keeping the courseId here means the count is one indexed query, not a join
+/// through the file table.
+model CourseFileProgress {
+  userId       String
+  courseFileId String
+  courseId     String
+  completedAt  DateTime           @default(now())
+  user         User               @relation(fields: [userId], references: [id], onDelete: Cascade)
+  file         TelegramCourseLink @relation(fields: [courseFileId], references: [id], onDelete: Cascade)
+  course       Course             @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@id([userId, courseFileId])
+  @@index([courseFileId])
+  @@index([userId, courseId])
+}
+
 // ---------------------------------------------------------------
 // Gift passes
 // ---------------------------------------------------------------
@@ -768,6 +788,7 @@ model TelegramCourseLink {
   course          Course         @relation(fields: [courseId], references: [id], onDelete: Cascade)
   section         Section?       @relation(fields: [sectionId], references: [id], onDelete: SetNull)
   contentChunks   ContentChunk[]
+  progress        CourseFileProgress[]
 
   @@index([courseId, moduleOrder, partIndex])
   @@index([sectionId])

@@ -15,6 +15,7 @@ interface Verified {
   learnerName: string;
   courseTitle: string;
   courseSlug: string;
+  unitLabel: "lesson" | "module";
   thumbnailUrl: string | null;
 }
 
@@ -41,8 +42,8 @@ export default function CertificatePage() {
           <ShieldX size={40} className="muted" />
           <h1 className="display" style={{ fontSize: 22, marginTop: 10 }}>No certificate matches that number</h1>
           <p className="muted" style={{ fontSize: 13 }}>
-            Check the serial printed on the PDF. Certificates are only issued after every lesson in a
-            course is marked complete.
+            Check the serial printed on the PDF. Certificates are only issued after every lesson or
+            module in a course is marked complete.
           </p>
         </div>
       ) : !data ? (
@@ -62,7 +63,9 @@ export default function CertificatePage() {
 
             <div style={{ margin: "26px 0 8px", fontSize: 13 }} className="muted">This certifies that</div>
             <div style={{ fontSize: 28, fontWeight: 800 }}>{data.learnerName}</div>
-            <div style={{ margin: "18px 0 4px", fontSize: 13 }} className="muted">completed every lesson in</div>
+            <div style={{ margin: "18px 0 4px", fontSize: 13 }} className="muted">
+              completed every {data.unitLabel ?? "lesson"} in
+            </div>
             <div style={{ fontSize: 18, fontWeight: 700 }}>{data.courseTitle}</div>
 
             <div
@@ -99,8 +102,8 @@ export default function CertificatePage() {
             </div>
 
             <p className="muted" style={{ fontSize: 10.5, marginTop: 22, lineHeight: 1.6 }}>
-              This certificate records that the learner marked every lesson complete on Syncourse.
-              It is not an examination, accreditation or a guarantee of competence.
+              This certificate records that the learner marked every {data.unitLabel ?? "lesson"} complete
+              on Syncourse. It is not an examination, accreditation or a guarantee of competence.
             </p>
           </div>
 

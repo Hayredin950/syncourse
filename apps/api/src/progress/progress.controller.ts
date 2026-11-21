@@ -1,12 +1,20 @@
 import { Body, Controller, Get, Param, Post, Res } from '@nestjs/common';
 import type { Response } from 'express';
-import { IsBoolean } from 'class-validator';
+import { IsBoolean, IsString } from 'class-validator';
 import { ProgressService } from './progress.service';
 import { Public } from '../common/public.decorator';
 import { CurrentUser } from '../common/current-user.decorator';
 import { AuthUser } from '../common/jwt-auth.guard';
 
 class LessonProgressDto {
+  @IsBoolean()
+  completed: boolean;
+}
+
+class UnitProgressDto {
+  @IsString()
+  unitId: string;
+
   @IsBoolean()
   completed: boolean;
 }
@@ -20,6 +28,15 @@ export class ProgressController {
   @Get('courses/:slug/progress')
   courseProgress(@Param('slug') slug: string, @CurrentUser() user?: AuthUser) {
     return this.progress.courseProgress(slug, user?.id);
+  }
+
+  @Post('courses/:slug/progress')
+  setCourseUnitProgress(
+    @Param('slug') slug: string,
+    @CurrentUser() user: AuthUser,
+    @Body() dto: UnitProgressDto,
+  ) {
+    return this.progress.setCourseUnitProgress(user.id, slug, dto.unitId, dto.completed);
   }
 
   @Post('lessons/:id/progress')

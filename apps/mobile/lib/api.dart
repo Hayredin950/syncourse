@@ -228,6 +228,15 @@ class Api {
     return d as Map<String, dynamic>;
   }
 
+  /// Mark one unit of a course complete. Lessons use the lesson endpoint; this
+  /// one works for both lesson courses and Telegram-archive courses.
+  static Future<Map<String, dynamic>> setCourseUnitProgress(
+      String slug, String unitId, bool completed) async {
+    final d = await post(
+        '/courses/$slug/progress', {'unitId': unitId, 'completed': completed});
+    return d as Map<String, dynamic>;
+  }
+
   static Future<Map<String, dynamic>> issueCertificate(String slug) async {
     final d = await post('/courses/$slug/certificate', {});
     return d as Map<String, dynamic>;

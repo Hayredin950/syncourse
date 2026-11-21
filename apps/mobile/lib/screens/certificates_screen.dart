@@ -52,8 +52,8 @@ class _CertificatesScreenState extends State<CertificatesScreen> {
                       style: TextStyle(fontWeight: FontWeight.w700)),
                   SizedBox(height: 6),
                   Text(
-                    'Mark every lesson in a course complete, then issue the certificate from the '
-                    'course page. Issuing is part of Premium.',
+                    'Mark every lesson or module in a course complete, then issue the certificate '
+                    'from the course page. Issuing is part of Premium.',
                     textAlign: TextAlign.center,
                     style: TextStyle(
                         fontSize: 13, color: AppColors.muted, height: 1.5),

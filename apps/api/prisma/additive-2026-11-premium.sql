@@ -49,3 +49,16 @@ CREATE TABLE IF NOT EXISTS "RedeemRedemption" (
 
 CREATE UNIQUE INDEX IF NOT EXISTS "RedeemRedemption_codeId_userId_key" ON "RedeemRedemption"("codeId", "userId");
 CREATE INDEX IF NOT EXISTS "RedeemRedemption_userId_idx" ON "RedeemRedemption"("userId");
+
+-- Archive-course completion: courses imported from Telegram have no Lesson
+-- rows, so each Telegram file is the trackable unit instead.
+CREATE TABLE IF NOT EXISTS "CourseFileProgress" (
+  "userId" TEXT NOT NULL REFERENCES "User"("id") ON DELETE CASCADE ON UPDATE CASCADE,
+  "courseFileId" TEXT NOT NULL REFERENCES "TelegramCourseLink"("id") ON DELETE CASCADE ON UPDATE CASCADE,
+  "courseId" TEXT NOT NULL REFERENCES "Course"("id") ON DELETE CASCADE ON UPDATE CASCADE,
+  "completedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT "CourseFileProgress_pkey" PRIMARY KEY ("userId", "courseFileId")
+);
+
+CREATE INDEX IF NOT EXISTS "CourseFileProgress_courseFileId_idx" ON "CourseFileProgress"("courseFileId");
+CREATE INDEX IF NOT EXISTS "CourseFileProgress_userId_courseId_idx" ON "CourseFileProgress"("userId", "courseId");

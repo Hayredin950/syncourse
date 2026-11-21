@@ -17,7 +17,9 @@ export default function VerifyPage() {
         <h1 className="display" style={{ fontSize: 22, margin: "8px 0 4px" }}>Verify a certificate</h1>
         <p className="muted" style={{ fontSize: 12, marginTop: 0, lineHeight: 1.6 }}>
           Every Syncourse certificate carries a serial number on its PDF. Type it below to see the
-          public record — learner name, course and issue date.
+          public record — learner name, course and issue date. A certificate is issued after every
+          lesson or module in a course is marked complete; that is self-reported progress, not an
+          exam or an accreditation.
         </p>
         <form
           style={{ display: "flex", gap: 8, marginTop: 16 }}

@@ -802,7 +802,7 @@ export default function MePage() {
               <div className="dark-panel dark-panel--pad muted" style={{ fontSize: 12 }}>Loading your certificates…</div>
             ) : certs.length === 0 ? (
               <div className="dark-panel dark-panel--pad muted" style={{ fontSize: 12 }}>
-                No certificates yet. Open a course, mark every lesson complete, then issue the
+                No certificates yet. Open a course, mark every lesson or module complete, then issue the
                 certificate from the course page.
               </div>
             ) : (

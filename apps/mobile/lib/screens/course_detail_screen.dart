@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../api.dart';
 import '../models.dart';
 import '../offline.dart';
 import '../theme.dart';
+
+const _webBase = String.fromEnvironment('WEB_URL',
+    defaultValue: 'https://syncourse-web.vercel.app');
 
 class CourseDetailScreen extends StatefulWidget {
   const CourseDetailScreen({super.key, required this.slug});
@@ -17,11 +21,69 @@ class CourseDetailScreen extends StatefulWidget {
 class _CourseDetailScreenState extends State<CourseDetailScreen> {
   late Future<CourseDetail> _detail;
   bool _expanded = false;
+  Map<String, dynamic>? _progress;
+  bool _markingUnit = false;
 
   @override
   void initState() {
     super.initState();
     _detail = Api.courseDetail(widget.slug);
+    _loadProgress();
+  }
+
+  Future<void> _loadProgress() async {
+    try {
+      final p = await Api.courseProgress(widget.slug);
+      if (mounted) setState(() => _progress = p);
+    } catch (_) {
+      // A signed-out reader still gets zeroed progress from the public route;
+      // any other failure must not hide the course itself.
+    }
+  }
+
+  Future<void> _toggleUnit(String unitId, bool done) async {
+    final token = await Api.loadToken();
+    if (!mounted) return;
+    if (token == null) {
+      Navigator.pushNamed(context, '/auth');
+      return;
+    }
+    setState(() => _markingUnit = true);
+    try {
+      final p = await Api.setCourseUnitProgress(widget.slug, unitId, !done);
+      if (mounted) setState(() => _progress = p);
+    } on ApiException catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(e.message)));
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Could not save your progress')));
+      }
+    } finally {
+      if (mounted) setState(() => _markingUnit = false);
+    }
+  }
+
+  Future<void> _issueCertificate() async {
+    try {
+      final r = await Api.issueCertificate(widget.slug);
+      final serial = r['serial'] as String?;
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Certificate issued · ${serial ?? ''}')));
+      await _loadProgress();
+    } on ApiException catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text(e.message)));
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Could not issue the certificate')));
+    }
   }
 
   @override
@@ -37,6 +99,7 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
             return Center(child: Text('Error: ${snapshot.error}'));
           }
           final c = snapshot.data!;
+          final hasLessons = c.sections.any((s) => s.lessons.isNotEmpty);
           return CustomScrollView(
             slivers: [
               SliverAppBar(
@@ -142,8 +205,12 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
                           Expanded(
                             child: FilledButton.icon(
                               onPressed: () => _openFirstLesson(c),
-                              icon: const Icon(Icons.play_arrow),
-                              label: const Text('Enroll & start'),
+                              icon: Icon(hasLessons
+                                  ? Icons.play_arrow
+                                  : Icons.send_outlined),
+                              label: Text(hasLessons
+                                  ? 'Enroll & start'
+                                  : 'Get it in Telegram'),
                             ),
                           ),
                           const SizedBox(width: 10),
@@ -159,7 +226,7 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
                       ),
                       const SizedBox(height: 10),
                       OutlinedButton.icon(
-                        onPressed: () => _downloadOffline(c),
+                        onPressed: () => _downloadOffline(c, hasLessons),
                         icon: const Icon(Icons.download_for_offline_outlined),
                         label: const Text('Download for offline'),
                         style: OutlinedButton.styleFrom(
@@ -167,6 +234,17 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
                           foregroundColor: AppColors.accent,
                         ),
                       ),
+                      if (_progress != null &&
+                          ((_progress!['total'] as num?)?.toInt() ?? 0) >
+                              0) ...[
+                        const SizedBox(height: 16),
+                        _ProgressCard(
+                          progress: _progress!,
+                          marking: _markingUnit,
+                          onToggle: _toggleUnit,
+                          onIssue: _issueCertificate,
+                        ),
+                      ],
                       if (c.downloads != null) ...[
                         const SizedBox(height: 16),
                         _DownloadsWidget(downloads: c.downloads!),
@@ -201,10 +279,23 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
                                 fontSize: 14, color: AppColors.muted)),
                         const SizedBox(height: 12),
                       ],
-                      Text('Curriculum', style: _sectionStyle),
-                      const SizedBox(height: 8),
-                      for (final s in c.sections)
-                        _SectionCard(section: s, slug: c.slug),
+                      if (hasLessons) ...[
+                        Text('Curriculum', style: _sectionStyle),
+                        const SizedBox(height: 8),
+                        for (final s in c.sections)
+                          _SectionCard(section: s, slug: c.slug),
+                      ] else ...[
+                        Text('Delivery', style: _sectionStyle),
+                        const SizedBox(height: 8),
+                        const Text(
+                          'This course is a Telegram archive. The files are sent to your chat by the '
+                          'bot; tick each module above as you finish it.',
+                          style: TextStyle(
+                              fontSize: 13,
+                              color: AppColors.muted,
+                              height: 1.5),
+                        ),
+                      ],
                       const SizedBox(height: 20),
                       Text('Reviews', style: _sectionStyle),
                       const SizedBox(height: 8),
@@ -268,10 +359,25 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
   }
 
   Future<void> _openFirstLesson(CourseDetail c) async {
-    if (c.sections.isEmpty || c.sections.first.lessons.isEmpty) return;
+    LessonLite? first;
+    for (final s in c.sections) {
+      if (s.lessons.isNotEmpty) {
+        first = s.lessons.first;
+        break;
+      }
+    }
+    if (first == null) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+              'This course is delivered in Telegram — the files arrive in your chat.'),
+        ),
+      );
+      return;
+    }
     if (!mounted) return;
-    Navigator.pushNamed(context,
-        '/courses/${c.slug}/lessons/${c.sections.first.lessons.first.id}');
+    Navigator.pushNamed(context, '/courses/${c.slug}/lessons/${first.id}');
   }
 
   Future<void> _toggleSave(CourseDetail c) async {
@@ -292,7 +398,18 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
 
   /// The whole-course download. Progress is per file, and a failure says which
   /// side said no (usually "Premium features" from the manifest endpoint).
-  Future<void> _downloadOffline(CourseDetail c) async {
+  Future<void> _downloadOffline(CourseDetail c, bool hasLessons) async {
+    if (!hasLessons) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'This course is delivered in Telegram. Open it from your chat to download the files — '
+            'offline downloads work for courses with app-hosted lessons.',
+          ),
+        ),
+      );
+      return;
+    }
     var progress = 0.0;
     var label = 'Preparing…';
     if (!mounted) return;
@@ -496,6 +613,172 @@ class _Stars extends StatelessWidget {
         return Icon(filled ? Icons.star : Icons.star_border,
             size: 14, color: Colors.amber);
       }),
+    );
+  }
+}
+
+/// Progress and the certificate for the current course. Archive courses list
+/// their Telegram files here so they can be ticked off like lessons.
+class _ProgressCard extends StatelessWidget {
+  const _ProgressCard({
+    required this.progress,
+    required this.marking,
+    required this.onToggle,
+    required this.onIssue,
+  });
+
+  final Map<String, dynamic> progress;
+  final bool marking;
+  final Future<void> Function(String unitId, bool done) onToggle;
+  final Future<void> Function() onIssue;
+
+  @override
+  Widget build(BuildContext context) {
+    final total = (progress['total'] as num?)?.toInt() ?? 0;
+    final completed = (progress['completed'] as num?)?.toInt() ?? 0;
+    final pct = (progress['pct'] as num?)?.toDouble() ?? 0;
+    final unitType = progress['unitType'] as String? ?? 'none';
+    final unitLabel = progress['unitLabel'] as String? ?? 'lesson';
+    final units = (progress['units'] as List?) ?? [];
+    final cert = progress['certificate'] as Map?;
+    final premium = progress['premiumActive'] == true;
+    final unitWord = unitLabel == 'module' ? 'modules' : 'lessons';
+
+    return Container(
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: AppColors.surface,
+        borderRadius: BorderRadius.circular(14),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Text('Your progress',
+                  style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+              const Spacer(),
+              Text('$completed/$total $unitWord',
+                  style: const TextStyle(fontSize: 11, color: AppColors.muted)),
+            ],
+          ),
+          const SizedBox(height: 8),
+          ClipRRect(
+            borderRadius: BorderRadius.circular(4),
+            child: LinearProgressIndicator(
+              value: pct / 100,
+              minHeight: 6,
+              backgroundColor: AppColors.surface.withValues(alpha: 0.6),
+              color: AppColors.accent,
+            ),
+          ),
+          if (unitType == 'file') ...[
+            const SizedBox(height: 8),
+            for (final raw in units) _unitRow(raw as Map<String, dynamic>),
+          ],
+          const SizedBox(height: 10),
+          const Divider(height: 1),
+          const SizedBox(height: 10),
+          if (cert != null)
+            Row(
+              children: [
+                Expanded(
+                  child: Text(
+                    'Certificate ${cert['serial'] ?? ''}',
+                    style: const TextStyle(
+                        fontSize: 12, fontWeight: FontWeight.w600),
+                  ),
+                ),
+                TextButton(
+                  onPressed: () => launchUrl(
+                    Uri.parse('$_webBase/certificates/${cert['serial']}'),
+                    mode: LaunchMode.externalApplication,
+                  ),
+                  child: const Text('View'),
+                ),
+              ],
+            )
+          else if (total > 0 && completed == total)
+            premium
+                ? Row(
+                    children: [
+                      Expanded(
+                        child: Text('Every $unitLabel is done.',
+                            style: const TextStyle(fontSize: 12)),
+                      ),
+                      FilledButton(
+                        onPressed: () => onIssue(),
+                        child: const Text('Get certificate'),
+                      ),
+                    ],
+                  )
+                : Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'Every $unitLabel is done. Certificates are part of Premium.',
+                        style: const TextStyle(fontSize: 12),
+                      ),
+                      TextButton(
+                        style: TextButton.styleFrom(padding: EdgeInsets.zero),
+                        onPressed: () =>
+                            Navigator.pushNamed(context, '/premium'),
+                        child: const Text('Unlock certificates'),
+                      ),
+                    ],
+                  )
+          else
+            const Text(
+              'Mark every unit complete to earn a certificate. Tracking is free; issuing it is part of Premium.',
+              style:
+                  TextStyle(fontSize: 11, color: AppColors.muted, height: 1.5),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _unitRow(Map<String, dynamic> u) {
+    final done = u['completed'] == true;
+    final title = (u['title'] as String?) ?? 'Module';
+    final section = (u['sectionTitle'] as String?) ?? '';
+    final size = (u['sizeMb'] as num?)?.toDouble();
+    final sub = [
+      if (section.isNotEmpty) section,
+      if (size != null) '${size.toStringAsFixed(1)} MB',
+      done ? 'Completed' : 'Tap when done',
+    ].join(' · ');
+    return InkWell(
+      borderRadius: BorderRadius.circular(8),
+      onTap: marking ? null : () => onToggle(u['id'] as String, done),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6),
+        child: Row(
+          children: [
+            Icon(
+              done ? Icons.check_circle : Icons.radio_button_unchecked,
+              size: 20,
+              color: done ? AppColors.accent : AppColors.muted,
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 13)),
+                  Text(sub,
+                      style: const TextStyle(
+                          fontSize: 11, color: AppColors.muted)),
+                ],
+              ),
+            ),
+            const Icon(Icons.chevron_right, size: 16, color: AppColors.muted),
+          ],
+        ),
+      ),
     );
   }
 }

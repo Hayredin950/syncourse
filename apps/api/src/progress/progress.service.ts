@@ -34,31 +34,80 @@ export class ProgressService {
   async setLessonProgress(userId: string, lessonId: string, completed: boolean) {
     const lesson = await this.prisma.lesson.findUnique({
       where: { id: lessonId },
-      include: { course: { select: { id: true, slug: true, isPremium: true, publishedAt: true } } },
+      select: { course: { select: { slug: true } } },
     });
     if (!lesson) throw new NotFoundException('Lesson not found');
-
-    const early = isEarlyAccess(lesson.course.publishedAt);
-    if ((early || (lesson.course.isPremium && !lesson.isPreview)) && !(await this.isPremium(userId))) {
-      throw new ForbiddenException(
-        early ? 'This lesson opens to everyone soon — Premium members have it first' : 'This lesson is part of Premium',
-      );
-    }
-
-    if (completed) {
-      await this.prisma.lessonProgress.upsert({
-        where: { userId_lessonId: { userId, lessonId } },
-        create: { userId, lessonId },
-        update: {},
-      });
-    } else {
-      await this.prisma.lessonProgress.deleteMany({ where: { userId, lessonId } });
-    }
-
-    return this.courseProgress(lesson.course.slug, userId);
+    return this.setCourseUnitProgress(userId, lesson.course.slug, lessonId, completed);
   }
 
-  /** Lesson-level progress for one course, plus the certificate if it exists. */
+  /**
+   * Mark one unit of a course complete. A course with Lesson rows uses lessons;
+   * a Telegram archive (no lessons) uses each file as the unit instead, so the
+   * same progress bar and certificate work for the content that actually exists.
+   */
+  async setCourseUnitProgress(
+    userId: string,
+    courseIdOrSlug: string,
+    unitId: string,
+    completed: boolean,
+  ) {
+    const course = await this.prisma.course.findFirst({
+      where: { deletedAt: null, OR: [{ id: courseIdOrSlug }, { slug: courseIdOrSlug }] },
+      select: {
+        id: true,
+        slug: true,
+        isPremium: true,
+        publishedAt: true,
+        sections: { select: { lessons: { select: { id: true, isPreview: true } } } },
+        telegramFiles: { select: { id: true } },
+      },
+    });
+    if (!course) throw new NotFoundException('Course not found');
+
+    const lessons = course.sections.flatMap((s) => s.lessons);
+    if (lessons.length > 0) {
+      const lesson = lessons.find((l) => l.id === unitId);
+      if (!lesson) throw new NotFoundException('That lesson is not part of this course.');
+
+      const early = isEarlyAccess(course.publishedAt);
+      if ((early || (course.isPremium && !lesson.isPreview)) && !(await this.isPremium(userId))) {
+        throw new ForbiddenException(
+          early
+            ? 'This lesson opens to everyone soon — Premium members have it first'
+            : 'This lesson is part of Premium',
+        );
+      }
+
+      if (completed) {
+        await this.prisma.lessonProgress.upsert({
+          where: { userId_lessonId: { userId, lessonId: unitId } },
+          create: { userId, lessonId: unitId },
+          update: {},
+        });
+      } else {
+        await this.prisma.lessonProgress.deleteMany({ where: { userId, lessonId: unitId } });
+      }
+    } else {
+      const file = course.telegramFiles.find((f) => f.id === unitId);
+      if (!file) throw new NotFoundException('That module is not part of this course.');
+
+      if (completed) {
+        await this.prisma.courseFileProgress.upsert({
+          where: { userId_courseFileId: { userId, courseFileId: unitId } },
+          create: { userId, courseFileId: unitId, courseId: course.id },
+          update: {},
+        });
+      } else {
+        await this.prisma.courseFileProgress.deleteMany({
+          where: { userId, courseFileId: unitId },
+        });
+      }
+    }
+
+    return this.courseProgress(course.slug, userId);
+  }
+
+  /** Progress for one course, plus the certificate if it exists. */
   async courseProgress(slug: string, userId?: string) {
     const course = await this.prisma.course.findUnique({
       where: { slug },
@@ -78,6 +127,17 @@ export class ProgressService {
             },
           },
         },
+        telegramFiles: {
+          orderBy: [{ moduleOrder: 'asc' }, { partIndex: 'asc' }],
+          select: {
+            id: true,
+            fileName: true,
+            caption: true,
+            fileSizeMb: true,
+            moduleTitle: true,
+            partIndex: true,
+          },
+        },
         certificates: userId
           ? { where: { userId }, select: { serial: true, issuedAt: true } }
           : false,
@@ -85,22 +145,61 @@ export class ProgressService {
     });
     if (!course) throw new NotFoundException('Course not found');
 
-    const lessons = course.sections.flatMap((s) =>
-      s.lessons.map((l) => ({ ...l, sectionTitle: s.title })),
+    const lessonUnits = course.sections.flatMap((s) =>
+      s.lessons.map((l) => ({
+        id: l.id,
+        title: l.title,
+        sectionTitle: s.title,
+        durationSec: l.durationSec,
+        isPreview: l.isPreview,
+        sizeMb: null as number | null,
+      })),
     );
-    const completedIds = userId
-      ? new Set(
-          (
-            await this.prisma.lessonProgress.findMany({
-              where: { userId, lessonId: { in: lessons.map((l) => l.id) } },
-              select: { lessonId: true },
-            })
-          ).map((p) => p.lessonId),
-        )
-      : new Set<string>();
+    const fileUnits = course.telegramFiles.map((f, i) => {
+      const base =
+        f.caption?.trim() ||
+        f.fileName?.trim() ||
+        (f.moduleTitle ? `${f.moduleTitle} — part ${f.partIndex}` : `Module ${i + 1}`);
+      return {
+        id: f.id,
+        // Part 2 of a module often repeats the same file name; the suffix is
+        // what makes two rows distinguishable in the list.
+        title:
+          f.partIndex > 1 && !base.toLowerCase().includes(`part ${f.partIndex}`)
+            ? `${base} (part ${f.partIndex})`
+            : base,
+        sectionTitle: f.moduleTitle,
+        durationSec: 0,
+        isPreview: false,
+        sizeMb: f.fileSizeMb,
+      };
+    });
 
-    const total = lessons.length;
-    const completed = lessons.filter((l) => completedIds.has(l.id)).length;
+    // Lessons win when a course has them; otherwise the archive files are the
+    // units. A course with neither has nothing to track.
+    const unitType: 'lesson' | 'file' | 'none' =
+      lessonUnits.length > 0 ? 'lesson' : fileUnits.length > 0 ? 'file' : 'none';
+    const units = unitType === 'lesson' ? lessonUnits : unitType === 'file' ? fileUnits : [];
+
+    let completedIds = new Set<string>();
+    if (userId && units.length > 0) {
+      if (unitType === 'lesson') {
+        const rows = await this.prisma.lessonProgress.findMany({
+          where: { userId, lessonId: { in: units.map((u) => u.id) } },
+          select: { lessonId: true },
+        });
+        completedIds = new Set(rows.map((r) => r.lessonId));
+      } else {
+        const rows = await this.prisma.courseFileProgress.findMany({
+          where: { userId, courseFileId: { in: units.map((u) => u.id) } },
+          select: { courseFileId: true },
+        });
+        completedIds = new Set(rows.map((r) => r.courseFileId));
+      }
+    }
+
+    const total = units.length;
+    const completed = units.filter((u) => completedIds.has(u.id)).length;
     const pct = total === 0 ? 0 : Math.round((completed / total) * 100);
     const premiumActive = await this.isPremium(userId);
     const certificate = userId ? course.certificates?.[0] ?? null : null;
@@ -109,6 +208,8 @@ export class ProgressService {
       courseId: course.id,
       slug: course.slug,
       title: course.title,
+      unitType,
+      unitLabel: unitType === 'file' ? 'module' : 'lesson',
       total,
       completed,
       pct,
@@ -125,14 +226,13 @@ export class ProgressService {
             pdfUrl: `${APP_URL()}/api/certificates/${certificate.serial}/pdf`,
           }
         : null,
-      lessons: lessons.map((l) => ({
-        id: l.id,
-        title: l.title,
-        sectionTitle: l.sectionTitle,
-        durationSec: l.durationSec,
-        isPreview: l.isPreview,
-        completed: completedIds.has(l.id),
-      })),
+      units: units.map((u) => ({ ...u, completed: completedIds.has(u.id) })),
+      // Older clients read `lessons`; keep the key valid without pretending an
+      // archive file is a lesson.
+      lessons:
+        unitType === 'lesson'
+          ? units.map((u) => ({ ...u, completed: completedIds.has(u.id) }))
+          : [],
     };
   }
 
@@ -152,6 +252,7 @@ export class ProgressService {
         slug: true,
         title: true,
         sections: { select: { lessons: { select: { id: true } } } },
+        telegramFiles: { select: { id: true } },
       },
     });
     if (!course) throw new NotFoundException('Course not found');
@@ -166,15 +267,23 @@ export class ProgressService {
     }
 
     const lessonIds = course.sections.flatMap((s) => s.lessons.map((l) => l.id));
-    if (lessonIds.length === 0) {
-      throw new BadRequestException('This course has no lessons to complete yet.');
+    const fileIds = course.telegramFiles.map((f) => f.id);
+    const isFileMode = lessonIds.length === 0;
+    const unitIds = isFileMode ? fileIds : lessonIds;
+    if (unitIds.length === 0) {
+      throw new BadRequestException('This course has no trackable modules yet.');
     }
-    const completed = await this.prisma.lessonProgress.count({
-      where: { userId, lessonId: { in: lessonIds } },
-    });
-    if (completed < lessonIds.length) {
+
+    const completed = isFileMode
+      ? await this.prisma.courseFileProgress.count({
+          where: { userId, courseId: course.id, courseFileId: { in: unitIds } },
+        })
+      : await this.prisma.lessonProgress.count({
+          where: { userId, lessonId: { in: unitIds } },
+        });
+    if (completed < unitIds.length) {
       throw new BadRequestException(
-        `Mark all ${lessonIds.length} lessons complete first — ${completed} done.`,
+        `Mark all ${unitIds.length} ${isFileMode ? 'modules' : 'lessons'} complete first — ${completed} done.`,
       );
     }
 
@@ -200,7 +309,9 @@ export class ProgressService {
     const row = await this.prisma.certificate.findUnique({
       where: { serial },
       include: {
-        course: { select: { title: true, slug: true } },
+        course: {
+          select: { title: true, slug: true, _count: { select: { lessons: true } } },
+        },
         user: { select: { name: true } },
       },
     });
@@ -211,6 +322,7 @@ export class ProgressService {
       learnerName: row.user.name,
       courseTitle: row.course.title,
       courseSlug: row.course.slug,
+      unitLabel: row.course._count.lessons > 0 ? 'lesson' : 'module',
       verifyUrl: `${APP_URL()}/certificates/${row.serial}`,
       pdfUrl: `${APP_URL()}/api/certificates/${row.serial}/pdf`,
     };
@@ -221,7 +333,14 @@ export class ProgressService {
     const row = await this.prisma.certificate.findUnique({
       where: { serial: serial.trim().toUpperCase() },
       include: {
-        course: { select: { title: true, slug: true, thumbnailUrl: true } },
+        course: {
+          select: {
+            title: true,
+            slug: true,
+            thumbnailUrl: true,
+            _count: { select: { lessons: true } },
+          },
+        },
         user: { select: { name: true } },
       },
     });
@@ -233,6 +352,7 @@ export class ProgressService {
       learnerName: row.user.name,
       courseTitle: row.course.title,
       courseSlug: row.course.slug,
+      unitLabel: row.course._count.lessons > 0 ? 'lesson' : 'module',
       thumbnailUrl: row.course.thumbnailUrl,
       verifyUrl: `${APP_URL()}/certificates/${row.serial}`,
     };
@@ -261,7 +381,9 @@ export class ProgressService {
       where: { serial: serial.trim().toUpperCase() },
       include: {
         user: { select: { name: true } },
-        course: { select: { title: true } },
+        course: {
+          select: { title: true, _count: { select: { lessons: true } } },
+        },
       },
     });
     if (!row) throw new NotFoundException('Certificate not found');
@@ -291,7 +413,8 @@ export class ProgressService {
     const title = row.course.title;
     const titleLines = wrap(title, bold, 19, 600);
     titleLines.slice(0, 2).forEach((line, i) => center(line, 326 - i * 24, 19, bold));
-    center('completed every lesson in this course on Syncourse.', 270, 12, regular, muted);
+    const unitLabel = row.course._count.lessons > 0 ? 'lesson' : 'module';
+    center(`completed every ${unitLabel} in this course on Syncourse.`, 270, 12, regular, muted);
 
     page.drawLine({ start: { x: 250, y: 232 }, end: { x: width - 250, y: 232 }, thickness: 0.8, color: rgb(0.8, 0.77, 0.7) });
     center(new Date(row.issuedAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }), 208, 12, regular);

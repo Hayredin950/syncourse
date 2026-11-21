@@ -68,11 +68,20 @@ function groupTelegramFiles(files: TelegramFile[]) {
 }
 
 interface CourseProgress {
+  unitType: "lesson" | "file" | "none";
+  unitLabel: "lesson" | "module";
   total: number;
   completed: number;
   pct: number;
   premiumActive: boolean;
   certificate: { serial: string; issuedAt: string; verifyUrl: string; pdfUrl: string } | null;
+  units: {
+    id: string;
+    title: string;
+    sectionTitle: string | null;
+    sizeMb: number | null;
+    completed: boolean;
+  }[];
   lessons: { id: string; title: string; completed: boolean }[];
 }
 
@@ -114,6 +123,7 @@ export function CourseDetailView({ slug }: { slug: string }) {
   /** Real lesson completion; certificates come from the same endpoint. */
   const [progress, setProgress] = useState<CourseProgress | null>(null);
   const [issuing, setIssuing] = useState(false);
+  const [markingUnit, setMarkingUnit] = useState<string | null>(null);
   // Must be declared above every early return: a hook that only runs once the
   // course has loaded changes the hook count between renders.
   const fileModules = useMemo(() => groupTelegramFiles(course?.telegramFiles ?? []), [course]);
@@ -131,6 +141,26 @@ export function CourseDetailView({ slug }: { slug: string }) {
       .then(setProgress)
       .catch(() => undefined);
   }, [slug]);
+
+  const toggleUnit = async (unitId: string, done: boolean) => {
+    if (!token) {
+      router.push(`/auth?next=${encodeURIComponent(`/courses/${slug}`)}`);
+      return;
+    }
+    setMarkingUnit(unitId);
+    try {
+      const r = await post<CourseProgress>(`/courses/${slug}/progress`, {
+        unitId,
+        completed: !done,
+      });
+      setProgress(r);
+      setToast(done ? "Marked as not complete" : "Marked complete");
+    } catch (e) {
+      setToast(e instanceof Error ? e.message : "Could not save your progress");
+    } finally {
+      setMarkingUnit(null);
+    }
+  };
 
   const issueCertificate = async () => {
     setIssuing(true);
@@ -438,6 +468,8 @@ export function CourseDetailView({ slug }: { slug: string }) {
 
   const hue = hueFromString(course.slug);
   const firstLesson = course.sections[0]?.lessons[0];
+  const progressWord = progress?.unitLabel === "module" ? "modules" : "lessons";
+  const progressOne = progress?.unitLabel === "module" ? "module" : "lesson";
   // Every teacher credited, falling back to the single-lecturer field so the page
   // still names someone if it is talking to an API that predates co-teaching.
   const teachers = course.lecturers?.length ? course.lecturers : course.lecturer ? [course.lecturer] : [];
@@ -614,13 +646,14 @@ export function CourseDetailView({ slug }: { slug: string }) {
           )}
 
           {/* Progress is tracked here, free. The certificate is the Premium
-              artefact, and it is only offered once every lesson is marked. */}
+              artefact, and it is only offered once every unit is marked.
+              Archive courses have no lessons, so each Telegram file is a unit. */}
           {progress && progress.total > 0 && (
             <section className="rail">
               <div className="section-head">
                 <h2>Your progress</h2>
                 <span className="muted mono" style={{ fontSize: 10 }}>
-                  {progress.completed}/{progress.total} lessons
+                  {progress.completed}/{progress.total} {progressWord}
                 </span>
               </div>
               <div className="dark-panel dark-panel--pad">
@@ -646,6 +679,46 @@ export function CourseDetailView({ slug }: { slug: string }) {
                   })()}
                 </div>
 
+                {/* Archive courses: the visible list of modules to tick off. A
+                    lesson-mode course already lists them in the curriculum. */}
+                {progress.unitType === "file" && (
+                  <div className="mt-4 flex flex-col gap-1.5">
+                    {progress.units.map((u) => (
+                      <button
+                        key={u.id}
+                        type="button"
+                        onClick={() => void toggleUnit(u.id, u.completed)}
+                        disabled={markingUnit === u.id}
+                        className="flex items-center gap-3 rounded-lg border border-border bg-surface px-3 py-2 text-left hover:border-accent"
+                      >
+                        <span
+                          aria-hidden
+                          className={`flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[11px] font-bold ${
+                            u.completed
+                              ? "border-accent bg-accent text-black"
+                              : "border-border text-transparent"
+                          }`}
+                        >
+                          ✓
+                        </span>
+                        <span className="min-w-0 flex-1">
+                          <span className="block truncate text-[13px] font-medium text-text">
+                            {u.title}
+                          </span>
+                          <span className="block text-[11px] text-dim">
+                            {u.sectionTitle ? `${u.sectionTitle} · ` : ""}
+                            {u.sizeMb ? `${u.sizeMb} MB · ` : ""}
+                            {u.completed ? "Completed" : "Mark when you have the file"}
+                          </span>
+                        </span>
+                        <span className="shrink-0 text-[11px] font-semibold text-accent">
+                          {markingUnit === u.id ? "Saving…" : u.completed ? "Undo" : "Mark"}
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
                 <div className="mt-4 border-t border-border pt-3">
                   {progress.certificate ? (
                     <div className="flex flex-wrap items-center gap-3">
@@ -668,7 +741,7 @@ export function CourseDetailView({ slug }: { slug: string }) {
                     progress.premiumActive ? (
                       <div className="flex flex-wrap items-center justify-between gap-3">
                         <span style={{ fontSize: 13 }}>
-                          Every lesson is done. <strong>Issue your certificate.</strong>
+                          Every {progressOne} is done. <strong>Issue your certificate.</strong>
                         </span>
                         <button
                           className="btn primary"
@@ -682,7 +755,7 @@ export function CourseDetailView({ slug }: { slug: string }) {
                     ) : (
                       <div className="flex flex-wrap items-center justify-between gap-3">
                         <span style={{ fontSize: 13 }}>
-                          Every lesson is done. <strong>Certificates are a Premium feature.</strong>
+                          Every {progressOne} is done. <strong>Certificates are a Premium feature.</strong>
                         </span>
                         <Link href="/premium" className="btn primary" style={{ fontSize: 12 }}>
                           Unlock certificates
@@ -691,8 +764,8 @@ export function CourseDetailView({ slug }: { slug: string }) {
                     )
                   ) : (
                     <span className="muted" style={{ fontSize: 12 }}>
-                      Mark every lesson complete to earn a certificate. Tracking is free; issuing the
-                      certificate is part of Premium.
+                      Mark every {progressOne} complete to earn a certificate. Tracking is free; issuing
+                      the certificate is part of Premium.
                     </span>
                   )}
                 </div>

@@ -1,4 +1,4 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { signMediaUrl, fileNameFromUrl } from '../common/signed-url.util';
 import { earlyAccessUntil, isEarlyAccess } from '../common/early-access';
@@ -283,6 +283,16 @@ export class ContentService {
       },
     });
     if (!course || course.deletedAt) throw new NotFoundException('Course not found');
+
+    // Archive courses are delivered as Telegram files. There is no app-hosted
+    // media to save, and silently returning an empty manifest made the download
+    // look successful while storing nothing.
+    if (!course.sections.some((s) => s.lessons.length > 0)) {
+      throw new BadRequestException(
+        'This course is delivered in Telegram. Open it from your chat to download the files — ' +
+          'offline downloads work for courses with app-hosted lessons.',
+      );
+    }
 
     const now = Date.now();
     const planLeft = user.planExpiresAt
