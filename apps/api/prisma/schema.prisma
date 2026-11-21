@@ -3,7 +3,7 @@
 // at a local Postgres or the same Neon project.
 
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
   // `native` covers local dev / Render; `rhel-openssl-3.0.x` is the engine
   // Vercel Functions load at runtime (Amazon Linux 2023, OpenSSL 3). Without
   // the second target the client throws "could not locate the Query Engine
@@ -126,6 +126,7 @@ model Course {
   circlePosts     CirclePost[]
   contentChunks   ContentChunk[]
   searchClicks    SearchClick[]
+  certificates    Certificate[]
 
   @@index([publishedAt])
 }
@@ -226,6 +227,7 @@ model Lesson {
   files       LessonFile[]
   attachments Attachment[]
   downloads   DownloadEvent[]
+  progress    LessonProgress[]
 }
 
 model LessonFile {
@@ -376,9 +378,9 @@ model User {
   savedLists       SavedList[]
   savedCourses     SavedCourse[]
   likedCourses     LikedCourse[]
-  following        Follow[]          @relation("following")
-  followers        Follow[]          @relation("followers")
-  ownedCircles     Circle[]          @relation("circleOwner")
+  following        Follow[]           @relation("following")
+  followers        Follow[]           @relation("followers")
+  ownedCircles     Circle[]           @relation("circleOwner")
   circleMembers    CircleMember[]
   circlePosts      CirclePost[]
   sessions         Session[]
@@ -388,7 +390,10 @@ model User {
   reviewUpvotes    ReviewUpvote[]
   notifications    Notification[]
   legalAcceptances LegalAcceptance[]
-  legalEdits       LegalDocument[]   @relation("legalEditor")
+  legalEdits       LegalDocument[]    @relation("legalEditor")
+  lessonProgress   LessonProgress[]
+  certificates     Certificate[]
+  redemptions      RedeemRedemption[]
 }
 
 model Follow {
@@ -630,23 +635,83 @@ model Subscription {
 // at the same moment. `subscriptionId` is unique too, so a retry asks the same
 // session again instead of opening a second one and spending another credit.
 model TikurPayment {
-  id             String      @id @default(cuid())
-  subscriptionId String      @unique
-  paymentNumber  String      @unique
+  id             String       @id @default(cuid())
+  subscriptionId String       @unique
+  paymentNumber  String       @unique
   checkoutUrl    String?
   amount         Float
-  currency       String      @default("ETB")
-  status         String      @default("pending") // pending | completed | expired | failed
-  reference      String?     @unique
+  currency       String       @default("ETB")
+  status         String       @default("pending") // pending | completed | expired | failed
+  reference      String?      @unique
   payerName      String?
   bankCode       String?
   verificationId String?
   expiresAt      DateTime?
   verifiedAt     DateTime?
   raw            Json?
-  createdAt      DateTime    @default(now())
-  updatedAt      DateTime    @updatedAt
+  createdAt      DateTime     @default(now())
+  updatedAt      DateTime     @updatedAt
   subscription   Subscription @relation(fields: [subscriptionId], references: [id], onDelete: Cascade)
+}
+
+// ---------------------------------------------------------------
+// Learning progress and certificates
+//
+// Courses are often delivered as archives, so "finished" is the lessons a
+// reader explicitly marked complete. Progress is free; the certificate is the
+// Premium artefact, and its serial is what the public verification page reads.
+// ---------------------------------------------------------------
+
+model LessonProgress {
+  userId      String
+  lessonId    String
+  completedAt DateTime @default(now())
+  user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  lesson      Lesson   @relation(fields: [lessonId], references: [id], onDelete: Cascade)
+
+  @@id([userId, lessonId])
+  @@index([lessonId])
+}
+
+model Certificate {
+  id       String   @id @default(cuid())
+  serial   String   @unique
+  userId   String
+  courseId String
+  issuedAt DateTime @default(now())
+  user     User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  course   Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, courseId])
+  @@index([courseId])
+}
+
+// ---------------------------------------------------------------
+// Gift passes
+// ---------------------------------------------------------------
+
+model RedeemCode {
+  id          String             @id @default(cuid())
+  code        String             @unique
+  planName    String
+  maxUses     Int                @default(1)
+  usedCount   Int                @default(0)
+  expiresAt   DateTime?
+  createdBy   String?
+  createdAt   DateTime           @default(now())
+  redemptions RedeemRedemption[]
+}
+
+model RedeemRedemption {
+  id         String     @id @default(cuid())
+  codeId     String
+  userId     String
+  redeemedAt DateTime   @default(now())
+  code       RedeemCode @relation(fields: [codeId], references: [id], onDelete: Cascade)
+  user       User       @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([codeId, userId])
+  @@index([userId])
 }
 
 model PaymentReference {
@@ -679,12 +744,12 @@ model AppVersion {
 // many ZIPs — one (or several "Part 01/02/03" files) per module — so this is a
 // LIST per course, optionally grouped by the Section it belongs to.
 model TelegramCourseLink {
-  id              String   @id @default(cuid())
+  id              String         @id @default(cuid())
   courseId        String
   sectionId       String? // the module this file belongs to (null = ungrouped)
   moduleTitle     String? // module name parsed from the filename, kept for display
-  moduleOrder     Int      @default(0) // module position within the course
-  partIndex       Int      @default(1) // 1-based part within the module
+  moduleOrder     Int            @default(0) // module position within the course
+  partIndex       Int            @default(1) // 1-based part within the module
   chatId          BigInt
   chatUsername    String?
   messageThreadId BigInt? // forum topic id
@@ -694,14 +759,14 @@ model TelegramCourseLink {
   fileSizeMb      Float?
   caption         String?
   createdById     String?
-  createdAt       DateTime @default(now())
+  createdAt       DateTime       @default(now())
   /// Indexer state, so a long backfill is resumable and observable:
   /// pending (default) → indexed | skipped (too large / no text) | failed.
-  indexStatus     String   @default("pending")
+  indexStatus     String         @default("pending")
   indexedAt       DateTime?
   indexError      String?
-  course          Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
-  section         Section? @relation(fields: [sectionId], references: [id], onDelete: SetNull)
+  course          Course         @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  section         Section?       @relation(fields: [sectionId], references: [id], onDelete: SetNull)
   contentChunks   ContentChunk[]
 
   @@index([courseId, moduleOrder, partIndex])
@@ -837,7 +902,7 @@ model ContentChunk {
   contentHash String
   createdAt   DateTime @default(now())
 
-  course Course             @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  course Course              @relation(fields: [courseId], references: [id], onDelete: Cascade)
   link   TelegramCourseLink? @relation(fields: [linkId], references: [id], onDelete: Cascade)
 
   @@unique([linkId, sourceName, ordinal])

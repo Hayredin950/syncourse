@@ -1,6 +1,7 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../prisma/prisma.service';
 import { signMediaUrl, fileNameFromUrl } from '../common/signed-url.util';
+import { earlyAccessUntil, isEarlyAccess } from '../common/early-access';
 import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
@@ -9,6 +10,16 @@ export class ContentService {
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationsService,
   ) {}
+
+  /** Active Premium, read from the plan row. Never trusted from the client. */
+  private async isPremium(userId?: string): Promise<boolean> {
+    if (!userId) return false;
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { planType: true, planExpiresAt: true },
+    });
+    return !!user && user.planType === 'premium' && (!user.planExpiresAt || user.planExpiresAt > new Date());
+  }
 
   /** Lesson detail — mirrors the file metadata card from the reference. */
   async lessonDetail(lessonId: string, userId?: string) {
@@ -28,14 +39,12 @@ export class ContentService {
     // the video: previews open, otherwise an active premium plan is required.
     // This endpoint is public, so without this check the raw storage URLs in
     // `attachments` / `notes` bypassed the signed-URL entitlement entirely.
-    let premiumActive = false;
-    if (lesson.course.isPremium && !lesson.isPreview) {
-      if (userId) {
-        const user = await this.prisma.user.findUnique({ where: { id: userId } });
-        premiumActive = !!user && user.planType === 'premium' && (!user.planExpiresAt || user.planExpiresAt > new Date());
-      }
-    }
-    const locked = lesson.course.isPremium && !lesson.isPreview && !premiumActive;
+    const premiumActive = await this.isPremium(userId);
+    // Early access: a course published inside its seven-day window is Premium
+    // first, previews included, so the head start is real rather than cosmetic.
+    const early = isEarlyAccess(lesson.course.publishedAt);
+    const locked =
+      !premiumActive && (early || (lesson.course.isPremium && !lesson.isPreview));
     const secret = process.env.JWT_SECRET || 'dev-only-secret-change-me';
     const sign = (url: string | null) => (url ? signMediaUrl(url, secret).url : null);
 
@@ -50,6 +59,8 @@ export class ContentService {
       course: { id: lesson.course.id, title: lesson.course.title, slug: lesson.course.slug },
       /** True when the viewer needs Premium to see the notes/attachments. */
       locked,
+      /** Set while the course is still inside its Premium-first week. */
+      earlyAccessUntil: early ? earlyAccessUntil(lesson.course.publishedAt)?.toISOString() ?? null : null,
       notes: locked
         ? []
         : lesson.notes.map((n) => {
@@ -105,13 +116,16 @@ export class ContentService {
     });
     if (!lesson) throw new NotFoundException('Lesson not found');
 
-    if (!lesson.isPreview) {
+    const early = isEarlyAccess(lesson.course.publishedAt);
+    if (early) {
+      if (!userId) throw new ForbiddenException('This lesson opens to everyone soon — Premium members are watching it first');
+      if (!(await this.isPremium(userId))) {
+        throw new ForbiddenException('Early access is a Premium feature — this lesson opens to everyone in a few days');
+      }
+    } else if (!lesson.isPreview) {
       if (!userId) throw new ForbiddenException('Sign in to watch this lesson');
-      if (lesson.course.isPremium) {
-        const user = await this.prisma.user.findUnique({ where: { id: userId } });
-        const premiumActive =
-          user?.planType === 'premium' && (!user.planExpiresAt || user.planExpiresAt > new Date());
-        if (!premiumActive) throw new ForbiddenException('This course requires Premium');
+      if (lesson.course.isPremium && !(await this.isPremium(userId))) {
+        throw new ForbiddenException('This course requires Premium');
       }
     }
 
@@ -133,13 +147,16 @@ export class ContentService {
     });
     if (!lesson) throw new NotFoundException('Lesson not found');
 
-    if (!lesson.isPreview) {
+    const early = isEarlyAccess(lesson.course.publishedAt);
+    if (early) {
+      if (!userId) throw new ForbiddenException('This file opens to everyone soon — Premium members have it first');
+      if (!(await this.isPremium(userId))) {
+        throw new ForbiddenException('Early access is a Premium feature — this file opens to everyone in a few days');
+      }
+    } else if (!lesson.isPreview) {
       if (!userId) throw new ForbiddenException('Sign in to download this file');
-      if (lesson.course.isPremium) {
-        const user = await this.prisma.user.findUnique({ where: { id: userId } });
-        const premiumActive =
-          user?.planType === 'premium' && (!user.planExpiresAt || user.planExpiresAt > new Date());
-        if (!premiumActive) throw new ForbiddenException('This course requires Premium');
+      if (lesson.course.isPremium && !(await this.isPremium(userId))) {
+        throw new ForbiddenException('This course requires Premium');
       }
     }
 
@@ -177,15 +194,21 @@ export class ContentService {
 
   /** Preview lessons are open; the rest need sign-in, and premium courses a plan. */
   private async assertCanDownload(
-    lesson: { isPreview: boolean; course: { isPremium: boolean } },
+    lesson: { isPreview: boolean; course: { isPremium: boolean; publishedAt: Date } },
     userId: string | undefined,
   ): Promise<void> {
+    const early = isEarlyAccess(lesson.course.publishedAt);
+    if (early) {
+      if (!userId) throw new ForbiddenException('Sign in to download this lesson');
+      if (!(await this.isPremium(userId))) {
+        throw new ForbiddenException('Early access is a Premium feature — downloads open to everyone in a few days');
+      }
+      return;
+    }
     if (lesson.isPreview) return;
     if (!userId) throw new ForbiddenException('Sign in to download this lesson');
     if (lesson.course.isPremium) {
-      const user = await this.prisma.user.findUnique({ where: { id: userId } });
-      const premiumActive = user?.planType === 'premium' && (!user.planExpiresAt || user.planExpiresAt > new Date());
-      if (!premiumActive) throw new ForbiddenException('This course requires Premium');
+      if (!(await this.isPremium(userId))) throw new ForbiddenException('This course requires Premium');
     }
   }
 
@@ -222,6 +245,112 @@ export class ContentService {
       telegramUsername: user.telegramUsername,
       botUrl: `https://t.me/${bot}?start=download_${lesson.id}`,
       message: 'Open the bot and press Start, then try again — or tap to open the bot now.',
+    };
+  }
+
+  /**
+   * Everything one course needs to live on a phone with no signal.
+   *
+   * The Premium offline library asks for this once, then the app downloads each
+   * URL. Signed links carry an expiry so the app knows when to purge, and the
+   * window never outlives the subscription: a plan ending in three days yields
+   * links that die with it.
+   */
+  async offlineManifest(slug: string, userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { planType: true, planExpiresAt: true },
+    });
+    if (!user) throw new NotFoundException('User not found');
+    const premiumActive =
+      user.planType === 'premium' && (!user.planExpiresAt || user.planExpiresAt > new Date());
+    if (!premiumActive) {
+      throw new ForbiddenException('The offline library is a Premium feature');
+    }
+
+    const course = await this.prisma.course.findUnique({
+      where: { slug },
+      include: {
+        sections: {
+          orderBy: { orderIndex: 'asc' },
+          include: {
+            lessons: {
+              orderBy: { orderIndex: 'asc' },
+              include: { attachments: true, notes: true, files: { orderBy: { isBest: 'desc' } } },
+            },
+          },
+        },
+      },
+    });
+    if (!course || course.deletedAt) throw new NotFoundException('Course not found');
+
+    const now = Date.now();
+    const planLeft = user.planExpiresAt
+      ? Math.floor((user.planExpiresAt.getTime() - now) / 1000)
+      : 7 * 24 * 60 * 60;
+    // At least an hour, at most a week, and never past the plan.
+    const ttl = Math.max(60 * 60, Math.min(7 * 24 * 60 * 60, planLeft));
+    const secret = process.env.JWT_SECRET || 'dev-only-secret-change-me';
+    const sign = (url: string | null) => (url ? signMediaUrl(url, secret, ttl) : null);
+
+    const lessons = course.sections.flatMap((section) =>
+      section.lessons.map((lesson) => {
+        const best = lesson.files[0];
+        return {
+          id: lesson.id,
+          title: lesson.title,
+          orderIndex: lesson.orderIndex,
+          sectionTitle: section.title,
+          type: lesson.type,
+          durationSec: lesson.durationSec,
+          isPreview: lesson.isPreview,
+          sizeMb: best ? best.sizeMb : 0,
+          video: sign(lesson.videoUrl),
+          attachments: lesson.attachments
+            .map((a) => {
+              const signed = sign(a.fileUrl);
+              return {
+                id: a.id,
+                fileName: fileNameFromUrl(a.fileUrl),
+                fileType: a.fileType,
+                sizeMb: a.sizeMb,
+                url: signed?.url ?? null,
+                expiresAt: signed?.expiresAt ?? null,
+              };
+            })
+            .filter((a) => a.url),
+          notes: lesson.notes.map((n) => {
+            let imageUrls: string[] = [];
+            try {
+              const parsed = JSON.parse(n.imageUrls || '[]');
+              if (Array.isArray(parsed)) imageUrls = parsed.filter((u): u is string => typeof u === 'string');
+            } catch {
+              imageUrls = [];
+            }
+            return {
+              id: n.id,
+              title: n.title,
+              richText: n.richText,
+              isCheatsheet: n.isCheatsheet,
+              imageUrls: imageUrls.map((u) => sign(u)?.url).filter((u): u is string => Boolean(u)),
+              pdfUrl: sign(n.pdfUrl)?.url ?? null,
+            };
+          }),
+        };
+      }),
+    );
+
+    return {
+      course: { id: course.id, slug: course.slug, title: course.title, thumbnailUrl: course.thumbnailUrl },
+      generatedAt: new Date(now).toISOString(),
+      expiresAt: new Date(now + ttl * 1000).toISOString(),
+      totalLessons: lessons.length,
+      totalBytes: lessons.reduce(
+        (sum, l) =>
+          sum + l.sizeMb * 1024 * 1024 + l.attachments.reduce((s, a) => s + a.sizeMb * 1024 * 1024, 0),
+        0,
+      ),
+      lessons,
     };
   }
 

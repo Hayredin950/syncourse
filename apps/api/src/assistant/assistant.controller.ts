@@ -24,8 +24,8 @@ export class AssistantController {
   constructor(private readonly assistant: AssistantService) {}
 
   @Get('status')
-  status() {
-    return this.assistant.status();
+  status(@CurrentUser() user?: AuthUser) {
+    return this.assistant.statusFor(user?.id);
   }
 
   @Post('ask')

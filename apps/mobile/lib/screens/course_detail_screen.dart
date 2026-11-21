@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../api.dart';
 import '../models.dart';
+import '../offline.dart';
 import '../theme.dart';
 
 class CourseDetailScreen extends StatefulWidget {
@@ -43,12 +44,24 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
                 expandedHeight: 220,
                 flexibleSpace: FlexibleSpaceBar(
                   background: c.bannerUrl == null && c.thumbnailUrl == null
-                      ? Container(color: AppColors.surface, alignment: Alignment.center, child: const Icon(Icons.play_circle_outline, size: 64, color: AppColors.muted))
-                      : Image.network(c.bannerUrl ?? c.thumbnailUrl!, fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => Container(color: AppColors.surface)),
+                      ? Container(
+                          color: AppColors.surface,
+                          alignment: Alignment.center,
+                          child: const Icon(Icons.play_circle_outline,
+                              size: 64, color: AppColors.muted))
+                      : Image.network(c.bannerUrl ?? c.thumbnailUrl!,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, __, ___) =>
+                              Container(color: AppColors.surface)),
                 ),
                 actions: [
-                  IconButton(icon: const Icon(Icons.share_outlined), onPressed: () {}),
+                  IconButton(
+                    tooltip: 'Offline library',
+                    icon: const Icon(Icons.download_done_outlined),
+                    onPressed: () => Navigator.pushNamed(context, '/offline'),
+                  ),
+                  IconButton(
+                      icon: const Icon(Icons.share_outlined), onPressed: () {}),
                 ],
               ),
               SliverToBoxAdapter(
@@ -57,30 +70,47 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(c.title, style: const TextStyle(fontSize: 24, fontWeight: FontWeight.w800, letterSpacing: -0.5)),
+                      Text(c.title,
+                          style: const TextStyle(
+                              fontSize: 24,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: -0.5)),
                       const SizedBox(height: 8),
                       Row(
                         children: [
                           const Icon(Icons.star, size: 16, color: Colors.amber),
                           const SizedBox(width: 4),
-                          Text('${c.ratingAvg.toStringAsFixed(1)}', style: const TextStyle(fontWeight: FontWeight.w700)),
-                          Text(' (${c.ratingCount} ratings)', style: const TextStyle(color: AppColors.muted, fontSize: 13)),
+                          Text('${c.ratingAvg.toStringAsFixed(1)}',
+                              style:
+                                  const TextStyle(fontWeight: FontWeight.w700)),
+                          Text(' (${c.ratingCount} ratings)',
+                              style: const TextStyle(
+                                  color: AppColors.muted, fontSize: 13)),
                           const Spacer(),
-                          Text(c.durationText, style: const TextStyle(color: AppColors.muted, fontSize: 13)),
+                          Text(c.durationText,
+                              style: const TextStyle(
+                                  color: AppColors.muted, fontSize: 13)),
                         ],
                       ),
                       const SizedBox(height: 4),
-                      Text('${c.level} · ${c.language} · ${c.enrollmentCount} enrolled',
-                          style: const TextStyle(color: AppColors.muted, fontSize: 13)),
+                      Text(
+                          '${c.level} · ${c.language} · ${c.enrollmentCount} enrolled',
+                          style: const TextStyle(
+                              color: AppColors.muted, fontSize: 13)),
                       if (c.isPremium) ...[
                         const SizedBox(height: 6),
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 2),
                           decoration: BoxDecoration(
                             color: AppColors.accent.withValues(alpha: 0.15),
                             borderRadius: BorderRadius.circular(6),
                           ),
-                          child: const Text('PREMIUM', style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800, color: AppColors.accent)),
+                          child: const Text('PREMIUM',
+                              style: TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w800,
+                                  color: AppColors.accent)),
                         ),
                       ],
                       const SizedBox(height: 10),
@@ -99,10 +129,12 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
                       ),
                       const SizedBox(height: 14),
                       _description(c),
-                      if (c.prerequisites != null && c.prerequisites!.isNotEmpty) ...[
+                      if (c.prerequisites != null &&
+                          c.prerequisites!.isNotEmpty) ...[
                         const SizedBox(height: 12),
                         Text('Prerequisites: ${c.prerequisites}',
-                            style: const TextStyle(fontSize: 13, color: AppColors.muted)),
+                            style: const TextStyle(
+                                fontSize: 13, color: AppColors.muted)),
                       ],
                       const SizedBox(height: 16),
                       Row(
@@ -125,6 +157,16 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
                           ),
                         ],
                       ),
+                      const SizedBox(height: 10),
+                      OutlinedButton.icon(
+                        onPressed: () => _downloadOffline(c),
+                        icon: const Icon(Icons.download_for_offline_outlined),
+                        label: const Text('Download for offline'),
+                        style: OutlinedButton.styleFrom(
+                          minimumSize: const Size.fromHeight(44),
+                          foregroundColor: AppColors.accent,
+                        ),
+                      ),
                       if (c.downloads != null) ...[
                         const SizedBox(height: 16),
                         _DownloadsWidget(downloads: c.downloads!),
@@ -135,10 +177,16 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
                         const SizedBox(height: 8),
                         ListTile(
                           contentPadding: EdgeInsets.zero,
-                          leading: CircleAvatar(radius: 22, child: Text(c.lecturer!.name.characters.first)),
-                          title: Text(c.lecturer!.name, style: const TextStyle(fontWeight: FontWeight.w600)),
+                          leading: CircleAvatar(
+                              radius: 22,
+                              child: Text(c.lecturer!.name.characters.first)),
+                          title: Text(c.lecturer!.name,
+                              style:
+                                  const TextStyle(fontWeight: FontWeight.w600)),
                           subtitle: Text(
-                            [c.lecturer!.credentials, c.lecturer!.bio].whereType<String>().join(' · '),
+                            [c.lecturer!.credentials, c.lecturer!.bio]
+                                .whereType<String>()
+                                .join(' · '),
                             maxLines: 2,
                             overflow: TextOverflow.ellipsis,
                           ),
@@ -149,25 +197,30 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
                         Text('Organization', style: _sectionStyle),
                         const SizedBox(height: 4),
                         Text(c.organization!['name'] as String? ?? '',
-                            style: const TextStyle(fontSize: 14, color: AppColors.muted)),
+                            style: const TextStyle(
+                                fontSize: 14, color: AppColors.muted)),
                         const SizedBox(height: 12),
                       ],
                       Text('Curriculum', style: _sectionStyle),
                       const SizedBox(height: 8),
-                      for (final s in c.sections) _SectionCard(section: s, slug: c.slug),
+                      for (final s in c.sections)
+                        _SectionCard(section: s, slug: c.slug),
                       const SizedBox(height: 20),
                       Text('Reviews', style: _sectionStyle),
                       const SizedBox(height: 8),
                       Row(
                         children: [
                           Text('${c.reviewAvg.toStringAsFixed(1)}',
-                              style: const TextStyle(fontSize: 32, fontWeight: FontWeight.w800)),
+                              style: const TextStyle(
+                                  fontSize: 32, fontWeight: FontWeight.w800)),
                           const SizedBox(width: 8),
                           Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
                               _Stars(value: c.reviewAvg),
-                              Text('${c.reviewCount} reviews', style: const TextStyle(color: AppColors.muted, fontSize: 12)),
+                              Text('${c.reviewCount} reviews',
+                                  style: const TextStyle(
+                                      color: AppColors.muted, fontSize: 12)),
                             ],
                           ),
                         ],
@@ -175,8 +228,10 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
                       const SizedBox(height: 16),
                       for (final r in c.reviews) _ReviewCard(review: r),
                       if (c.reviews.isEmpty)
-                        const Text('No reviews yet — be the first to rate this course',
-                            style: TextStyle(color: AppColors.muted, fontSize: 13)),
+                        const Text(
+                            'No reviews yet — be the first to rate this course',
+                            style: TextStyle(
+                                color: AppColors.muted, fontSize: 13)),
                     ],
                   ),
                 ),
@@ -188,17 +243,21 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
     );
   }
 
-  TextStyle get _sectionStyle => const TextStyle(fontSize: 17, fontWeight: FontWeight.w700);
+  TextStyle get _sectionStyle =>
+      const TextStyle(fontSize: 17, fontWeight: FontWeight.w700);
 
   Widget _description(CourseDetail c) {
     final desc = c.description;
     if (desc.isEmpty) return const SizedBox.shrink();
     final showToggle = desc.length > 200;
-    final text = (showToggle && !_expanded) ? '${desc.substring(0, 200)}…' : desc;
+    final text =
+        (showToggle && !_expanded) ? '${desc.substring(0, 200)}…' : desc;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(text, style: const TextStyle(fontSize: 14, height: 1.4, color: Colors.white70)),
+        Text(text,
+            style: const TextStyle(
+                fontSize: 14, height: 1.4, color: Colors.white70)),
         if (showToggle)
           TextButton(
             onPressed: () => setState(() => _expanded = !_expanded),
@@ -211,22 +270,89 @@ class _CourseDetailScreenState extends State<CourseDetailScreen> {
   Future<void> _openFirstLesson(CourseDetail c) async {
     if (c.sections.isEmpty || c.sections.first.lessons.isEmpty) return;
     if (!mounted) return;
-    Navigator.pushNamed(context, '/courses/${c.slug}/lessons/${c.sections.first.lessons.first.id}');
+    Navigator.pushNamed(context,
+        '/courses/${c.slug}/lessons/${c.sections.first.lessons.first.id}');
   }
 
   Future<void> _toggleSave(CourseDetail c) async {
     await Api.toggleSave(c.slug);
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Saved list updated')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Saved list updated')));
     }
   }
 
   Future<void> _toggleLike(CourseDetail c) async {
     await Api.toggleLike(c.slug);
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Liked')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('Liked')));
     }
   }
+
+  /// The whole-course download. Progress is per file, and a failure says which
+  /// side said no (usually "Premium features" from the manifest endpoint).
+  Future<void> _downloadOffline(CourseDetail c) async {
+    var progress = 0.0;
+    var label = 'Preparing…';
+    if (!mounted) return;
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setLocal) {
+          _offlineProgress = (p, l) {
+            if (!ctx.mounted) return;
+            setLocal(() {
+              progress = p;
+              label = l;
+            });
+          };
+          return AlertDialog(
+            backgroundColor: AppColors.surface,
+            title: const Text('Downloading for offline'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                LinearProgressIndicator(value: progress == 0 ? null : progress),
+                const SizedBox(height: 10),
+                Text(
+                  progress == 0
+                      ? 'Preparing…'
+                      : '${(progress * 100).toStringAsFixed(0)}% · $label',
+                  style: const TextStyle(fontSize: 12, color: AppColors.muted),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+
+    try {
+      await Future<void>.delayed(const Duration(milliseconds: 80));
+      await OfflineStore.download(
+        c.slug,
+        onProgress: (p, l) => _offlineProgress?.call(p, l),
+      );
+      if (!mounted) return;
+      Navigator.of(context, rootNavigator: true).pop();
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('${c.title} is ready offline')),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      Navigator.of(context, rootNavigator: true).pop();
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('$e')));
+    } finally {
+      _offlineProgress = null;
+    }
+  }
+
+  void Function(double, String)? _offlineProgress;
 }
 
 class _DownloadsWidget extends StatelessWidget {
@@ -249,9 +375,14 @@ class _DownloadsWidget extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text('DOWNLOADS ON SYNCOURSE', style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: AppColors.muted)),
+          const Text('DOWNLOADS ON SYNCOURSE',
+              style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w700,
+                  color: AppColors.muted)),
           const SizedBox(height: 6),
-          Text('$total total · $last30 last 30 days · $last7 last 7 days · $today today',
+          Text(
+              '$total total · $last30 last 30 days · $last7 last 7 days · $today today',
               style: const TextStyle(fontSize: 12, color: Colors.white70)),
         ],
       ),
@@ -273,17 +404,25 @@ class _SectionCard extends StatelessWidget {
       margin: const EdgeInsets.only(bottom: 10),
       child: ExpansionTile(
         shape: const Border(),
-        title: Text(section.title, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
-        subtitle: Text('${section.lessons.length} lessons · ${section.durationText}',
+        title: Text(section.title,
+            style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+        subtitle: Text(
+            '${section.lessons.length} lessons · ${section.durationText}',
             style: const TextStyle(fontSize: 12, color: AppColors.muted)),
         children: [
           for (final l in section.lessons)
             ListTile(
               dense: true,
-              leading: Icon(l.type == 'video' ? Icons.play_circle_outline : Icons.description_outlined, size: 20),
+              leading: Icon(
+                  l.type == 'video'
+                      ? Icons.play_circle_outline
+                      : Icons.description_outlined,
+                  size: 20),
               title: Text(l.title, style: const TextStyle(fontSize: 13)),
-              subtitle: Text(l.durationText, style: const TextStyle(fontSize: 11, color: AppColors.muted)),
-              onTap: () => Navigator.pushNamed(context, '/courses/$slug/lessons/${l.id}'),
+              subtitle: Text(l.durationText,
+                  style: const TextStyle(fontSize: 11, color: AppColors.muted)),
+              onTap: () => Navigator.pushNamed(
+                  context, '/courses/$slug/lessons/${l.id}'),
             ),
         ],
       ),
@@ -305,27 +444,38 @@ class _ReviewCard extends StatelessWidget {
         children: [
           Row(
             children: [
-              CircleAvatar(radius: 12, child: Text(review.userName.characters.first)),
+              CircleAvatar(
+                  radius: 12, child: Text(review.userName.characters.first)),
               const SizedBox(width: 8),
-              Expanded(child: Text(review.userName, style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13))),
+              Expanded(
+                  child: Text(review.userName,
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w600, fontSize: 13))),
               if (review.isStaff)
                 Container(
                   margin: const EdgeInsets.only(right: 6),
-                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                   decoration: BoxDecoration(
                     color: AppColors.accent.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(4),
                   ),
-                  child: const Text('EDITORIAL', style: TextStyle(fontSize: 9, fontWeight: FontWeight.w800, color: AppColors.accent)),
+                  child: const Text('EDITORIAL',
+                      style: TextStyle(
+                          fontSize: 9,
+                          fontWeight: FontWeight.w800,
+                          color: AppColors.accent)),
                 ),
             ],
           ),
           if (review.body != null) ...[
             const SizedBox(height: 4),
-            Text(review.body!, style: const TextStyle(fontSize: 13, color: Colors.white70)),
+            Text(review.body!,
+                style: const TextStyle(fontSize: 13, color: Colors.white70)),
           ],
           const SizedBox(height: 4),
-          Text('${review.replyCount} replies', style: const TextStyle(fontSize: 11, color: AppColors.muted)),
+          Text('${review.replyCount} replies',
+              style: const TextStyle(fontSize: 11, color: AppColors.muted)),
         ],
       ),
     );
@@ -343,7 +493,8 @@ class _Stars extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: List.generate(5, (i) {
         final filled = i < value.round();
-        return Icon(filled ? Icons.star : Icons.star_border, size: 14, color: Colors.amber);
+        return Icon(filled ? Icons.star : Icons.star_border,
+            size: 14, color: Colors.amber);
       }),
     );
   }

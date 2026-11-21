@@ -10,6 +10,7 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import { timingSafeEqual } from 'node:crypto';
+import { PDFDocument, StandardFonts, rgb } from 'pdf-lib';
 import { PrismaService } from '../prisma/prisma.service';
 import { EmailService } from '../email/email.service';
 import { PLANS, premiumExpiresAt } from './plans';
@@ -701,6 +702,196 @@ export class PaymentsService {
     });
   }
 
+  // ---------------------------------------------------------------
+  // Receipts, perks and gift passes
+  // ---------------------------------------------------------------
+
+  /** Every approved payment, newest first — the Me page prints this list. */
+  async receipts(userId: string) {
+    const rows = await this.prisma.subscription.findMany({
+      where: { userId, status: 'approved' },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    });
+    return rows.map((s) => {
+      const plan = PLANS.find((p) => p.id === s.planName);
+      return {
+        id: s.id,
+        planName: plan?.name ?? s.planName,
+        amount: s.amount,
+        currency: s.currency,
+        method: s.paymentMethod,
+        status: s.status,
+        periodStart: s.periodStart,
+        periodEnd: s.periodEnd,
+        reference: s.txReference,
+        createdAt: s.createdAt,
+        number: receiptNumber(s.id, s.createdAt),
+        pdfUrl: `/api/payments/receipts/${s.id}/pdf`,
+      };
+    });
+  }
+
+  /** A one-page A4 invoice for one approved payment. */
+  async receiptPdf(userId: string, subscriptionId: string) {
+    const sub = await this.prisma.subscription.findFirst({
+      where: { id: subscriptionId, userId, status: 'approved' },
+      include: { user: { select: { name: true, email: true } } },
+    });
+    if (!sub) throw new NotFoundException('Receipt not found');
+
+    const plan = PLANS.find((p) => p.id === sub.planName);
+    const pdf = await PDFDocument.create();
+    const page = pdf.addPage([595, 842]);
+    const { width, height } = page.getSize();
+    const bold = await pdf.embedFont(StandardFonts.HelveticaBold);
+    const regular = await pdf.embedFont(StandardFonts.Helvetica);
+    const ink = rgb(0.09, 0.08, 0.07);
+    const muted = rgb(0.42, 0.41, 0.39);
+    const accent = rgb(0.85, 0.6, 0.1);
+
+    page.drawRectangle({ x: 0, y: height - 120, width, height: 120, color: rgb(0.98, 0.97, 0.94) });
+    page.drawText('SYNCOURSE', { x: 48, y: height - 62, size: 18, font: bold, color: ink });
+    page.drawText('Payment receipt', { x: 48, y: height - 84, size: 11, font: regular, color: muted });
+    page.drawText(receiptNumber(sub.id, sub.createdAt), {
+      x: width - 48 - bold.widthOfTextAtSize(receiptNumber(sub.id, sub.createdAt), 12),
+      y: height - 66,
+      size: 12,
+      font: bold,
+      color: ink,
+    });
+    page.drawText(new Date(sub.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }), {
+      x: width - 48 - regular.widthOfTextAtSize(
+        new Date(sub.createdAt).toLocaleDateString('en-GB', { day: 'numeric', month: 'long', year: 'numeric' }),
+        10,
+      ),
+      y: height - 84,
+      size: 10,
+      font: regular,
+      color: muted,
+    });
+
+    let y = height - 170;
+    const label = (text: string) => {
+      page.drawText(text, { x: 48, y, size: 9, font: bold, color: muted });
+      y -= 17;
+    };
+    const value = (text: string) => {
+      page.drawText(text, { x: 48, y, size: 12, font: regular, color: ink });
+      y -= 32;
+    };
+
+    label('BILLED TO');
+    value(sub.user.name);
+    page.drawText(sub.user.email, { x: 48, y: y + 0, size: 10, font: regular, color: muted });
+    y -= 38;
+
+    label('PLAN');
+    value(plan?.name ?? sub.planName);
+    label('AMOUNT PAID');
+    value(`${sub.amount.toLocaleString()} ${sub.currency}`);
+    label('PAYMENT METHOD');
+    value('Tikur Pay (CBE · Telebirr · M-Pesa)');
+    label('REFERENCE');
+    value(sub.txReference ?? '—');
+    label('PREMIUM PERIOD');
+    value(
+      `${sub.periodStart ? new Date(sub.periodStart).toLocaleDateString('en-GB') : '—'} → ${
+        sub.periodEnd ? new Date(sub.periodEnd).toLocaleDateString('en-GB') : '—'
+      }`,
+    );
+
+    page.drawLine({ start: { x: 48, y: 112 }, end: { x: width - 48, y: 112 }, thickness: 0.8, color: accent });
+    page.drawText('Paid in full. This receipt confirms a completed Premium payment on Syncourse.', {
+      x: 48,
+      y: 92,
+      size: 9,
+      font: regular,
+      color: muted,
+    });
+    page.drawText('Questions about this payment? Reply to the email on your account.', {
+      x: 48,
+      y: 78,
+      size: 9,
+      font: regular,
+      color: muted,
+    });
+
+    const bytes = await pdf.save();
+    return { bytes: Buffer.from(bytes), fileName: `${receiptNumber(sub.id, sub.createdAt)}.pdf` };
+  }
+
+  /**
+   * Gift passes. A code extends Premium by its plan length. Redeeming it twice
+   * on the same account returns the first result instead of stacking, and the
+   * use counter is claimed conditionally so two people cannot spend the last
+   * use at the same moment.
+   */
+  async redeem(userId: string, rawCode: string) {
+    const code = (rawCode ?? '').trim().toUpperCase();
+    if (!code) throw new BadRequestException('Enter a gift code.');
+
+    const row = await this.prisma.redeemCode.findUnique({ where: { code } });
+    if (!row) throw new BadRequestException('That gift code does not exist.');
+    if (row.expiresAt && row.expiresAt < new Date()) {
+      throw new BadRequestException('That gift code has expired.');
+    }
+
+    const already = await this.prisma.redeemRedemption.findUnique({
+      where: { codeId_userId: { codeId: row.id, userId } },
+    });
+    if (already) {
+      const user = await this.prisma.user.findUnique({ where: { id: userId }, select: { planExpiresAt: true } });
+      return { redeemed: true, already: true, planExpiresAt: user?.planExpiresAt ?? null };
+    }
+
+    const result = await this.prisma.$transaction(async (tx) => {
+      const claim = await tx.redeemCode.updateMany({
+        where: { id: row.id, usedCount: { lt: row.maxUses } },
+        data: { usedCount: { increment: 1 } },
+      });
+      if (claim.count === 0) throw new BadRequestException('That gift code has been fully used.');
+
+      const user = await tx.user.findUnique({ where: { id: userId } });
+      const expires = premiumExpiresAt(user?.planExpiresAt, row.planName);
+      await tx.user.update({
+        where: { id: userId },
+        data: { planType: 'premium', planExpiresAt: expires },
+      });
+      await tx.redeemRedemption.create({ data: { codeId: row.id, userId } });
+      return expires;
+    });
+
+    return { redeemed: true, already: false, planExpiresAt: result };
+  }
+
+  /** What Premium actually unlocks today, plus the optional members' room. */
+  async perks(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { planType: true, planExpiresAt: true },
+    });
+    const premiumActive =
+      !!user && user.planType === 'premium' && (!user.planExpiresAt || user.planExpiresAt > new Date());
+    return {
+      premiumActive,
+      planExpiresAt: user?.planExpiresAt ?? null,
+      telegramRoomUrl: premiumActive ? process.env.PREMIUM_TELEGRAM_URL || null : null,
+      supportEmail: process.env.PREMIUM_SUPPORT_EMAIL || 'support@syncourse.com',
+      aiQuota: {
+        free: Number(process.env.ASSISTANT_DAILY_USER) || 150,
+        premium: Number(process.env.ASSISTANT_DAILY_PREMIUM) || 1000,
+      },
+      perks: [
+        { id: 'offline', label: 'Offline library', detail: 'Download whole courses to the app and study without a signal.' },
+        { id: 'certificates', label: 'Certificates', detail: 'A numbered certificate for every course you finish.' },
+        { id: 'ai', label: 'Bigger AI quota', detail: 'A much larger daily study-assistant allowance.' },
+        { id: 'early', label: 'Early access', detail: 'New drops reach you seven days before everyone else.' },
+        { id: 'support', label: 'Priority support', detail: 'Your questions go to the front of the queue.' },
+      ],
+    };
+  }
+
   /**
    * Move a subscription to approved and extend the user's plan.
    *
@@ -758,4 +949,11 @@ export class PaymentsService {
     }
     return activated;
   }
+}
+
+/** Human-readable invoice number: stable per row, short enough to read out. */
+export function receiptNumber(id: string, createdAt: Date | string): string {
+  const d = createdAt instanceof Date ? createdAt : new Date(createdAt);
+  const stamp = `${d.getUTCFullYear()}${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+  return `SYN-${stamp}-${id.slice(-6).toUpperCase()}`;
 }

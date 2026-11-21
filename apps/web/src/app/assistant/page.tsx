@@ -12,7 +12,8 @@ interface Status {
   mode: "llm" | "extractive";
   provider: string | null;
   model: string | null;
-  dailyCap: { anonymous: number; member: number };
+  dailyCap: { anonymous: number; member: number; premium?: number };
+  viewer?: { premium: boolean; cap: number; used: number; remaining: number };
 }
 
 interface Citation {
@@ -397,6 +398,13 @@ export default function AssistantPage() {
                 </>
               ) : (
                 <>Answers are quoted straight from the catalogue, with no model in between.</>
+              )}
+              {status.viewer && (
+                <>
+                  {" "}
+                  · {status.viewer.premium ? "Premium" : "Member"} allowance:{" "}
+                  <strong>{status.viewer.remaining}</strong> of {status.viewer.cap} questions left today.
+                </>
               )}
             </p>
           )}

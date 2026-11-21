@@ -26,6 +26,7 @@ import { CloudinaryModule } from './cloudinary/cloudinary.module';
 import { AdminModule } from './admin/admin.module';
 import { TelegramModule } from './telegram/telegram.module';
 import { TelegramIngestModule } from './telegram-ingest/telegram-ingest.module';
+import { ProgressModule } from './progress/progress.module';
 
 @Module({
   imports: [
@@ -53,6 +54,7 @@ import { TelegramIngestModule } from './telegram-ingest/telegram-ingest.module';
     AdminModule,
     TelegramModule,
     TelegramIngestModule,
+    ProgressModule,
   ],
   controllers: [AppController],
   providers: [

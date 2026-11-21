@@ -18,7 +18,13 @@ interface PathDetail {
   courseCount: number;
   ratingAvg: number;
   totalVotes: number;
-  courses: CourseSummary[];
+  courses: (CourseSummary & { totalLessons?: number; completedLessons?: number; pct?: number })[];
+  progress: {
+    totalLessons: number;
+    completedLessons: number;
+    pct: number;
+    next: { courseSlug: string; courseTitle: string; lessonId: string; lessonTitle: string } | null;
+  };
 }
 
 export default function PathDetailPage() {
@@ -89,7 +95,35 @@ export default function PathDetailPage() {
       <section className="rail">
         <div className="section-head">
           <h2>Courses in this path</h2>
+          {path.progress && path.progress.totalLessons > 0 && (
+            <span className="muted mono" style={{ fontSize: 10 }}>
+              {path.progress.completedLessons}/{path.progress.totalLessons} lessons
+            </span>
+          )}
         </div>
+
+        {path.progress && path.progress.totalLessons > 0 && (
+          <div className="dark-panel dark-panel--pad" style={{ marginBottom: 14 }}>
+            <div className="h-2 w-full overflow-hidden rounded-full bg-surface-raised">
+              <div className="h-full bg-accent" style={{ width: `${path.progress.pct}%` }} />
+            </div>
+            <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+              <span className="muted" style={{ fontSize: 12 }}>{path.progress.pct}% of this path complete</span>
+              {path.progress.next ? (
+                <Link
+                  href={`/courses/${path.progress.next.courseSlug}/lessons/${path.progress.next.lessonId}`}
+                  className="btn primary"
+                  style={{ fontSize: 12 }}
+                >
+                  {path.progress.completedLessons > 0 ? "Continue path" : "Start this path"} ·{" "}
+                  {path.progress.next.lessonTitle} <ChevronRight size={13} style={{ display: "inline", verticalAlign: "middle" }} />
+                </Link>
+              ) : (
+                <span className="rating" style={{ fontSize: 12, fontWeight: 700 }}>Path complete</span>
+              )}
+            </div>
+          </div>
+        )}
         <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
           {path.courses.map((c, i) => (
             <div key={c.id} style={{ display: "flex", alignItems: "center", gap: 12 }}>

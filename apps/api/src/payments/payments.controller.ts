@@ -1,6 +1,6 @@
-import { Body, Controller, Get, Headers, Param, Post, Query, Req } from '@nestjs/common';
+import { Body, Controller, Get, Headers, Param, Post, Query, Req, Res } from '@nestjs/common';
 import type { RawBodyRequest } from '@nestjs/common';
-import type { Request } from 'express';
+import type { Request, Response } from 'express';
 import { PaymentsService } from './payments.service';
 import { CurrentUser } from '../common/current-user.decorator';
 import { AuthUser } from '../common/jwt-auth.guard';
@@ -50,6 +50,12 @@ class TikurVerifyDto {
   bank?: string;
 }
 
+class RedeemDto {
+  @IsString()
+  @MinLength(3)
+  code: string;
+}
+
 @Controller('payments')
 export class PaymentsController {
   constructor(private readonly payments: PaymentsService) {}
@@ -92,6 +98,32 @@ export class PaymentsController {
   @Get('me')
   mySubscription(@CurrentUser() user: AuthUser) {
     return this.payments.mySubscription(user.id);
+  }
+
+  // --- Receipts, perks and gift passes ---------------------------------------
+
+  @Get('receipts')
+  receipts(@CurrentUser() user: AuthUser) {
+    return this.payments.receipts(user.id);
+  }
+
+  @Get('receipts/:id/pdf')
+  async receiptPdf(@Param('id') id: string, @CurrentUser() user: AuthUser, @Res() res: Response) {
+    const { bytes, fileName } = await this.payments.receiptPdf(user.id, id);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${fileName}"`);
+    res.setHeader('Cache-Control', 'private, max-age=300');
+    res.end(bytes);
+  }
+
+  @Get('perks')
+  perks(@CurrentUser() user: AuthUser) {
+    return this.payments.perks(user.id);
+  }
+
+  @Post('redeem')
+  redeem(@CurrentUser() user: AuthUser, @Body() dto: RedeemDto) {
+    return this.payments.redeem(user.id, dto.code);
   }
 
   // --- Tikur Pay: Ethiopian bank & wallet transfers, verified automatically --

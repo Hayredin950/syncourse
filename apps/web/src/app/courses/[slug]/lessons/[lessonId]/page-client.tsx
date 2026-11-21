@@ -29,12 +29,23 @@ export default function LessonPage() {
   const { toast, setToast } = useToast();
   const [videoError, setVideoError] = useState(false);
   const [sending, setSending] = useState<string | null>(null);
+  /** Lesson completion is free; the certificate later is the Premium part. */
+  const [progress, setProgress] = useState<{
+    total: number;
+    completed: number;
+    pct: number;
+    lessons: { id: string; completed: boolean }[];
+  } | null>(null);
+  const [marking, setMarking] = useState(false);
 
   useEffect(() => {
     get<LessonDetail>(`/lessons/${lessonId}`)
       .then(setLesson)
       .catch(() => setGone(true));
-  }, [lessonId]);
+    get<typeof progress>(`/courses/${slug}/progress`)
+      .then(setProgress)
+      .catch(() => undefined);
+  }, [lessonId, slug]);
 
   const loadVideo = async () => {
     if (!token) {
@@ -126,6 +137,29 @@ export default function LessonPage() {
     }
   };
 
+  const toggleComplete = async () => {
+    if (!token) {
+      router.push("/auth?next=" + encodeURIComponent(`/courses/${slug}/lessons/${lessonId}`));
+      return;
+    }
+    const done = progress?.lessons.find((l) => l.id === lessonId)?.completed ?? false;
+    setMarking(true);
+    try {
+      const r = await post<{
+        total: number;
+        completed: number;
+        pct: number;
+        lessons: { id: string; completed: boolean }[];
+      }>(`/lessons/${lessonId}/progress`, { completed: !done });
+      setProgress(r);
+      setToast(done ? "Marked as not complete" : "Lesson complete — nice work");
+    } catch (e) {
+      setToast(e instanceof Error ? e.message : "Could not save your progress");
+    } finally {
+      setMarking(false);
+    }
+  };
+
   if (gone) {
     return (
       <main className="page" style={{ maxWidth: 860 }}>
@@ -147,6 +181,8 @@ export default function LessonPage() {
       </main>
     );
   }
+
+  const done = progress?.lessons.find((l) => l.id === lessonId)?.completed ?? false;
 
   return (
     <main className="page" style={{ maxWidth: 860 }}>
@@ -223,6 +259,47 @@ export default function LessonPage() {
               )}
             </div>
           )}
+
+          {/* Progress + the lesson-level AI shortcut. Both free: the paywall is
+              the certificate, not the tracking. */}
+          <div className="mt-4 rounded-lg border border-border bg-surface p-3">
+            <div className="flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-sm font-medium text-text">
+                  {done ? "Completed" : "Mark this lesson complete"}
+                </div>
+                <div className="text-[11px] text-dim">
+                  {progress
+                    ? `${progress.completed} of ${progress.total} lessons · ${progress.pct}%`
+                    : "Sign in to keep your place across devices"}
+                </div>
+              </div>
+              <button
+                onClick={toggleComplete}
+                disabled={marking}
+                className={`min-h-[40px] shrink-0 rounded-full px-4 py-1.5 text-xs font-bold ${
+                  done
+                    ? "border border-accent text-accent"
+                    : "bg-accent text-black hover:bg-accent-hover"
+                }`}
+              >
+                {marking ? "Saving…" : done ? "✓ Complete" : "Mark complete"}
+              </button>
+            </div>
+            {progress && progress.total > 0 && (
+              <div className="mt-2 h-1.5 w-full overflow-hidden rounded-full bg-surface-raised">
+                <div className="h-full bg-accent" style={{ width: `${progress.pct}%` }} />
+              </div>
+            )}
+            <Link
+              href={`/assistant?course=${encodeURIComponent(slug)}&q=${encodeURIComponent(
+                `Explain this lesson: ${lesson.title}`,
+              )}`}
+              className="mt-3 inline-block text-xs font-semibold text-accent"
+            >
+              ✨ Explain this lesson with the study assistant →
+            </Link>
+          </div>
 
           {/* lesson attachments — ZIPs, PDFs (the actual downloadable files) */}
           {lesson.attachments.length > 0 && (

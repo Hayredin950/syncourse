@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'screens/auth_screen.dart';
 import 'screens/browse_screen.dart';
+import 'screens/certificates_screen.dart';
 import 'screens/circles_screen.dart';
 import 'screens/course_detail_screen.dart';
 import 'screens/home_screen.dart';
@@ -9,6 +10,7 @@ import 'screens/lesson_screen.dart';
 import 'screens/list_detail_screen.dart';
 import 'screens/lists_screen.dart';
 import 'screens/my_learning_screen.dart';
+import 'screens/offline_screen.dart';
 import 'screens/premium_screen.dart';
 import 'screens/profile_screen.dart';
 import 'screens/search_screen.dart';
@@ -34,6 +36,8 @@ class SynCourseApp extends StatelessWidget {
         '/browse': (_) => const BrowseScreen(),
         '/search': (_) => const SearchScreen(),
         '/my-learning': (_) => const MyLearningScreen(),
+        '/offline': (_) => const OfflineScreen(),
+        '/certificates': (_) => const CertificatesScreen(),
         '/lists': (_) => const ListsScreen(),
         '/premium': (_) => const PremiumScreen(),
         '/circles': (_) => const CirclesScreen(),
@@ -60,7 +64,8 @@ class SynCourseApp extends StatelessWidget {
         }
         if (name.startsWith('/lists/')) {
           return MaterialPageRoute(
-            builder: (_) => ListDetailScreen(listId: name.substring('/lists/'.length)),
+            builder: (_) =>
+                ListDetailScreen(listId: name.substring('/lists/'.length)),
             settings: settings,
           );
         }
@@ -96,11 +101,23 @@ class _ShellState extends State<Shell> {
         selectedIndex: _index,
         onDestinationSelected: (i) => setState(() => _index = i),
         destinations: const [
-          NavigationDestination(icon: Icon(Icons.home_outlined), selectedIcon: Icon(Icons.home), label: 'Home'),
-          NavigationDestination(icon: Icon(Icons.grid_view_outlined), selectedIcon: Icon(Icons.grid_view), label: 'Browse'),
+          NavigationDestination(
+              icon: Icon(Icons.home_outlined),
+              selectedIcon: Icon(Icons.home),
+              label: 'Home'),
+          NavigationDestination(
+              icon: Icon(Icons.grid_view_outlined),
+              selectedIcon: Icon(Icons.grid_view),
+              label: 'Browse'),
           NavigationDestination(icon: Icon(Icons.search), label: 'Search'),
-          NavigationDestination(icon: Icon(Icons.school_outlined), selectedIcon: Icon(Icons.school), label: 'Learning'),
-          NavigationDestination(icon: Icon(Icons.person_outline), selectedIcon: Icon(Icons.person), label: 'Me'),
+          NavigationDestination(
+              icon: Icon(Icons.school_outlined),
+              selectedIcon: Icon(Icons.school),
+              label: 'Learning'),
+          NavigationDestination(
+              icon: Icon(Icons.person_outline),
+              selectedIcon: Icon(Icons.person),
+              label: 'Me'),
         ],
       ),
     );

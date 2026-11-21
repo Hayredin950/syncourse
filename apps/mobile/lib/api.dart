@@ -55,10 +55,12 @@ class Api {
     late http.Response res;
     switch (method) {
       case 'POST':
-        res = await http.post(uri, headers: headers, body: jsonEncode(body ?? {}));
+        res = await http.post(uri,
+            headers: headers, body: jsonEncode(body ?? {}));
         break;
       case 'PATCH':
-        res = await http.patch(uri, headers: headers, body: jsonEncode(body ?? {}));
+        res = await http.patch(uri,
+            headers: headers, body: jsonEncode(body ?? {}));
         break;
       case 'DELETE':
         res = await http.delete(uri, headers: headers);
@@ -82,11 +84,13 @@ class Api {
 
   // --- auth ---
   static Future<void> login(String email, String password) async {
-    final data = await post('/auth/login', {'email': email, 'password': password});
+    final data =
+        await post('/auth/login', {'email': email, 'password': password});
     await setToken(data['accessToken'] as String);
   }
 
-  static Future<void> register(String name, String email, String password) async {
+  static Future<void> register(
+      String name, String email, String password) async {
     final data = await post('/auth/register', {
       'name': name,
       'email': email,
@@ -168,7 +172,9 @@ class Api {
   // --- collections ---
   static Future<List<CourseCollection>> myLists() async {
     final d = await get('/me/lists');
-    return (d as List).map((e) => CourseCollection.fromJson(e as Map<String, dynamic>)).toList();
+    return (d as List)
+        .map((e) => CourseCollection.fromJson(e as Map<String, dynamic>))
+        .toList();
   }
 
   static Future<CourseCollection> createList(String name) async {
@@ -184,13 +190,57 @@ class Api {
   // --- payments ---
   static Future<List<Plan>> plans() async {
     final d = await get('/payments/plans');
-    return (d as List).map((e) => Plan.fromJson(e as Map<String, dynamic>)).toList();
+    return (d as List)
+        .map((e) => Plan.fromJson(e as Map<String, dynamic>))
+        .toList();
   }
 
   /// Ask the bot to send this lesson's file link to the linked Telegram chat.
   /// This is the real delivery path; the app does not keep a local media cache.
-  static Future<Map<String, dynamic>> downloadToTelegram(String lessonId) async {
+  static Future<Map<String, dynamic>> downloadToTelegram(
+      String lessonId) async {
     final d = await post('/lessons/$lessonId/download-to-telegram', {});
+    return d as Map<String, dynamic>;
+  }
+
+  /// Extend Premium with a gift pass. The server claims the use atomically.
+  static Future<Map<String, dynamic>> redeem(String code) async {
+    final d = await post('/payments/redeem', {'code': code});
+    return d as Map<String, dynamic>;
+  }
+
+  static Future<Map<String, dynamic>> perks() async {
+    final d = await get('/payments/perks');
+    return d as Map<String, dynamic>;
+  }
+
+  // --- progress & certificates ---
+
+  static Future<Map<String, dynamic>> courseProgress(String slug) async {
+    final d = await get('/courses/$slug/progress');
+    return d as Map<String, dynamic>;
+  }
+
+  static Future<Map<String, dynamic>> setLessonProgress(
+      String lessonId, bool completed) async {
+    final d =
+        await post('/lessons/$lessonId/progress', {'completed': completed});
+    return d as Map<String, dynamic>;
+  }
+
+  static Future<Map<String, dynamic>> issueCertificate(String slug) async {
+    final d = await post('/courses/$slug/certificate', {});
+    return d as Map<String, dynamic>;
+  }
+
+  static Future<List<Map<String, dynamic>>> myCertificates() async {
+    final d = await get('/certificates/me');
+    return (d as List).map((e) => Map<String, dynamic>.from(e as Map)).toList();
+  }
+
+  /// Signed URLs for one whole course. Premium-only on the server.
+  static Future<Map<String, dynamic>> offlineManifest(String slug) async {
+    final d = await get('/courses/$slug/offline-manifest');
     return d as Map<String, dynamic>;
   }
 

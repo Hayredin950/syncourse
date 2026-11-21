@@ -226,6 +226,23 @@ class AdminPaymentActionDto {
   status: 'approved' | 'rejected';
 }
 
+class AdminRedeemDto {
+  @IsString()
+  planName: string;
+
+  @IsOptional()
+  @IsInt()
+  maxUses?: number;
+
+  @IsOptional()
+  @IsString()
+  expiresAt?: string;
+
+  @IsOptional()
+  @IsString()
+  code?: string;
+}
+
 class AdminResourceMediaDto {
   @IsOptional()
   @IsString()
@@ -490,6 +507,23 @@ export class AdminController {
     @Body() dto: AdminPaymentActionDto,
   ) {
     return this.admin.reviewPayment(user.id, id, dto.status);
+  }
+
+  // --- Gift passes ---
+
+  @Get('redeem-codes')
+  listRedeemCodes(@CurrentUser() user: AuthUser) {
+    return this.admin.listRedeemCodes(user.id);
+  }
+
+  @Post('redeem-codes')
+  createRedeemCode(@CurrentUser() user: AuthUser, @Body() dto: AdminRedeemDto) {
+    return this.admin.createRedeemCode(user.id, dto);
+  }
+
+  @Delete('redeem-codes/:id')
+  deleteRedeemCode(@CurrentUser() user: AuthUser, @Param('id') id: string) {
+    return this.admin.deleteRedeemCode(user.id, id);
   }
 
   // --- Lecturers / Publishers / Categories management ---

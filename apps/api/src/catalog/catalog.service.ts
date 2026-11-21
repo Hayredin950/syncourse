@@ -4,6 +4,7 @@ import { PrismaService } from '../prisma/prisma.service';
 import { legalTitle } from '../legal/legal.constants';
 import { withPartNumbers } from '../telegram/part-numbering';
 import { combineRating } from '../reviews/rating';
+import { earlyAccessUntil, isEarlyAccess } from '../common/early-access';
 
 type CourseWith = Prisma.CourseGetPayload<{
   include: {
@@ -591,6 +592,51 @@ export class CatalogService {
     if (!p) throw new NotFoundException('Learning path not found');
     const ordered = [...p.courses].sort((a, b) => a.order - b.order);
     const saved = await this.savedSet(userId, ordered.map((pc) => pc.course));
+
+    // One query for the whole path, then count per course. A path is small, and
+    // the point is a real "continue where you stopped" button, not a guess.
+    const allLessonIds = ordered.flatMap((pc) =>
+      pc.course.sections.flatMap((s) => s.lessons.map((l) => l.id)),
+    );
+    const completedSet = new Set<string>();
+    if (userId && allLessonIds.length > 0) {
+      const rows = await this.prisma.lessonProgress.findMany({
+        where: { userId, lessonId: { in: allLessonIds } },
+        select: { lessonId: true },
+      });
+      for (const row of rows) completedSet.add(row.lessonId);
+    }
+
+    let next: { courseSlug: string; courseTitle: string; lessonId: string; lessonTitle: string } | null = null;
+    const courses = ordered.map((pc) => {
+      const lessonIds = pc.course.sections.flatMap((s) => s.lessons.map((l) => l.id));
+      const completed = lessonIds.filter((id) => completedSet.has(id)).length;
+      const pct = lessonIds.length === 0 ? 0 : Math.round((completed / lessonIds.length) * 100);
+      if (!next) {
+        for (const section of pc.course.sections) {
+          const lesson = section.lessons.find((l) => !completedSet.has(l.id));
+          if (lesson) {
+            next = {
+              courseSlug: pc.course.slug,
+              courseTitle: pc.course.title,
+              lessonId: lesson.id,
+              lessonTitle: lesson.title,
+            };
+            break;
+          }
+        }
+      }
+      return {
+        ...this.summary(pc.course, saved),
+        totalLessons: lessonIds.length,
+        completedLessons: completed,
+        pct,
+      };
+    });
+
+    const totalLessons = courses.reduce((s, c) => s + c.totalLessons, 0);
+    const completedLessons = courses.reduce((s, c) => s + c.completedLessons, 0);
+
     return {
       id: p.id,
       title: p.title,
@@ -601,7 +647,13 @@ export class CatalogService {
         ? +(ordered.reduce((s, pc) => s + pc.course.ratingAvg, 0) / ordered.length).toFixed(1)
         : 0,
       totalVotes: ordered.reduce((s, pc) => s + pc.course.ratingCount, 0),
-      courses: ordered.map((pc) => this.summary(pc.course, saved)),
+      courses,
+      progress: {
+        totalLessons,
+        completedLessons,
+        pct: totalLessons === 0 ? 0 : Math.round((completedLessons / totalLessons) * 100),
+        next,
+      },
     };
   }
 
@@ -695,6 +747,10 @@ export class CatalogService {
       lecturerNames: lecturersOf(c).map((l) => l.name),
       organizationName: c.organization?.name ?? null,
       publishedAt: c.publishedAt,
+      /** Set only while a new drop is still Premium-first. */
+      earlyAccessUntil: isEarlyAccess(c.publishedAt)
+        ? earlyAccessUntil(c.publishedAt)?.toISOString() ?? null
+        : null,
       // Whether the requesting reader already saved it. False for signed-out
       // callers, which is the correct starting state for the save button.
       saved: saved?.has(c.id) ?? false,

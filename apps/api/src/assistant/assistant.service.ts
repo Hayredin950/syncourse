@@ -128,11 +128,26 @@ export class AssistantService {
     return raw !== 'false' && raw !== '0' && raw !== 'off' && raw !== 'no';
   }
 
-  private dailyCap(userId?: string): number {
-    const raw = userId ? process.env.ASSISTANT_DAILY_USER : process.env.ASSISTANT_DAILY_ANON;
-    const fallback = userId ? 150 : 25;
+  private dailyCap(tier: 'anon' | 'member' | 'premium' = 'anon'): number {
+    const raw =
+      tier === 'premium'
+        ? process.env.ASSISTANT_DAILY_PREMIUM
+        : tier === 'member'
+          ? process.env.ASSISTANT_DAILY_USER
+          : process.env.ASSISTANT_DAILY_ANON;
+    const fallback = tier === 'premium' ? 1000 : tier === 'member' ? 150 : 25;
     const n = Number(raw);
     return Number.isFinite(n) && n > 0 ? Math.trunc(n) : fallback;
+  }
+
+  /** Active Premium is read from the plan, never trusted from the client. */
+  private async isPremium(userId?: string): Promise<boolean> {
+    if (!userId) return false;
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { planType: true, planExpiresAt: true },
+    });
+    return !!user && user.planType === 'premium' && (!user.planExpiresAt || user.planExpiresAt > new Date());
   }
 
   status() {
@@ -144,7 +159,35 @@ export class AssistantService {
       model: provider?.model ?? null,
       requested,
       // The UI shows the remaining budget only when it is close to the end.
-      dailyCap: { anonymous: this.dailyCap(), member: this.dailyCap('member') },
+      dailyCap: {
+        anonymous: this.dailyCap('anon'),
+        member: this.dailyCap('member'),
+        premium: this.dailyCap('premium'),
+      },
+    };
+  }
+
+  /** The signed-in view: which cap applies and how much of it is left. */
+  async statusFor(userId?: string) {
+    const base = this.status();
+    const premium = await this.isPremium(userId);
+    const cap = userId ? this.dailyCap(premium ? 'premium' : 'member') : base.dailyCap.anonymous;
+    let used = 0;
+    if (userId) {
+      const day = new Date().toISOString().slice(0, 10);
+      const row = await this.prisma.assistantUsage
+        .findUnique({ where: { day_subject: { day, subject: `u:${userId}` } }, select: { count: true } })
+        .catch(() => null);
+      used = row?.count ?? 0;
+    }
+    return {
+      ...base,
+      viewer: {
+        premium,
+        cap,
+        used,
+        remaining: Math.max(0, cap - used),
+      },
     };
   }
 
@@ -187,7 +230,11 @@ export class AssistantService {
       return this.answerSystemQuestion(clean, opts);
     }
 
-    await this.spendBudget(this.subjectFor(opts.userId, opts.ip));
+    const premium = await this.isPremium(opts.userId);
+    await this.spendBudget(
+      this.subjectFor(opts.userId, opts.ip),
+      opts.userId ? (premium ? 'premium' : 'member') : 'anon',
+    );
 
     const history = cleanHistory(opts.history);
     const retrieval = await this.retrieval.retrieve(retrievalQuery(clean, history), {
@@ -321,7 +368,12 @@ export class AssistantService {
     const selection = resolveLlm();
     if (selection.provider) {
       // A weak system question has already paid for its retrieval attempt.
-      if (chargeBudget) await this.spendBudget(this.subjectFor(opts.userId, opts.ip));
+      if (chargeBudget) {
+        await this.spendBudget(
+          this.subjectFor(opts.userId, opts.ip),
+          opts.userId ? (premiumActive ? 'premium' : 'member') : 'anon',
+        );
+      }
       const result = await completeWithFallback(
         selection,
         [
@@ -545,10 +597,9 @@ export class AssistantService {
    * still counts, which is the point: a client stuck in a retry loop must not
    * get 25 free failures per warm instance.
    */
-  private async spendBudget(subject: string) {
+  private async spendBudget(subject: string, tier: 'anon' | 'member' | 'premium') {
     const day = new Date().toISOString().slice(0, 10);
-    const isMember = subject.startsWith('u:');
-    const cap = this.dailyCap(isMember ? 'member' : undefined);
+    const cap = this.dailyCap(tier);
 
     try {
       const row = await this.prisma.assistantUsage.upsert({

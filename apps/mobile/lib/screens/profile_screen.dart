@@ -36,7 +36,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.account_circle, size: 64, color: AppColors.muted),
+                  const Icon(Icons.account_circle,
+                      size: 64, color: AppColors.muted),
                   const SizedBox(height: 12),
                   const Text('Sign in to sync your learning across devices'),
                   const SizedBox(height: 16),
@@ -53,15 +54,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
             children: [
               Row(
                 children: [
-                  CircleAvatar(radius: 32, child: Text(profile.name.characters.first)),
+                  CircleAvatar(
+                      radius: 32, child: Text(profile.name.characters.first)),
                   const SizedBox(width: 14),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(profile.name, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w800)),
-                        Text('@${profile.username} · member since ${profile.memberSince.year}',
-                            style: const TextStyle(color: AppColors.muted, fontSize: 12)),
+                        Text(profile.name,
+                            style: const TextStyle(
+                                fontSize: 20, fontWeight: FontWeight.w800)),
+                        Text(
+                            '@${profile.username} · member since ${profile.memberSince.year}',
+                            style: const TextStyle(
+                                color: AppColors.muted, fontSize: 12)),
                       ],
                     ),
                   ),
@@ -75,19 +81,57 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 mainAxisSpacing: 10,
                 crossAxisSpacing: 10,
                 children: [
-                  _StatTile(icon: Icons.download_outlined, value: '${profile.stats['downloaded'] ?? 0}', label: 'Downloaded'),
-                  _StatTile(icon: Icons.bookmark, value: '${profile.stats['saved'] ?? 0}', label: 'Saved'),
-                  _StatTile(icon: Icons.favorite, value: '${profile.stats['liked'] ?? 0}', label: 'Liked'),
-                  _StatTile(icon: Icons.list, value: '${profile.stats['lists'] ?? 0}', label: 'Lists'),
-                  _StatTile(icon: Icons.rate_review, value: '${profile.stats['reviews'] ?? 0}', label: 'Reviews'),
-                  _StatTile(icon: Icons.workspace_premium, value: profile.isPremium ? 'Pro' : 'Free', label: 'Plan'),
+                  _StatTile(
+                      icon: Icons.download_outlined,
+                      value: '${profile.stats['downloaded'] ?? 0}',
+                      label: 'Downloaded'),
+                  _StatTile(
+                      icon: Icons.bookmark,
+                      value: '${profile.stats['saved'] ?? 0}',
+                      label: 'Saved'),
+                  _StatTile(
+                      icon: Icons.favorite,
+                      value: '${profile.stats['liked'] ?? 0}',
+                      label: 'Liked'),
+                  _StatTile(
+                      icon: Icons.list,
+                      value: '${profile.stats['lists'] ?? 0}',
+                      label: 'Lists'),
+                  _StatTile(
+                      icon: Icons.rate_review,
+                      value: '${profile.stats['reviews'] ?? 0}',
+                      label: 'Reviews'),
+                  _StatTile(
+                      icon: Icons.workspace_premium,
+                      value: profile.isPremium ? 'Pro' : 'Free',
+                      label: 'Plan'),
                 ],
               ),
               const SizedBox(height: 20),
-              _MenuTile(icon: Icons.list_alt, title: 'My lists', onTap: () => Navigator.pushNamed(context, '/lists')),
-              _MenuTile(icon: Icons.workspace_premium, title: 'Subscription', onTap: () => Navigator.pushNamed(context, '/premium')),
-              _MenuTile(icon: Icons.groups, title: 'Circles', onTap: () => Navigator.pushNamed(context, '/circles')),
-              _MenuTile(icon: Icons.settings, title: 'Settings', onTap: () => _showSettings()),
+              _MenuTile(
+                  icon: Icons.list_alt,
+                  title: 'My lists',
+                  onTap: () => Navigator.pushNamed(context, '/lists')),
+              _MenuTile(
+                  icon: Icons.download_for_offline_outlined,
+                  title: 'Offline library',
+                  onTap: () => Navigator.pushNamed(context, '/offline')),
+              _MenuTile(
+                  icon: Icons.workspace_premium_outlined,
+                  title: 'Certificates',
+                  onTap: () => Navigator.pushNamed(context, '/certificates')),
+              _MenuTile(
+                  icon: Icons.workspace_premium,
+                  title: 'Subscription',
+                  onTap: () => Navigator.pushNamed(context, '/premium')),
+              _MenuTile(
+                  icon: Icons.groups,
+                  title: 'Circles',
+                  onTap: () => Navigator.pushNamed(context, '/circles')),
+              _MenuTile(
+                  icon: Icons.settings,
+                  title: 'Settings',
+                  onTap: () => _showSettings()),
               _MenuTile(
                 icon: Icons.logout,
                 title: 'Sign out',
@@ -114,11 +158,21 @@ class _ProfileScreenState extends State<ProfileScreen> {
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Settings', style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
+              Text('Settings',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.w700)),
               SizedBox(height: 8),
-              ListTile(contentPadding: EdgeInsets.zero, leading: Icon(Icons.link), title: Text('Link Telegram for bot downloads')),
-              ListTile(contentPadding: EdgeInsets.zero, leading: Icon(Icons.help_outline), title: Text('Support & FAQ')),
-              ListTile(contentPadding: EdgeInsets.zero, leading: Icon(Icons.description_outlined), title: Text('Terms, Privacy & Refunds')),
+              ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.link),
+                  title: Text('Link Telegram for bot downloads')),
+              ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.help_outline),
+                  title: Text('Support & FAQ')),
+              ListTile(
+                  contentPadding: EdgeInsets.zero,
+                  leading: Icon(Icons.description_outlined),
+                  title: Text('Terms, Privacy & Refunds')),
             ],
           ),
         ),
@@ -128,7 +182,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
 }
 
 class _StatTile extends StatelessWidget {
-  const _StatTile({required this.icon, required this.value, required this.label});
+  const _StatTile(
+      {required this.icon, required this.value, required this.label});
 
   final IconData icon;
   final String value;
@@ -146,8 +201,11 @@ class _StatTile extends StatelessWidget {
         children: [
           Icon(icon, size: 20, color: AppColors.accent),
           const SizedBox(height: 6),
-          Text(value, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
-          Text(label, style: const TextStyle(fontSize: 11, color: AppColors.muted)),
+          Text(value,
+              style:
+                  const TextStyle(fontSize: 18, fontWeight: FontWeight.w800)),
+          Text(label,
+              style: const TextStyle(fontSize: 11, color: AppColors.muted)),
         ],
       ),
     );
@@ -155,7 +213,8 @@ class _StatTile extends StatelessWidget {
 }
 
 class _MenuTile extends StatelessWidget {
-  const _MenuTile({required this.icon, required this.title, required this.onTap});
+  const _MenuTile(
+      {required this.icon, required this.title, required this.onTap});
 
   final IconData icon;
   final String title;

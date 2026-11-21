@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   ArrowRight,
+  Award,
   BarChart3,
   BookOpen,
   Bookmark,
@@ -13,6 +14,8 @@ import {
   ChevronRight,
   CreditCard,
   Download,
+  FileText,
+  Gift,
   Heart,
   Layers,
   Library,
@@ -23,11 +26,12 @@ import {
   Save,
   Settings,
   Share2,
+  ShieldCheck,
   Smartphone,
   Wrench,
   Zap,
 } from "lucide-react";
-import { get, patch, post } from "@/lib/api";
+import { apiUrl, get, getToken, patch, post } from "@/lib/api";
 import type { UserProfile, UserStats } from "@/lib/types";
 import { useAuth } from "@/lib/auth";
 import { formatDate } from "@/lib/format";
@@ -39,6 +43,37 @@ import { LoadError } from "@/components/LoadError";
 import { Toast } from "@/components/Toast";
 
 type Tab = "library" | "stats" | "subscription" | "settings";
+
+interface CertificateRow {
+  serial: string;
+  issuedAt: string;
+  courseTitle: string;
+  courseSlug: string;
+  thumbnailUrl: string | null;
+  verifyUrl: string;
+}
+
+interface ReceiptRow {
+  id: string;
+  planName: string;
+  amount: number;
+  currency: string;
+  method: string;
+  periodStart: string | null;
+  periodEnd: string | null;
+  reference: string | null;
+  createdAt: string;
+  number: string;
+}
+
+interface Perks {
+  premiumActive: boolean;
+  planExpiresAt: string | null;
+  telegramRoomUrl: string | null;
+  supportEmail: string;
+  aiQuota: { free: number; premium: number };
+  perks: { id: string; label: string; detail: string }[];
+}
 
 /* ---------------- small chart/panel helpers ---------------- */
 
@@ -143,6 +178,13 @@ export default function MePage() {
   const [pwCurrent, setPwCurrent] = useState("");
   const [pwNew, setPwNew] = useState("");
 
+  // certificates, receipts and Premium perks (loaded with the tab)
+  const [certs, setCerts] = useState<CertificateRow[] | null>(null);
+  const [receipts, setReceipts] = useState<ReceiptRow[] | null>(null);
+  const [perks, setPerks] = useState<Perks | null>(null);
+  const [gift, setGift] = useState("");
+  const [redeeming, setRedeeming] = useState(false);
+
   useEffect(() => {
     if (!loading && !token) router.push("/auth?next=/me");
   }, [loading, token, router]);
@@ -157,6 +199,13 @@ export default function MePage() {
   useEffect(() => {
     if (token && tab === "stats" && !stats && !statsFailed) loadStats();
   }, [token, tab, stats, statsFailed, loadStats]);
+
+  useEffect(() => {
+    if (!token || tab !== "subscription") return;
+    get<CertificateRow[]>("/certificates/me").then(setCerts).catch(() => setCerts([]));
+    get<ReceiptRow[]>("/payments/receipts").then(setReceipts).catch(() => setReceipts([]));
+    get<Perks>("/payments/perks").then(setPerks).catch(() => undefined);
+  }, [token, tab]);
 
   if (loading) {
     return (
@@ -290,6 +339,46 @@ export default function MePage() {
     }
   };
 
+  const downloadReceipt = async (r: ReceiptRow) => {
+    try {
+      const token = getToken();
+      const res = await fetch(`${apiUrl()}/api/payments/receipts/${r.id}/pdf`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error("Could not build the receipt");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `${r.number}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setToast(e instanceof Error ? e.message : "Could not download the receipt");
+    }
+  };
+
+  const redeemCode = async () => {
+    const code = gift.trim();
+    if (!code) return;
+    setRedeeming(true);
+    try {
+      const r = await post<{ redeemed: boolean; already: boolean; planExpiresAt: string }>("/payments/redeem", { code });
+      setGift("");
+      setToast(r.already ? "That code is already on this account" : "Gift code applied — Premium extended");
+      await refresh();
+      if (token) {
+        get<Perks>("/payments/perks").then(setPerks).catch(() => undefined);
+      }
+    } catch (e) {
+      setToast(e instanceof Error ? e.message : "That code could not be redeemed");
+    } finally {
+      setRedeeming(false);
+    }
+  };
+
   const statsGrid: [string, number][] = [
     ["DOWNLOADED", user.stats.downloaded],
     ["SAVED", user.stats.saved],
@@ -411,6 +500,14 @@ export default function MePage() {
                 <span className="lesson__main">
                   <span className="lesson__title">My Library</span>
                   <span className="lesson__sub">Everything you&apos;ve saved and downloaded</span>
+                </span>
+                <ChevronRight size={16} className="row-chevron" />
+              </Link>
+              <Link href="/certificates" className="lesson">
+                <span className="icon-badge icon-badge--purple"><Award size={15} /></span>
+                <span className="lesson__main">
+                  <span className="lesson__title">Certificates</span>
+                  <span className="lesson__sub">View, download or verify a certificate</span>
                 </span>
                 <ChevronRight size={16} className="row-chevron" />
               </Link>
@@ -658,37 +755,132 @@ export default function MePage() {
             </div>
           )}
 
-          {/* 3-feature comparison */}
+          {/* what Premium actually unlocks, read from the server */}
           <div className="rail">
             <div className="section-head"><h2>What Premium unlocks</h2></div>
             <div className="activity-row">
-              <div className="activity-card">
-                <span className="activity-icon"><Play size={16} /></span>
-                <span>
-                  <strong>Premium courses</strong>
-                  <span className="muted">Lessons, notes and attachments</span>
-                </span>
-              </div>
-              <div className="activity-card">
-                <span className="activity-icon"><Zap size={16} /></span>
-                <span>
-                  <strong>Premium resources</strong>
-                  <span className="muted">Full guides and files</span>
-                </span>
-              </div>
-              <div className="activity-card">
-                <span className="activity-icon"><Download size={16} /></span>
-                <span>
-                  <strong>Files &amp; Telegram</strong>
-                  <span className="muted">Downloads sent to your chat</span>
-                </span>
-              </div>
+              {(perks?.perks ?? [
+                { id: "offline", label: "Offline library", detail: "Download whole courses in the app." },
+                { id: "certificates", label: "Certificates", detail: "A numbered certificate per finished course." },
+                { id: "ai", label: "Bigger AI quota", detail: "A much larger daily assistant allowance." },
+                { id: "early", label: "Early access", detail: "New drops reach you first." },
+              ]).map((p) => (
+                <div className="activity-card" key={p.id}>
+                  <span className="activity-icon"><Zap size={16} /></span>
+                  <span>
+                    <strong>{p.label}</strong>
+                    <span className="muted">{p.detail}</span>
+                  </span>
+                </div>
+              ))}
             </div>
+            {perks?.telegramRoomUrl && (
+              <a href={perks.telegramRoomUrl} target="_blank" rel="noreferrer" className="btn" style={{ width: "100%", marginTop: 12 }}>
+                <MessageCircle size={13} style={{ display: "inline", verticalAlign: "middle" }} /> Open the Premium members&apos; room
+              </a>
+            )}
+            <p className="muted" style={{ fontSize: 11, marginTop: 10 }}>
+              Priority support: <a href={`mailto:${perks?.supportEmail ?? "support@syncourse.com"}`} style={{ textDecoration: "underline" }}>{perks?.supportEmail ?? "support@syncourse.com"}</a>
+              {" "}· assistant allowance: {perks?.aiQuota.premium ?? 1000} questions/day on Premium.
+            </p>
             {!isPremium && (
               <Link href="/premium" className="btn primary" style={{ width: "100%", marginTop: 14 }}>
                 Go Premium <ArrowRight size={13} />
               </Link>
             )}
+          </div>
+
+          {/* certificates */}
+          <div className="rail">
+            <div className="section-head">
+              <h2><Award size={16} style={{ display: "inline", verticalAlign: "middle" }} /> Certificates</h2>
+              <Link href="/certificates" className="muted" style={{ fontSize: 11, textDecoration: "underline" }}>
+                Verify a serial
+              </Link>
+            </div>
+            {certs === null ? (
+              <div className="dark-panel dark-panel--pad muted" style={{ fontSize: 12 }}>Loading your certificates…</div>
+            ) : certs.length === 0 ? (
+              <div className="dark-panel dark-panel--pad muted" style={{ fontSize: 12 }}>
+                No certificates yet. Open a course, mark every lesson complete, then issue the
+                certificate from the course page.
+              </div>
+            ) : (
+              <div className="dark-panel dark-panel--rows">
+                {certs.map((c) => (
+                  <div className="lesson" key={c.serial}>
+                    <span className="icon-badge icon-badge--amber"><Award size={15} /></span>
+                    <span className="lesson__main">
+                      <span className="lesson__title">{c.courseTitle}</span>
+                      <span className="lesson__sub mono">{c.serial}</span>
+                    </span>
+                    <Link href={`/certificates/${c.serial}`} className="btn" style={{ fontSize: 11 }}>
+                      View
+                    </Link>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* receipts */}
+          <div className="rail">
+            <div className="section-head"><h2><FileText size={16} style={{ display: "inline", verticalAlign: "middle" }} /> Payment receipts</h2></div>
+            {receipts === null ? (
+              <div className="dark-panel dark-panel--pad muted" style={{ fontSize: 12 }}>Loading your receipts…</div>
+            ) : receipts.length === 0 ? (
+              <div className="dark-panel dark-panel--pad muted" style={{ fontSize: 12 }}>
+                Receipts appear here after a payment is approved by the bank.
+              </div>
+            ) : (
+              <div className="dark-panel dark-panel--rows">
+                {receipts.map((r) => (
+                  <div className="lesson" key={r.id}>
+                    <span className="icon-badge icon-badge--amber"><FileText size={15} /></span>
+                    <span className="lesson__main">
+                      <span className="lesson__title">{r.number} · {r.planName}</span>
+                      <span className="lesson__sub">
+                        {r.amount.toLocaleString()} {r.currency} · {formatDate(r.createdAt)}
+                      </span>
+                    </span>
+                    <button className="btn" style={{ fontSize: 11 }} onClick={() => void downloadReceipt(r)}>
+                      <Download size={12} style={{ display: "inline", verticalAlign: "middle" }} /> PDF
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* gift code */}
+          <div className="rail">
+            <div className="section-head"><h2><Gift size={16} style={{ display: "inline", verticalAlign: "middle" }} /> Gift code</h2></div>
+            <div className="dark-panel dark-panel--pad">
+              <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>
+                Got a pass from a friend or a promotion? Redeeming it extends Premium on this account.
+              </p>
+              <div style={{ display: "flex", gap: 8 }}>
+                <input
+                  className="input"
+                  placeholder="SYN-XXXXXXXX"
+                  value={gift}
+                  onChange={(e) => setGift(e.target.value.toUpperCase())}
+                  style={{ flex: 1 }}
+                />
+                <button className="btn primary" onClick={() => void redeemCode()} disabled={redeeming || gift.trim().length < 3}>
+                  {redeeming ? "Checking…" : "Redeem"}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div className="rail">
+            <div className="section-head"><h2>Certificate and receipt details</h2></div>
+            <div className="dark-panel dark-panel--pad muted" style={{ fontSize: 11, lineHeight: 1.7 }}>
+              <ShieldCheck size={14} style={{ display: "inline", verticalAlign: "middle" }} /> Certificates record that you
+              marked every lesson complete. They are not exams or accreditation. Receipts are issued for
+              approved payments only and carry the bank reference.
+            </div>
           </div>
         </>
       )}

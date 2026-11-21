@@ -5,6 +5,7 @@ import { useToast } from "@/lib/useToast";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import {
+  ArrowRight,
   Bookmark,
   BookmarkCheck,
   ChevronDown,
@@ -19,7 +20,7 @@ import {
   Star,
   Trash2,
 } from "lucide-react";
-import { del, get, patch, post } from "@/lib/api";
+import { del, get, patch, post, apiUrl } from "@/lib/api";
 import type { CourseDetail, CourseSummary, ReviewRow, TelegramFile } from "@/lib/types";
 import { useAuth } from "@/lib/auth";
 import { StarPicker } from "@/components/StarRating";
@@ -66,6 +67,15 @@ function groupTelegramFiles(files: TelegramFile[]) {
   return groups;
 }
 
+interface CourseProgress {
+  total: number;
+  completed: number;
+  pct: number;
+  premiumActive: boolean;
+  certificate: { serial: string; issuedAt: string; verifyUrl: string; pdfUrl: string } | null;
+  lessons: { id: string; title: string; completed: boolean }[];
+}
+
 export default function CoursePage() {
   const { slug } = useParams<{ slug: string }>();
   return <CourseDetailView slug={slug ?? ""} />;
@@ -101,6 +111,9 @@ export function CourseDetailView({ slug }: { slug: string }) {
   const coverInputRef = useRef<HTMLInputElement>(null);
   const [downloadOpen, setDownloadOpen] = useState(false);
   const [listOpen, setListOpen] = useState(false);
+  /** Real lesson completion; certificates come from the same endpoint. */
+  const [progress, setProgress] = useState<CourseProgress | null>(null);
+  const [issuing, setIssuing] = useState(false);
   // Must be declared above every early return: a hook that only runs once the
   // course has loaded changes the hook count between renders.
   const fileModules = useMemo(() => groupTelegramFiles(course?.telegramFiles ?? []), [course]);
@@ -112,6 +125,40 @@ export function CourseDetailView({ slug }: { slug: string }) {
     () => (course?.sections ?? []).filter((s) => s.lessons.length > 0),
     [course],
   );
+
+  useEffect(() => {
+    get<CourseProgress>(`/courses/${slug}/progress`)
+      .then(setProgress)
+      .catch(() => undefined);
+  }, [slug]);
+
+  const issueCertificate = async () => {
+    setIssuing(true);
+    try {
+      const r = await post<{ serial: string; issuedAt: string; verifyUrl: string; pdfUrl: string }>(
+        `/courses/${slug}/certificate`,
+        {},
+      );
+      setProgress((p) =>
+        p
+          ? {
+              ...p,
+              certificate: {
+                serial: r.serial,
+                issuedAt: r.issuedAt,
+                verifyUrl: `/certificates/${r.serial}`,
+                pdfUrl: `${apiUrl()}/api/certificates/${r.serial}/pdf`,
+              },
+            }
+          : p,
+      );
+      setToast("Certificate issued");
+    } catch (e) {
+      setToast(e instanceof Error ? e.message : "Could not issue the certificate");
+    } finally {
+      setIssuing(false);
+    }
+  };
 
   useEffect(() => {
     get<CourseDetail>(`/courses/${slug}`)
@@ -562,6 +609,93 @@ export function CourseDetailView({ slug }: { slug: string }) {
                     <small className="muted">Publisher · {compact(course.organization.subscribers)} learners</small>
                   </span>
                 </Link>
+              </div>
+            </section>
+          )}
+
+          {/* Progress is tracked here, free. The certificate is the Premium
+              artefact, and it is only offered once every lesson is marked. */}
+          {progress && progress.total > 0 && (
+            <section className="rail">
+              <div className="section-head">
+                <h2>Your progress</h2>
+                <span className="muted mono" style={{ fontSize: 10 }}>
+                  {progress.completed}/{progress.total} lessons
+                </span>
+              </div>
+              <div className="dark-panel dark-panel--pad">
+                <div className="h-2 w-full overflow-hidden rounded-full bg-surface-raised">
+                  <div className="h-full bg-accent" style={{ width: `${progress.pct}%` }} />
+                </div>
+                <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
+                  <span className="muted" style={{ fontSize: 12 }}>
+                    {progress.pct}% complete
+                    {progress.certificate ? " · certificate earned" : ""}
+                  </span>
+                  {(() => {
+                    const next = progress.lessons.find((l) => !l.completed);
+                    return next ? (
+                      <Link
+                        href={`/courses/${course.slug}/lessons/${next.id}`}
+                        className="btn primary"
+                        style={{ fontSize: 12 }}
+                      >
+                        {progress.completed > 0 ? "Continue learning" : "Start the first lesson"} <ArrowRight size={13} style={{ display: "inline", verticalAlign: "middle" }} />
+                      </Link>
+                    ) : null;
+                  })()}
+                </div>
+
+                <div className="mt-4 border-t border-border pt-3">
+                  {progress.certificate ? (
+                    <div className="flex flex-wrap items-center gap-3">
+                      <span style={{ fontSize: 13 }}>
+                        <strong>Certificate of completion</strong>{" "}
+                        <span className="muted mono" style={{ fontSize: 10 }}>{progress.certificate.serial}</span>
+                      </span>
+                      <Link href={`/certificates/${progress.certificate.serial}`} className="btn" style={{ fontSize: 12 }}>
+                        View &amp; verify
+                      </Link>
+                      <a
+                        href={`${apiUrl()}/api/certificates/${progress.certificate.serial}/pdf`}
+                        className="btn"
+                        style={{ fontSize: 12 }}
+                      >
+                        Download PDF
+                      </a>
+                    </div>
+                  ) : progress.completed === progress.total ? (
+                    progress.premiumActive ? (
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <span style={{ fontSize: 13 }}>
+                          Every lesson is done. <strong>Issue your certificate.</strong>
+                        </span>
+                        <button
+                          className="btn primary"
+                          onClick={issueCertificate}
+                          disabled={issuing}
+                          style={{ fontSize: 12 }}
+                        >
+                          {issuing ? "Issuing…" : "Get my certificate"}
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <span style={{ fontSize: 13 }}>
+                          Every lesson is done. <strong>Certificates are a Premium feature.</strong>
+                        </span>
+                        <Link href="/premium" className="btn primary" style={{ fontSize: 12 }}>
+                          Unlock certificates
+                        </Link>
+                      </div>
+                    )
+                  ) : (
+                    <span className="muted" style={{ fontSize: 12 }}>
+                      Mark every lesson complete to earn a certificate. Tracking is free; issuing the
+                      certificate is part of Premium.
+                    </span>
+                  )}
+                </div>
               </div>
             </section>
           )}

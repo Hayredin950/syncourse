@@ -45,6 +45,11 @@ export class ContentController {
     return this.content.downloadToTelegram(id, user.id);
   }
 
+  @Get('courses/:slug/offline-manifest')
+  offlineManifest(@Param('slug') slug: string, @CurrentUser() user: AuthUser) {
+    return this.content.offlineManifest(slug, user.id);
+  }
+
   @Public()
   @Get('courses/:courseId/downloads/stats')
   downloadStats(@Param('courseId') courseId: string, @Query('slug') slug?: string) {

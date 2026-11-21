@@ -5,7 +5,7 @@ import { useToast } from "@/lib/useToast";
 import type React from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowRight, Check, MessageCircle, ShieldCheck, Zap } from "lucide-react";
+import { ArrowRight, Award, Check, Gift, MessageCircle, ShieldCheck, WifiOff, Zap } from "lucide-react";
 import { get, post } from "@/lib/api";
 import type { HomeData, Plan } from "@/lib/types";
 import { useAuth } from "@/lib/auth";
@@ -71,6 +71,8 @@ export default function PremiumPage() {
   /** The gateway's feature flag — false until TIKURPAY_API_KEY is set on the API. */
   const [tikur, setTikur] = useState<TikurConfig | null>(null);
   const { refresh } = useAuth();
+  const [gift, setGift] = useState("");
+  const [redeeming, setRedeeming] = useState(false);
 
   const loadPlans = useCallback(() => {
     setPlansFailed(false);
@@ -148,6 +150,26 @@ export default function PremiumPage() {
     }
   };
 
+  const redeemGift = async () => {
+    if (!token) {
+      router.push("/auth?next=/premium");
+      return;
+    }
+    const code = gift.trim();
+    if (code.length < 3) return;
+    setRedeeming(true);
+    try {
+      const r = await post<{ redeemed: boolean; already: boolean }>("/payments/redeem", { code });
+      setGift("");
+      setToast(r.already ? "That code is already on this account" : "Gift code applied — Premium extended");
+      await refresh();
+    } catch (e: any) {
+      setToast(e.message);
+    } finally {
+      setRedeeming(false);
+    }
+  };
+
   /* Someone who pays on the hosted page comes back to this tab still open. The
      webhook normally lands first, but a late or blocked callback must not leave
      them staring at "pending" forever: ask the gateway for the authoritative
@@ -219,9 +241,10 @@ export default function PremiumPage() {
           </p>
           <div className="premium-hero__features">
             {[
-              ["Premium courses", "Every lesson, note and attachment — not just the preview."],
-              ["Premium resources", "The full guide and every attached file."],
-              ["Telegram delivery", "Send course files straight to your chat."],
+              ["Offline library", "Download whole courses in the app and study without a signal."],
+              ["Certificates", "A numbered certificate for every course you finish."],
+              ["Early access", "New drops reach you seven days before everyone else."],
+              ["Bigger AI quota", "A much larger daily allowance in the study assistant."],
             ].map(([title, text]) => (
               <div key={title}>
                 <Zap size={15} className="rating" />
@@ -404,6 +427,62 @@ export default function PremiumPage() {
             )}
           </div>
         )}
+      </section>
+
+      {/* Honest list of what the pass does today — no "unlimited" claims. */}
+      <section className="rail" style={{ marginTop: 34 }}>
+        <div className="section-head"><h2>What your pass actually includes</h2></div>
+        <div className="activity-row">
+          <div className="activity-card">
+            <span className="activity-icon"><WifiOff size={16} /></span>
+            <span>
+              <strong>Offline library</strong>
+              <span className="muted">Whole courses downloaded in the mobile app; files stop working when the pass ends.</span>
+            </span>
+          </div>
+          <div className="activity-card">
+            <span className="activity-icon"><Award size={16} /></span>
+            <span>
+              <strong>Certificates</strong>
+              <span className="muted">Issue one per finished course, with a public verification page.</span>
+            </span>
+          </div>
+          <div className="activity-card">
+            <span className="activity-icon"><Zap size={16} /></span>
+            <span>
+              <strong>Early access &amp; AI</strong>
+              <span className="muted">New drops a week early, and a larger daily assistant allowance.</span>
+            </span>
+          </div>
+        </div>
+        <p className="muted" style={{ fontSize: 11, marginTop: 10, lineHeight: 1.7 }}>
+          Premium also removes every upgrade prompt and locked badge from your own view — no
+          interruptions once the pass is active. Learning, progress tracking and your library stay
+          free either way.
+        </p>
+      </section>
+
+      {/* Gift passes */}
+      <section className="rail" style={{ marginTop: 10 }}>
+        <div className="section-head"><h2>Have a gift code?</h2></div>
+        <div className="dark-panel dark-panel--pad">
+          <p className="muted" style={{ fontSize: 12, marginTop: 0 }}>
+            A code from a friend or a promotion extends Premium on this account. Codes are single-use
+            per account and expire on the date shown by whoever issued them.
+          </p>
+          <div style={{ display: "flex", gap: 8 }}>
+            <input
+              className="input"
+              placeholder="SYN-XXXXXXXX"
+              value={gift}
+              onChange={(e) => setGift(e.target.value.toUpperCase())}
+              style={{ flex: 1 }}
+            />
+            <button className="btn" onClick={() => void redeemGift()} disabled={redeeming || gift.trim().length < 3}>
+              <Gift size={13} style={{ display: "inline", verticalAlign: "middle" }} /> {redeeming ? "Checking…" : "Redeem"}
+            </button>
+          </div>
+        </div>
       </section>
 
       <p className="muted" style={{ fontSize: 11, marginTop: 25 }}>

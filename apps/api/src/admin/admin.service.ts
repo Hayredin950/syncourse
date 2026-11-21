@@ -930,6 +930,76 @@ export class AdminService {
     };
   }
 
+  // --- Gift passes ---
+
+  async listRedeemCodes(userId: string) {
+    await this.assertStaff(userId);
+    const rows = await this.prisma.redeemCode.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: 200,
+      include: {
+        redemptions: {
+          orderBy: { redeemedAt: 'desc' },
+          take: 10,
+          include: { user: { select: { name: true, username: true } } },
+        },
+      },
+    });
+    return rows.map((r) => ({
+      id: r.id,
+      code: r.code,
+      planName: r.planName,
+      maxUses: r.maxUses,
+      usedCount: r.usedCount,
+      expiresAt: r.expiresAt,
+      createdAt: r.createdAt,
+      redemptions: r.redemptions.map((x) => ({
+        userName: x.user.name,
+        username: x.user.username,
+        redeemedAt: x.redeemedAt,
+      })),
+    }));
+  }
+
+  async createRedeemCode(
+    userId: string,
+    input: { planName: string; maxUses?: number; expiresAt?: string | null; code?: string },
+  ) {
+    await this.assertStaff(userId);
+    if (!PLANS.some((p) => p.id === input.planName)) {
+      throw new BadRequestException('Pick a real plan (1m, 3m or 6m).');
+    }
+    const maxUses = Math.max(1, Math.min(1000, Math.trunc(input.maxUses ?? 1)));
+    const raw = (input.code ?? '').trim().toUpperCase().replace(/[^A-Z0-9-]/g, '');
+    const code =
+      raw ||
+      Array.from({ length: 10 }, () =>
+        'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'[Math.floor(Math.random() * 32)],
+      ).join('');
+
+    const exists = await this.prisma.redeemCode.findUnique({ where: { code } });
+    if (exists) throw new BadRequestException('That code already exists. Try another.');
+
+    const row = await this.prisma.redeemCode.create({
+      data: {
+        code,
+        planName: input.planName,
+        maxUses,
+        expiresAt: input.expiresAt ? new Date(input.expiresAt) : null,
+        createdBy: userId,
+      },
+    });
+    return { id: row.id, code: row.code, planName: row.planName, maxUses: row.maxUses, expiresAt: row.expiresAt };
+  }
+
+  async deleteRedeemCode(userId: string, id: string) {
+    await this.assertStaff(userId);
+    const row = await this.prisma.redeemCode.findUnique({ where: { id } });
+    if (!row) throw new NotFoundException('Code not found');
+    await this.prisma.redeemCode.delete({ where: { id } });
+    return { deleted: true, id };
+  }
+
   // --- Lecturers / Publishers / Categories management ---
 
   async listLecturers(userId: string) {
