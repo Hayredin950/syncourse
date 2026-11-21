@@ -4,6 +4,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../api.dart';
 import '../models.dart';
 import '../theme.dart';
+import '../widgets/ui.dart';
 
 /// Premium, with the real checkout attached.
 ///
@@ -117,108 +118,115 @@ class _PremiumScreenState extends State<PremiumScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Premium')),
-      body: ListView(
-        padding: const EdgeInsets.all(24),
-        children: [
-          const Text(
-            'Every course.\nEvery file.',
-            style: TextStyle(
-                fontSize: 28,
-                fontWeight: FontWeight.w800,
-                height: 1.15,
-                letterSpacing: -0.5),
-          ),
-          const SizedBox(height: 20),
-          const _Benefit(
-              icon: Icons.download_for_offline_outlined,
-              title: 'Offline library',
-              desc: 'App-hosted lessons saved on this phone'),
-          const _Benefit(
-              icon: Icons.workspace_premium_outlined,
-              title: 'Certificates',
-              desc: 'A numbered certificate for each finished course'),
-          const _Benefit(
-              icon: Icons.bolt,
-              title: 'Early access',
-              desc: 'New lesson drops reach you seven days first'),
-          const _Benefit(
-              icon: Icons.auto_awesome,
-              title: 'Bigger AI quota',
-              desc: 'A much larger daily assistant allowance'),
-          const SizedBox(height: 24),
-          if (_failed)
-            Column(
-              children: [
-                const Text(
-                  "We couldn't load the plans. Nothing was charged — try again.",
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                      fontSize: 13, color: AppColors.muted, height: 1.5),
-                ),
-                const SizedBox(height: 12),
-                OutlinedButton(onPressed: _load, child: const Text('Retry')),
-              ],
-            )
-          else if (_plans == null)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 28),
-              child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
-            )
-          else
-            for (final plan in _plans!)
-              _PlanCard(
-                plan: plan,
-                busy: _busy == plan.id,
-                onTap: _busy == null ? () => _start(plan) : null,
-              ),
-          const SizedBox(height: 12),
-          Container(
-            padding: const EdgeInsets.all(14),
-            decoration: BoxDecoration(
-                color: AppColors.surface,
-                borderRadius: BorderRadius.circular(14)),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text('Have a gift code?',
-                    style:
-                        TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
-                const SizedBox(height: 4),
-                const Text(
-                  'A code from a friend or a promotion extends Premium on this account.',
-                  style: TextStyle(
-                      fontSize: 12, color: AppColors.muted, height: 1.4),
-                ),
-                const SizedBox(height: 10),
-                Row(
-                  children: [
-                    Expanded(
-                      child: TextField(
-                        controller: _giftController,
-                        textCapitalization: TextCapitalization.characters,
-                        decoration: const InputDecoration(
-                            hintText: 'SYN-XXXXXXXX', isDense: true),
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    FilledButton(
-                      onPressed: _redeeming ? null : _redeem,
-                      child: Text(_redeeming ? 'Checking…' : 'Redeem'),
-                    ),
-                  ],
-                ),
-              ],
+      body: SafeArea(
+        bottom: false,
+        child: ListView(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 40),
+          children: [
+            SyncourseHeader(
+              title: 'Premium',
+              showBack: Navigator.canPop(context),
             ),
-          ),
-          const SizedBox(height: 12),
-          const Text(
-            'Pay with any Ethiopian bank or wallet through Tikur Pay. The transfer is '
-            'verified against the bank ledger and unlocks Premium automatically.',
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 12, color: AppColors.muted, height: 1.5),
-          ),
-        ],
+            const Text(
+              'Every course.\nEvery file.',
+              style: TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.w800,
+                  height: 1.15,
+                  letterSpacing: -0.5),
+            ),
+            const SizedBox(height: 20),
+            const _Benefit(
+                icon: Icons.download_for_offline_outlined,
+                title: 'Offline library',
+                desc: 'App-hosted lessons saved on this phone'),
+            const _Benefit(
+                icon: Icons.workspace_premium_outlined,
+                title: 'Certificates',
+                desc: 'A numbered certificate for each finished course'),
+            const _Benefit(
+                icon: Icons.bolt,
+                title: 'Early access',
+                desc: 'New lesson drops reach you seven days first'),
+            const _Benefit(
+                icon: Icons.auto_awesome,
+                title: 'Bigger AI quota',
+                desc: 'A much larger daily assistant allowance'),
+            const SizedBox(height: 24),
+            if (_failed)
+              Column(
+                children: [
+                  const Text(
+                    "We couldn't load the plans. Nothing was charged — try again.",
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                        fontSize: 13, color: AppColors.muted, height: 1.5),
+                  ),
+                  const SizedBox(height: 12),
+                  OutlinedButton(onPressed: _load, child: const Text('Retry')),
+                ],
+              )
+            else if (_plans == null)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 28),
+                child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+              )
+            else
+              for (final plan in _plans!)
+                _PlanCard(
+                  plan: plan,
+                  busy: _busy == plan.id,
+                  onTap: _busy == null ? () => _start(plan) : null,
+                ),
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                  color: AppColors.surface,
+                  borderRadius: BorderRadius.circular(14)),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('Have a gift code?',
+                      style:
+                          TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+                  const SizedBox(height: 4),
+                  const Text(
+                    'A code from a friend or a promotion extends Premium on this account.',
+                    style: TextStyle(
+                        fontSize: 12, color: AppColors.muted, height: 1.4),
+                  ),
+                  const SizedBox(height: 10),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: TextField(
+                          controller: _giftController,
+                          textCapitalization: TextCapitalization.characters,
+                          decoration: const InputDecoration(
+                              hintText: 'SYN-XXXXXXXX', isDense: true),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      FilledButton(
+                        onPressed: _redeeming ? null : _redeem,
+                        child: Text(_redeeming ? 'Checking…' : 'Redeem'),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'Pay with any Ethiopian bank or wallet through Tikur Pay. The transfer is '
+              'verified against the bank ledger and unlocks Premium automatically.',
+              textAlign: TextAlign.center,
+              style:
+                  TextStyle(fontSize: 12, color: AppColors.muted, height: 1.5),
+            ),
+          ],
+        ),
       ),
     );
   }

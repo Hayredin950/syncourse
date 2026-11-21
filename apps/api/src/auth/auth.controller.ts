@@ -144,6 +144,17 @@ export class AuthController {
     return fallback;
   }
 
+  /**
+   * Which external sign-in providers this deployment can actually start.
+   * Public on purpose: the app checks it before drawing a button, and it
+   * exposes nothing beyond whether Google is configured.
+   */
+  @Public()
+  @Get('providers')
+  providers() {
+    return this.auth.providers();
+  }
+
   /** Step 1 (web + app): bounce the browser to Google's consent screen. */
   @Public()
   @Get('google')

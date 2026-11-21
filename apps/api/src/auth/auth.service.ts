@@ -60,6 +60,13 @@ export class AuthService {
     return this.config.get<string>('GOOGLE_REDIRECT_URI', '');
   }
 
+  /** What the clients are allowed to promise. Both halves are needed. */
+  providers() {
+    return {
+      google: Boolean(this.googleClientId && this.googleClientSecret),
+    };
+  }
+
   /** Build the Google consent URL. `state` carries where the browser bounces back after auth. */
   googleAuthUrl(redirect: string) {
     const clientId = this.googleClientId;

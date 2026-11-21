@@ -17,13 +17,16 @@ import 'dart:io';
 ///   dart tool/prepare_platforms.dart
 void main() {
   _patchAndroidManifest();
+  _patchAndroidDeepLinks();
+  _patchIosDeepLinks();
   _patchWindowsTitle();
   _patchLinuxTitles();
   _patchMacosDisplayName();
 }
 
 void _patchAndroidManifest() {
-  const permission = '<uses-permission android:name="android.permission.INTERNET"/>';
+  const permission =
+      '<uses-permission android:name="android.permission.INTERNET"/>';
   final manifest = File('android/app/src/main/AndroidManifest.xml');
   if (!manifest.existsSync()) {
     stdout.writeln('No Android manifest here — skipping Android.');
@@ -48,9 +51,58 @@ void _patchAndroidManifest() {
 
   // `flutter create --project-name syncourse` writes android:label="syncourse".
   // The launcher shows that string verbatim, so brand it.
-  xml = xml.replaceAll('android:label="syncourse"', 'android:label="Syncourse"');
+  xml =
+      xml.replaceAll('android:label="syncourse"', 'android:label="Syncourse"');
 
   if (xml != before) manifest.writeAsStringSync(xml);
+}
+
+/// Google's OAuth callback bounces through the API to `syncourse://auth`, so
+/// both mobile platforms need that scheme registered or the sign-in silently
+/// ends in the browser.
+void _patchAndroidDeepLinks() {
+  final manifest = File('android/app/src/main/AndroidManifest.xml');
+  if (!manifest.existsSync()) return;
+  var xml = manifest.readAsStringSync();
+  if (xml.contains('android:scheme="syncourse"')) return;
+  if (!xml.contains('</activity>')) return;
+  const filter = '''
+        <intent-filter>
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data android:scheme="syncourse" android:host="auth" />
+        </intent-filter>
+''';
+  xml = xml.replaceFirst('</activity>', '$filter    </activity>');
+  manifest.writeAsStringSync(xml);
+  stdout.writeln('Registered the syncourse:// deep link on Android.');
+}
+
+void _patchIosDeepLinks() {
+  final plist = File('ios/Runner/Info.plist');
+  if (!plist.existsSync()) return;
+  final xml = plist.readAsStringSync();
+  if (xml.contains('CFBundleURLTypes')) return;
+  const entry = '''	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Editor</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>syncourse</string>
+			</array>
+		</dict>
+	</array>
+''';
+  final patched = xml.replaceFirst(
+    RegExp(r'</dict>\s*</plist>'),
+    '$entry</dict>\n</plist>',
+  );
+  if (patched == xml) return;
+  plist.writeAsStringSync(patched);
+  stdout.writeln('Registered the syncourse:// deep link on iOS.');
 }
 
 void _patchWindowsTitle() {
