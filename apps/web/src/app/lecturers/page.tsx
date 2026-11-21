@@ -5,6 +5,7 @@ import { get } from "@/lib/api";
 import { plural } from "@/lib/format";
 import type { LecturerRow } from "@/lib/types";
 import { MobileHeader } from "@/components/Nav";
+import BackButton from "@/components/BackButton";
 import { LecturerCard } from "@/components/EntityCard";
 import { SkEntities } from "@/components/Skeleton";
 import { LoadError } from "@/components/LoadError";
@@ -30,6 +31,9 @@ export default function LecturersPage() {
   return (
     <main className="page">
       <MobileHeader title="Lecturers" />
+      <div style={{ marginBottom: 14 }}>
+        <BackButton fallback="/" />
+      </div>
       <span className="eyebrow">Instructors</span>
       <h1 className="display page-title">
         Lecturers

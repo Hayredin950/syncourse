@@ -5,6 +5,7 @@ import { get } from "@/lib/api";
 import { plural } from "@/lib/format";
 import type { OrganizationRow } from "@/lib/types";
 import { MobileHeader } from "@/components/Nav";
+import BackButton from "@/components/BackButton";
 import { PublisherCard } from "@/components/EntityCard";
 import { SkEntities } from "@/components/Skeleton";
 import { LoadError } from "@/components/LoadError";
@@ -30,6 +31,9 @@ export default function OrganizationsPage() {
   return (
     <main className="page">
       <MobileHeader title="Channels & Schools" />
+      <div style={{ marginBottom: 14 }}>
+        <BackButton fallback="/" />
+      </div>
       <span className="eyebrow">Publishers</span>
       <h1 className="display page-title">
         Channels &amp; Schools
