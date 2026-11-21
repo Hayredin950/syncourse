@@ -133,7 +133,7 @@ class _PremiumScreenState extends State<PremiumScreen> {
           const _Benefit(
               icon: Icons.download_for_offline_outlined,
               title: 'Offline library',
-              desc: 'Whole courses saved on this phone'),
+              desc: 'App-hosted lessons saved on this phone'),
           const _Benefit(
               icon: Icons.workspace_premium_outlined,
               title: 'Certificates',
@@ -141,7 +141,7 @@ class _PremiumScreenState extends State<PremiumScreen> {
           const _Benefit(
               icon: Icons.bolt,
               title: 'Early access',
-              desc: 'New drops reach you seven days first'),
+              desc: 'New lesson drops reach you seven days first'),
           const _Benefit(
               icon: Icons.auto_awesome,
               title: 'Bigger AI quota',

@@ -26,9 +26,9 @@ export function RightRail() {
         )}
         <ul className="mt-3 space-y-1.5 text-xs text-muted">
           <li>🎓 Every premium course</li>
-          <li>📥 Offline library in the app</li>
+          <li>📥 Offline lessons in the app</li>
           <li>🏅 Certificates for finished courses</li>
-          <li>✨ Early drops + bigger AI quota</li>
+          <li>✨ Early lesson drops + bigger AI quota</li>
         </ul>
       </div>
 

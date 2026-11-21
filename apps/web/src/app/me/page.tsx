@@ -760,10 +760,10 @@ export default function MePage() {
             <div className="section-head"><h2>What Premium unlocks</h2></div>
             <div className="activity-row">
               {(perks?.perks ?? [
-                { id: "offline", label: "Offline library", detail: "Download whole courses in the app." },
+                { id: "offline", label: "Offline library", detail: "Save app-hosted lessons for offline study." },
                 { id: "certificates", label: "Certificates", detail: "A numbered certificate per finished course." },
                 { id: "ai", label: "Bigger AI quota", detail: "A much larger daily assistant allowance." },
-                { id: "early", label: "Early access", detail: "New drops reach you first." },
+                { id: "early", label: "Early access", detail: "New lesson drops reach you first." },
               ]).map((p) => (
                 <div className="activity-card" key={p.id}>
                   <span className="activity-icon"><Zap size={16} /></span>
@@ -878,7 +878,7 @@ export default function MePage() {
             <div className="section-head"><h2>Certificate and receipt details</h2></div>
             <div className="dark-panel dark-panel--pad muted" style={{ fontSize: 11, lineHeight: 1.7 }}>
               <ShieldCheck size={14} style={{ display: "inline", verticalAlign: "middle" }} /> Certificates record that you
-              marked every lesson complete. They are not exams or accreditation. Receipts are issued for
+              marked every lesson or module complete. They are not exams or accreditation. Receipts are issued for
               approved payments only and carry the bank reference.
             </div>
           </div>

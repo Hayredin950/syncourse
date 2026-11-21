@@ -886,10 +886,10 @@ export class PaymentsService {
         premium: Number(process.env.ASSISTANT_DAILY_PREMIUM) || 1000,
       },
       perks: [
-        { id: 'offline', label: 'Offline library', detail: 'Download whole courses to the app and study without a signal.' },
+        { id: 'offline', label: 'Offline library', detail: 'Save app-hosted lessons and study them without a signal.' },
         { id: 'certificates', label: 'Certificates', detail: 'A numbered certificate for every course you finish.' },
         { id: 'ai', label: 'Bigger AI quota', detail: 'A much larger daily study-assistant allowance.' },
-        { id: 'early', label: 'Early access', detail: 'New drops reach you seven days before everyone else.' },
+        { id: 'early', label: 'Early access', detail: 'New lesson drops reach you seven days before everyone else.' },
         { id: 'support', label: 'Priority support', detail: 'Your questions go to the front of the queue.' },
       ],
     };

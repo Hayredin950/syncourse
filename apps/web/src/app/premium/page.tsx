@@ -241,9 +241,9 @@ export default function PremiumPage() {
           </p>
           <div className="premium-hero__features">
             {[
-              ["Offline library", "Download whole courses in the app and study without a signal."],
+              ["Offline library", "Save app-hosted lessons and study without a signal."],
               ["Certificates", "A numbered certificate for every course you finish."],
-              ["Early access", "New drops reach you seven days before everyone else."],
+              ["Early access", "New lesson drops reach you seven days before everyone else."],
               ["Bigger AI quota", "A much larger daily allowance in the study assistant."],
             ].map(([title, text]) => (
               <div key={title}>
@@ -437,7 +437,7 @@ export default function PremiumPage() {
             <span className="activity-icon"><WifiOff size={16} /></span>
             <span>
               <strong>Offline library</strong>
-              <span className="muted">Whole courses downloaded in the mobile app; files stop working when the pass ends.</span>
+              <span className="muted">App-hosted lessons saved in the mobile app; files stop working when the pass ends.</span>
             </span>
           </div>
           <div className="activity-card">
@@ -451,7 +451,7 @@ export default function PremiumPage() {
             <span className="activity-icon"><Zap size={16} /></span>
             <span>
               <strong>Early access &amp; AI</strong>
-              <span className="muted">New drops a week early, and a larger daily assistant allowance.</span>
+              <span className="muted">New lesson drops a week early, and a larger daily assistant allowance.</span>
             </span>
           </div>
         </div>
