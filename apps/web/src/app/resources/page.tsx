@@ -7,6 +7,7 @@ import { LayoutGrid, Search, Sparkles, X } from "lucide-react";
 import { get } from "@/lib/api";
 import type { ResourceList, ResourceSummary } from "@/lib/types";
 import { MobileHeader } from "@/components/Nav";
+import AutoLoadMore from "@/components/AutoLoadMore";
 import { BrowseTabs } from "@/components/BrowseTabs";
 import { ResourceCard, ResourceFeature, typeMeta } from "@/components/ResourceCard";
 import { SkCards } from "@/components/Skeleton";
@@ -269,6 +270,11 @@ function ResourcesInner() {
             </div>
             {items.length < total && (
               <div className="res-more">
+                <AutoLoadMore
+                  onLoad={() => setOffset(items.length)}
+                  disabled={loading || error}
+                  resetKey={`${f.type}:${f.q}:${f.category}:${f.tag}:${f.sort}:${items.length}`}
+                />
                 <button className="btn" disabled={loading} onClick={() => setOffset(items.length)}>
                   {loading ? "Loading…" : `Show more (${total - items.length} left)`}
                 </button>

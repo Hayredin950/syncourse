@@ -7,6 +7,7 @@ import { Building2, FileText, Mic, Search, Square, X } from "lucide-react";
 import { get, post } from "@/lib/api";
 import type { CourseSummary, ResourceSummary } from "@/lib/types";
 import { CourseRow } from "@/components/CourseCard";
+import AutoLoadMore from "@/components/AutoLoadMore";
 import { MobileHeader } from "@/components/Nav";
 import { SkRows } from "@/components/Skeleton";
 import { LoadError } from "@/components/LoadError";
@@ -383,6 +384,13 @@ function SearchInner() {
                 </div>
                 {kind !== "all" && (
                   <div className="s-more">
+                    {entities < data.total && (
+                      <AutoLoadMore
+                        onLoad={loadMore}
+                        disabled={busy || moreBusy || moreFailed}
+                        resetKey={`${data.query ?? ""}:${kind}:${entities}`}
+                      />
+                    )}
                     {moreFailed && (
                       <span className="s-more__note">Couldn’t load the next page — check your connection.</span>
                     )}
@@ -423,6 +431,13 @@ function SearchInner() {
                 </div>
                 {kind === "resources" && (
                   <div className="s-more">
+                    {data.resources.length < data.total && (
+                      <AutoLoadMore
+                        onLoad={loadMore}
+                        disabled={busy || moreBusy || moreFailed}
+                        resetKey={`${data.query ?? ""}:${kind}:${data.resources.length}`}
+                      />
+                    )}
                     {moreFailed && (
                       <span className="s-more__note">Couldn’t load the next page — check your connection.</span>
                     )}
@@ -459,6 +474,13 @@ function SearchInner() {
                   ))}
                 </div>
                 <div className="s-more">
+                  {data.courses.length < data.total && (
+                    <AutoLoadMore
+                      onLoad={loadMore}
+                      disabled={busy || moreBusy || moreFailed}
+                      resetKey={`${data.query ?? ""}:${kind}:${data.courses.length}`}
+                    />
+                  )}
                   {moreFailed && (
                     <span className="s-more__note">Couldn’t load the next page — check your connection.</span>
                   )}

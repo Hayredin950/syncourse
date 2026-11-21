@@ -7,6 +7,7 @@ import { get } from "@/lib/api";
 import { plural } from "@/lib/format";
 import type { CourseSummary } from "@/lib/types";
 import { CourseCard, CourseRow } from "@/components/CourseCard";
+import AutoLoadMore from "@/components/AutoLoadMore";
 import Modal from "@/components/Modal";
 import { MobileHeader } from "@/components/Nav";
 import { BrowseTabs } from "@/components/BrowseTabs";
@@ -284,6 +285,11 @@ function BrowseInner() {
 
       {!loading && !failed && results.length > 0 && results.length < total && (
         <div className="s-more">
+          <AutoLoadMore
+            onLoad={loadMore}
+            disabled={pageBusy || moreFailed}
+            resetKey={`${filtersKey}:${results.length}`}
+          />
           <button type="button" className="btn" onClick={loadMore} disabled={pageBusy}>
             {pageBusy
               ? "Loading…"
