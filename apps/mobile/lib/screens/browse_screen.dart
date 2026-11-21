@@ -270,7 +270,8 @@ class _BrowseScreenState extends State<BrowseScreen> {
         bottom: false,
         child: Column(
           children: [
-            const SyncourseHeader(title: 'Browse'),
+            SyncourseHeader(
+                title: 'Browse', showBack: Navigator.canPop(context)),
             _BrowseTabs(
               onCourses: () {},
               onResources: () => Navigator.pushNamed(context, '/resources'),
@@ -431,7 +432,15 @@ class _BrowseScreenState extends State<BrowseScreen> {
     if (_grid) {
       return LayoutBuilder(
         builder: (context, constraints) {
-          final columns = constraints.maxWidth > 520 ? 3 : 2;
+          final columns = constraints.maxWidth > 1100
+              ? 6
+              : constraints.maxWidth > 900
+                  ? 5
+                  : constraints.maxWidth > 700
+                      ? 4
+                      : constraints.maxWidth > 520
+                          ? 3
+                          : 2;
           final cellWidth =
               (constraints.maxWidth - 32 - 12 * (columns - 1)) / columns;
           return GridView.builder(
@@ -440,7 +449,8 @@ class _BrowseScreenState extends State<BrowseScreen> {
               crossAxisCount: columns,
               mainAxisSpacing: 22,
               crossAxisSpacing: 12,
-              childAspectRatio: .54,
+              // The web's desktop grid fits six ~196px cards across 1240px.
+              childAspectRatio: columns >= 5 ? .62 : .54,
             ),
             itemCount: _results.length,
             itemBuilder: (_, i) => CoursePoster(

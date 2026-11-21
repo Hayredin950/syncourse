@@ -487,7 +487,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           child: ListView(
             padding: const EdgeInsets.only(bottom: 126),
             children: [
-              const SyncourseHeader(title: 'Me'),
+              SyncourseHeader(title: 'Me', showBack: Navigator.canPop(context)),
               const SizedBox(height: 30),
               _SignedOut(onSignIn: _signIn),
             ],
@@ -503,7 +503,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           child: ListView(
             padding: const EdgeInsets.only(bottom: 126),
             children: [
-              const SyncourseHeader(title: 'Me'),
+              SyncourseHeader(title: 'Me', showBack: Navigator.canPop(context)),
               LoadError(
                 message: _error ?? 'The connection dropped on the way in.',
                 onRetry: _load,
@@ -523,7 +523,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           child: ListView(
             padding: const EdgeInsets.only(bottom: 126),
             children: [
-              const SyncourseHeader(title: 'Me'),
+              SyncourseHeader(title: 'Me', showBack: Navigator.canPop(context)),
               _ProfileCard(
                 profile: p,
                 onEdit: _editProfile,

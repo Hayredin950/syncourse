@@ -3,8 +3,10 @@ import 'dart:io';
 
 import 'package:app_links/app_links.dart';
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'api.dart';
+import 'models.dart';
 import 'screens/assistant_screen.dart';
 import 'screens/auth_screen.dart';
 import 'screens/browse_screen.dart';
@@ -26,6 +28,7 @@ import 'screens/recommendations_screen.dart';
 import 'screens/resource_screens.dart';
 import 'screens/search_screen.dart';
 import 'theme.dart';
+import 'widgets/desktop_shell.dart';
 
 void main() {
   runApp(const SynCourseApp());
@@ -41,7 +44,10 @@ class SynCourseApp extends StatefulWidget {
 class _SynCourseAppState extends State<SynCourseApp> {
   final _navigator = GlobalKey<NavigatorState>();
   final _messenger = GlobalKey<ScaffoldMessengerState>();
+  final _shell = GlobalKey<ShellState>();
   StreamSubscription<Uri>? _links;
+  int _tab = 0;
+  UserProfile? _user;
 
   @override
   void initState() {
@@ -50,6 +56,36 @@ class _SynCourseAppState extends State<SynCourseApp> {
     // `syncourse://auth?token=…`. Catch that link, store the session and return
     // to the shell. Only Android and iOS have a registered handler today.
     if (Platform.isAndroid || Platform.isIOS) _listenForLinks();
+    _loadMe();
+  }
+
+  /// The desktop top bar mirrors the web's signed-in state: Premium accounts
+  /// see a badge, everyone else the upgrade pill, and signed-out users a
+  /// Sign-in pill. A failed call means signed out, not an error worth showing.
+  Future<void> _loadMe() async {
+    try {
+      final me = await Api.me();
+      if (mounted) setState(() => _user = me);
+    } catch (_) {
+      if (mounted) setState(() => _user = null);
+    }
+  }
+
+  void _goTab(int index) {
+    _navigator.currentState?.popUntil((route) => route.isFirst);
+    _shell.currentState?.select(index);
+    if (mounted) setState(() => _tab = index);
+    if (index == 5) _loadMe();
+  }
+
+  Future<void> _push(String route, [Object? arguments]) async {
+    await _navigator.currentState?.pushNamed(route, arguments: arguments);
+  }
+
+  Future<void> _openWeb(String url) async {
+    final uri = Uri.tryParse(url);
+    if (uri == null) return;
+    await launchUrl(uri, mode: LaunchMode.externalApplication);
   }
 
   Future<void> _listenForLinks() async {
@@ -73,6 +109,7 @@ class _SynCourseAppState extends State<SynCourseApp> {
     await Api.setToken(token);
     if (!mounted) return;
     _navigator.currentState?.pushNamedAndRemoveUntil('/', (route) => false);
+    await _loadMe();
     _messenger.currentState?.showSnackBar(
       const SnackBar(content: Text('Signed in with Google')),
     );
@@ -93,8 +130,58 @@ class _SynCourseAppState extends State<SynCourseApp> {
       debugShowCheckedModeBanner: false,
       theme: AppTheme.dark,
       initialRoute: '/',
+      builder: (context, child) {
+        if (MediaQuery.sizeOf(context).width < kDesktopBreakpoint ||
+            child == null) {
+          return child ?? const SizedBox.shrink();
+        }
+        // The web keeps its TopNav and footer around every route, so the
+        // desktop frame sits outside the Navigator rather than inside the home
+        // tab. Pushed pages therefore keep the same chrome.
+        return ColoredBox(
+          color: AppColors.bg,
+          child: Column(
+            children: [
+              DesktopTopBar(
+                tab: _tab,
+                user: _user,
+                onTab: _goTab,
+                onCircles: () => _push('/circles'),
+                onPremium: () => _push('/premium'),
+                onSignIn: () {
+                  _push('/auth').then((_) => _loadMe());
+                },
+                onDownload: () => _push('/download'),
+                onSearch: (q) => _push('/search', {'q': q}),
+                onBrowseType: (type) => _push('/browse', {'type': type}),
+                onResources: () => _push('/resources'),
+              ),
+              Expanded(
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: kPageMaxWidth),
+                    child: child,
+                  ),
+                ),
+              ),
+              DesktopFooter(
+                onDownload: () => _push('/download'),
+                onOpenWeb: () => _openWeb('https://syncourse.pages.dev'),
+                onLegal: (slug) =>
+                    _openWeb('https://syncourse.pages.dev/legal/$slug'),
+              ),
+            ],
+          ),
+        );
+      },
       routes: {
-        '/': (_) => const Shell(),
+        '/': (_) => Shell(
+              key: _shell,
+              onTabChanged: (index) {
+                if (mounted) setState(() => _tab = index);
+                if (index == 5) _loadMe();
+              },
+            ),
         '/auth': (_) => const AuthScreen(),
         '/browse': (_) => const BrowseScreen(),
         '/ask': (_) => const AssistantScreen(),
@@ -174,7 +261,9 @@ class _SynCourseAppState extends State<SynCourseApp> {
 /// Six tabs, matching the web's `BottomNav`: Home, Browse, Ask, Search,
 /// Collections, Me. The bar floats over the page with a blurred glass fill.
 class Shell extends StatefulWidget {
-  const Shell({super.key});
+  const Shell({super.key, this.onTabChanged});
+
+  final ValueChanged<int>? onTabChanged;
 
   @override
   State<Shell> createState() => ShellState();
@@ -182,6 +271,15 @@ class Shell extends StatefulWidget {
 
 class ShellState extends State<Shell> {
   int _index = 0;
+
+  int get index => _index;
+
+  /// Used by the desktop top bar to switch tabs after popping any pushed page.
+  void select(int index) {
+    if (index == _index) return;
+    setState(() => _index = index);
+    widget.onTabChanged?.call(index);
+  }
 
   static const _pages = [
     HomeScreen(),
@@ -209,10 +307,18 @@ class ShellState extends State<Shell> {
     ),
   ];
 
-  void _select(int index) => setState(() => _index = index);
+  void _select(int index) => select(index);
 
   @override
   Widget build(BuildContext context) {
+    // At the web's 760px breakpoint the floating tab bar and mobile header give
+    // way to the desktop frame in `MaterialApp.builder`.
+    if (MediaQuery.sizeOf(context).width >= kDesktopBreakpoint) {
+      return Scaffold(
+        backgroundColor: AppColors.bg,
+        body: IndexedStack(index: _index, children: _pages),
+      );
+    }
     return Scaffold(
       extendBody: true,
       body: IndexedStack(index: _index, children: _pages),

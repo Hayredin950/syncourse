@@ -6,6 +6,14 @@ class AppTheme {
   static ThemeData get dark => buildTheme();
 }
 
+/// The web's `@media (max-width: 760px)` boundary: below it the phone layout
+/// (mobile header, floating tab bar) is used; at or above it the desktop shell
+/// (top bar, 1240px page) takes over.
+const kDesktopBreakpoint = 760.0;
+
+/// The web's `.page { width: min(1240px, 91vw) }` ceiling.
+const kPageMaxWidth = 1240.0;
+
 class AppColors {
   static const bg = Color(0xFF0E0E0D);
   static const surface = Color(0xFF161513);

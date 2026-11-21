@@ -65,7 +65,7 @@ class _HomeScreenState extends State<HomeScreen> {
             if (snapshot.connectionState != ConnectionState.done) {
               return Column(
                 children: [
-                  const SyncourseHeader(),
+                  SyncourseHeader(showBack: Navigator.canPop(context)),
                   const Expanded(
                     child: Center(child: CircularProgressIndicator()),
                   ),
@@ -75,7 +75,7 @@ class _HomeScreenState extends State<HomeScreen> {
             if (snapshot.hasError) {
               return Column(
                 children: [
-                  const SyncourseHeader(),
+                  SyncourseHeader(showBack: Navigator.canPop(context)),
                   Expanded(
                     child: LoadError(
                       message: '${snapshot.error}',
@@ -93,7 +93,7 @@ class _HomeScreenState extends State<HomeScreen> {
               child: ListView(
                 padding: const EdgeInsets.only(bottom: 126),
                 children: [
-                  const SyncourseHeader(),
+                  SyncourseHeader(showBack: Navigator.canPop(context)),
                   _CategoryStrip(),
                   if (feed.trending.isNotEmpty) ...[
                     const SizedBox(height: 4),
@@ -586,6 +586,7 @@ class _Rail extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final wide = MediaQuery.sizeOf(context).width >= kDesktopBreakpoint;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -596,7 +597,7 @@ class _Rail extends StatelessWidget {
           trailing: trailing,
         ),
         SizedBox(
-          height: 254,
+          height: wide ? 322 : 254,
           child: courses.isEmpty
               ? const Padding(
                   padding: EdgeInsets.symmetric(horizontal: 16),
@@ -612,6 +613,7 @@ class _Rail extends StatelessWidget {
                   separatorBuilder: (_, __) => const SizedBox(width: 12),
                   itemBuilder: (context, i) => CoursePoster(
                     course: courses[i],
+                    width: wide ? 196 : 142,
                     showRank: title.startsWith('Top 10'),
                   ),
                 ),
@@ -735,6 +737,7 @@ class _CategoryRowState extends State<_CategoryRow> {
 
   @override
   Widget build(BuildContext context) {
+    final wide = MediaQuery.sizeOf(context).width >= kDesktopBreakpoint;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -760,7 +763,7 @@ class _CategoryRowState extends State<_CategoryRow> {
           ),
         ),
         SizedBox(
-          height: 254,
+          height: wide ? 322 : 254,
           child: _loading
               ? const Center(
                   child: SizedBox(
@@ -772,7 +775,8 @@ class _CategoryRowState extends State<_CategoryRow> {
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   itemCount: _courses.length,
                   separatorBuilder: (_, __) => const SizedBox(width: 12),
-                  itemBuilder: (_, i) => CoursePoster(course: _courses[i]),
+                  itemBuilder: (_, i) => CoursePoster(
+                      course: _courses[i], width: wide ? 196 : 142),
                 ),
         ),
       ],
@@ -819,6 +823,7 @@ class _InstructorRowState extends State<_InstructorRow> {
 
   @override
   Widget build(BuildContext context) {
+    final wide = MediaQuery.sizeOf(context).width >= kDesktopBreakpoint;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -843,7 +848,7 @@ class _InstructorRowState extends State<_InstructorRow> {
           ),
         ),
         SizedBox(
-          height: 254,
+          height: wide ? 322 : 254,
           child: _loading
               ? const Center(
                   child: SizedBox(
@@ -855,7 +860,8 @@ class _InstructorRowState extends State<_InstructorRow> {
                   padding: const EdgeInsets.symmetric(horizontal: 16),
                   itemCount: _courses.length,
                   separatorBuilder: (_, __) => const SizedBox(width: 12),
-                  itemBuilder: (_, i) => CoursePoster(course: _courses[i]),
+                  itemBuilder: (_, i) => CoursePoster(
+                      course: _courses[i], width: wide ? 196 : 142),
                 ),
         ),
       ],
@@ -895,6 +901,7 @@ class _BestOfRowState extends State<_BestOfRow> {
         .where((o) => ((o['courses'] as List?) ?? []).isNotEmpty)
         .toList();
     if (options.isEmpty) return const SizedBox.shrink();
+    final wide = MediaQuery.sizeOf(context).width >= kDesktopBreakpoint;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -917,13 +924,14 @@ class _BestOfRowState extends State<_BestOfRow> {
           ),
         ),
         SizedBox(
-          height: 254,
+          height: wide ? 322 : 254,
           child: ListView.separated(
             scrollDirection: Axis.horizontal,
             padding: const EdgeInsets.symmetric(horizontal: 16),
             itemCount: courses.length,
             separatorBuilder: (_, __) => const SizedBox(width: 12),
-            itemBuilder: (_, i) => CoursePoster(course: courses[i]),
+            itemBuilder: (_, i) =>
+                CoursePoster(course: courses[i], width: wide ? 196 : 142),
           ),
         ),
       ],

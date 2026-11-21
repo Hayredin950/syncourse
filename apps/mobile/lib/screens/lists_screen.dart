@@ -167,7 +167,8 @@ class _ListsScreenState extends State<ListsScreen> {
           child: ListView(
             padding: const EdgeInsets.only(bottom: 126),
             children: [
-              const SyncourseHeader(title: 'Collections'),
+              SyncourseHeader(
+                  title: 'Collections', showBack: Navigator.canPop(context)),
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 0),
                 child: Row(

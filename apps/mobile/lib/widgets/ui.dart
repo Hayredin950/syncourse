@@ -20,6 +20,12 @@ class SyncourseHeader extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // The desktop shell has its own persistent top bar. A tab page therefore
+    // hides the phone header at desktop widths; pushed pages keep theirs so the
+    // back affordance and page title do not disappear.
+    if (!showBack && MediaQuery.sizeOf(context).width >= kDesktopBreakpoint) {
+      return const SizedBox.shrink();
+    }
     final label = title ?? 'Syncourse';
     final isBrand = title == null || title == 'Syncourse';
     return Padding(
